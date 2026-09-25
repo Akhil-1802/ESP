@@ -1,0 +1,62 @@
+{
+  "track_source_layer": "MAIN_TRACK",
+  "loops": [
+    {
+      "name": "LOOP_1",
+      "side": "LEFT",
+      "track_layer" : "MAIN_LINE"
+    },
+    {
+      "name": "LOOP_2",
+      "side": "RIGHT",
+      "track_layer" : "MAIN_LINE"
+    }
+  ],
+  "additional_lines": [],
+  "platforms": [
+    {
+      "track_layer": "LOOP_1",
+      "platform_type": "SIDE",
+      "side": "LEFT",
+      "platform_name": "PLATFORM 1",
+      "stair_length": 10.0
+    },
+    {
+      "track_layer": "LOOP_2",
+      "platform_type": "SIDE",
+      "side": "RIGHT",
+      "platform_name": "PLATFORM 2",
+      "stair_length": 10.0
+    }
+  ],
+  "crossover_preset": "DEFAULT",
+  "crossover_preset_turnout": "1:12",
+  "stations": [
+    {
+      "platform_layer": "PLATFORM_1",
+      "building_length": 40.0,
+      "building_width": 10.0,
+      "platform_side": "LEFT",
+      "building_name": "STATION BUILDING"
+    }
+  ],
+  "fobs": [
+    {
+      "_note": "Basic FOB deck: span is auto-derived from the platform boundaries (no manual coordinates); validated against 6.25 m vertical clearance and the 30 m maximum single span. Platform widths here keep the derived span under 30 m.",
+      "reference_track": "MAIN_LINE",
+      "reference_chainage": 650.0,
+      "platforms": ["PLATFORM_1", "PLATFORM_2"],
+      "extend_start_m":0.0,
+      "extend_end_m":0.0,
+      "width": 6.0,
+      "arms":{
+        "PLATFORM_1":
+        {"length":20.0 , "side":"LEFT"},
+        "PLATFORM_2":
+        {"length":20.0 , "side":"RIGHT"}
+        
+      }
+    }
+  ],
+  "main_directions": {}
+}

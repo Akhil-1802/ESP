@@ -1,0 +1,251 @@
+ESP RAILWAY DRAWING GENERATOR - COMPLETE WORKFLOW EXPLAINED
+=============================================================
+From KML input to finished AutoCAD DXF, step by step.
+All drawings are 1:1 real-world scale in METRES. No scaling factor
+is ever applied: 1 DXF unit = 1 metre on the ground.
+
+
+1. INPUTS - WHAT YOU GIVE THE PROGRAM
+--------------------------------------
+Two ways to run (main.py -> cli/ -> pipeline/):
+
+  a) Config file : python main.py --config examples/inputconfig.json
+  b) Interactive : python main.py (asks every value live)
+
+Either way the program ends up with one ESPConfig object
+(config/loader.py):
+  - source_path        : KML or DXF holding the MAIN centreline
+  - output_dxf         : drawing to write (overwritten each run)
+  - track_source_layer : layer of MAIN centreline (KML is always MAIN_TRACK)
+  - loops              : bounded LOOP_N definitions (LoopSpec)
+  - additional_lines   : full-length MAIN_LINE_N / PROPOSED lines (LineSpec/LoopSpec)
+  - platforms          : platform requests (PlatformRequest + PlatformConfig)
+  - crossovers         : crossover specs (CrossoverSpec)
+  - stations           : station building requests (StationRequest)
+  - main_directions    : UP/DN per MAIN line (UP = increasing chainage)
+
+Chainage rule used EVERYWHERE: every chainage is a MAIN_LINE
+distance in metres measured from the first MAIN vertex (chainage 0).
+A bounded loop converts with: local = MAIN - C1, valid in [C1, C2].
+
+
+2. KML READING - LAT/LONG TO METRE COORDINATES
+-----------------------------------------------
+File: platform_gen/kml_io.py, function convert_kml_to_dxf.
+
+  Step 1 - Parse XML:
+    ET.parse(kml). All <Placemark> elements are found
+    (namespace-safe). Inside each, every <coordinates> block is split
+    on whitespace; each token "lon,lat,alt" keeps (lon, lat) as floats
+    and drops altitude. A set with fewer than 2 points is ignored.
+    Empty file raises "KML contains no LineString...".
+
+  Step 2 - Project degrees to metres (UTM):
+    First point gives origin (lon0, lat0).
+    UTM zone = int((lon0 + 180) // 6) + 1.
+    EPSG = 32600 + zone (north) or 32700 + zone (south).
+    Transformer EPSG:4326 -> EPSG:UTM converts each (lon, lat) to
+    (x, y) in metres. Broken segments from the KML are unioned,
+    snapped (0.01 m), simplified and line-merged with shapely so one
+    placemark becomes one continuous polyline.
+    Fallback without pyproj: equirectangular
+      dx = radians(lon-lon0) * R * cos(lat0)
+      dy = radians(lat-lat0) * R     (R = 6378137 m).
+
+  Step 3 - Rotate parallel to the X-axis:
+    Track angle = atan2(dy, dx) from first to last point
+    (_calculate_track_angle). Centroid of all points is the rotation
+    origin. rotation_angle = -track_angle. Every point is rotated with
+    the standard rotation matrix (_rotate_point / _align_to_x_axis).
+    Result: the alignment runs along +X. Chainage then increases with
+    X, LEFT offsets are +Y side, RIGHT are -Y side. This is why all
+    later geometry can use simple perpendicular offsets.
+
+  Step 4 - Write source DXF:
+    New R2018 DXF, units = metres. Longest placemark becomes layer
+    MAIN_TRACK, others TRACK_2, TRACK_3... Each written as LWPOLYLINE.
+    Returns the layer list. generator._prepare_source does this
+    automatically when source ends with .kml (output
+    <name>_converted.dxf).
+
+
+3. SOURCE CENTRELINE - THE MAIN LINE
+-------------------------------------
+File: track/generator.py, _source_points + build_tracks.
+
+  The source DXF is reopened, longest LINE/LWPOLYLINE on the source
+  layer is taken as MAIN_LINE (list of (x, y) points).
+  tracks = {"MAIN_LINE": main}. Everything else is derived from it.
+  Total MAIN length = polyline_length = sum of segment hypots
+  (common/geometry.py). That length is the chainage ruler [0, total].
+
+
+4. LOOP LINES - PARALLEL TRACKS
+--------------------------------
+Files: track/specs.py (LoopSpec), track/generator.py (build_tracks),
+track/crossover.py (generate_loop), common/geometry.py (offsets).
+
+  A bounded loop is defined by:
+    spacing   : lateral centre-to-centre gap, e.g. 5.3 m (input, >= 5.3)
+    side      : LEFT / RIGHT of increasing chainage
+    C1, C2    : MAIN chainages of the two loop turnouts
+    C2 defaults to C1 + crossover_distance_m (750.0 m,
+      common/constants.py LOOP_CROSSOVER_DISTANCE_M).
+    Interactive mode centres it: C1 = centre-375, C2 = centre+375.
+    extend_start_m / extend_end_m: overrun past turnouts (0 = none).
+    turnout_designation/variant: e.g. 1:12 standard (validated only).
+
+  Checks: C2 > C1, both inside [0, MAIN length]; overrun must not push
+  before 0. Turnout is resolved from the verified library
+  (track/turnouts.py) and require_geometry_parameters confirms F/beta/R.
+
+  Geometry (true offset, not a copy-paste):
+    sample chainages = [C1] + every MAIN vertex chainage inside (C1,C2)
+    + [C2]. For each: point_at_chainage(main, ch) gives point + local
+    unit tangent; offset_point shifts it perpendicularly by `spacing`
+    to the requested side (LEFT normal = (-ty, tx), RIGHT = (ty, -tx)).
+    Points stay ordered C1 -> C2, so curved MAIN is honoured.
+    generate_loop also computes the ESP summary (D, S, X, OL, F, R...)
+    via calculate_crossover for the status printout.
+
+  Overrun: effective extents eff_c1 = C1 - extend_start,
+  eff_c2 = C2 + extend_end (_apply_loop_extension). Extended tips get
+  dead-end markers + "OVER RUN LINE, CAL=xx.xx" labels.
+
+  Full-length lines (LineSpec, or LoopSpec without C1) offset the whole
+  MAIN polyline vertex-by-vertex with the same perpendicular rule.
+
+  Drawing (TrackGenerator.run): MAIN as polyline, LOOPs as smooth
+  splines through the computed points, each on its own layer
+  (MAIN_LINE, LOOP_1...), plus centred TEXT labels, T.C dimension
+  lines between MAIN and each parallel line, UP/DN direction marks
+  (single MAIN = bidirectional UP/DN shaft; multiple MAINs = per-line
+  UP/DN), all in red (ACI 1). No scaling: coordinates written as-is.
+
+
+5. SCALE, LENGTH AND CURVES - HOW MEASUREMENT WORKS
+-----------------------------------------------------
+  Scale: NONE. 1:1 metre scale throughout. DXF units = M, KML metres
+  convert 1:1, offsets in metres, turnout formulas convert to mm only
+  internally (MM_PER_UNIT = 1000) for OL/TC math, then back to metres
+  for chainage. Text heights (1.0 m, 0.8 m dims) are real sizes.
+
+  Length: polyline_length (sum of hypots). cumulative_chainages gives
+  running distance per vertex. point_at_chainage interpolates any
+  distance to point + unit tangent. nearest_point_on_alignment projects
+  any XY back to closest point + chainage + perpendicular distance.
+  These three are the entire measuring system.
+
+  Curves:
+    - Tracks/loops: stored as polylines; drawn as cubic B-spline fit
+      (ezdxf BSpline.from_fit_points) for display smoothness, with
+      polyline fallback. Engineering chainage still uses the polyline.
+    - Turnouts/crossovers: NEVER splines/Beziers. Real pieces only:
+      straight A along parent, circular arc radius R sweeping angle F,
+      straight diagonal at F, mirrored arc, straight A onto other track.
+      Large spacing (TC > 8000 mm) uses the reverse-curve formulation
+      (theta/T/X formulas). Arcs are densely sampled so vertices stay
+      < 5 m apart and the centreline is tangent-continuous (C1).
+
+
+6. PLATFORMS
+-------------
+Files: platform_gen/config.py, platform.py, dxf_io.py.
+
+  Config per platform: track_layer (+ second_track_layer for ISLAND),
+  SIDE/ISLAND, side LEFT/RIGHT, center_on_track, clearance (track
+  centre -> near edge, e.g. 1.68 m), width (near -> far, e.g. 8.5 m),
+  length (e.g. 550 m) or start/end chainage, height (text only),
+  name/tag, stairs, layers/colours.
+
+  SIDE: resolve start/end (centred via find_straight_window so the
+  550 m sits on straight track), offset near edge at `clearance` and
+  far edge at `clearance + width` with curve_samples, stitch into
+  closed outline (near-start -> near-end -> far-end -> far-start).
+  ISLAND: same but edges sit on two different tracks (chainages
+  projected across via nearest_point_on_alignment), width measured
+  between edges. Adds width/clearance arrow dimensions, centred label
+  "PLATFORM N (550X8.5m)" + "HT +0.840M", optional stairs (rectangles +
+  tread lines every 250 m) and hatch. Overlap with existing PLATFORM_*
+  polygons raises an error (polygons_overlap test).
+
+
+7. CROSSOVERS - SRJ TO SRJ
+----------------------------
+Files: track/turnouts.py, track/crossover.py, track/turnout_geom.py,
+track/crossovers/ (engine split by concern),
+pipeline/crossover_step.py (_generate_crossovers), cli/ (live validation).
+
+  Spec: from_track, to_track, from_chainage_m = START SRJ = FIRST
+  turnout (MAIN metres, or "AUTO"), direction FORWARD (->, second SRJ
+  at START + OL) / REVERSE (<-, START - OL), turnout 1:8.5/1:12,
+  placement normally derived (FORWARD->AHEAD, REVERSE->BEHIND),
+  position FIXED/AUTO. to_chainage_m is legacy cross-check only.
+
+  Engine per crossover (compute_crossover_params):
+    TC = actual perpendicular centre spacing at START SRJ (mm),
+      measured by projecting FROM point onto TO track (curves honoured).
+    N from designation ("1:12" -> 12), F = atan(1/N), A/B/R from the
+      verified turnout library (track/turnouts.py, IRSOD values).
+    Normal (TC <= 8000 mm): X = TC*N, OL = X + 2*A.
+    Large (TC > 8000 mm): reverse-curve theta/T/X formulas, OL = X+2A.
+    Second SRJ = START +/- OL on MAIN datum. Footprint = [start, end].
+
+  Geometry (build_standard_crossover / reverse builder): A-straights on
+  parents from each SRJ, tangent arcs R sweeping F at both kinks,
+  straight diagonal at F between. Validates parallel tangents (5 deg),
+  vertex gaps, monotonicity, corridor containment; soft issues become
+  warnings, fatal become ValueError. FIXED is never moved.
+
+  Validation across ALL crossovers (L1-L6):
+    L1 tracks exist; L2 chainages inside extents; L3 spacing: nearest
+      SRJs on each shared track >= 13 m same direction / 54 m opposite
+      (STARTs on different tracks never compared); L4 footprints must
+      not overlap, EXCEPT pairs sharing ONLY MAIN_LINE on opposite
+      lateral sides (diagonals run in different strips); L5 geometry
+      builds cleanly; L6 second SRJ inside track bounds.
+    AUTO searches forward from earliest spot by 1 m steps for the first
+    location passing everything; FIXED violations report deficit +
+    suggested earliest chainage; nothing is drawn while invalid.
+
+  Restricted regions: platform bodies (+stairs) and station footprints
+  become MAIN-datum intervals per track; any crossover footprint
+  touching one is rejected (interactive mode checks each candidate
+  immediately with retry/restart/skip/abort).
+
+  Drawing: CROSSOVERS splines through turnout-arc points, SRJ posts at
+  both ends (2 m stem + 1 m solid disk + "SRJ" text), turnout tag
+  ("1 in 12") at FROM end. Previous CROSSOVERS/SRJ entities wiped first
+  so reruns are clean.
+
+
+8. STATION BUILDINGS
+----------------------
+File: station/builder.py, drawn in generator._generate_stations.
+
+  Takes the platform polygon for the requested PLATFORM_* layer, picks
+  the long boundary edge on the requested side, centres a L x W
+  rectangle outward from it (must fit inside platform length),
+  angle normalised to [-90, 90]. Drawn on STATION-BUILDING with name
+  MTEXT, length/width arrow dimensions, dashed STATION-CENTER C/L line
+  (50 m half, 6 m dash) labelled "C/L OF <name> / STN. BLDG. CH:0.00M".
+  Bounding-box overlap with existing stations raises an error.
+
+
+9. RUN ORDER AND OUTPUT
+-------------------------
+generator.ESPGenerator.run:
+  1. _prepare_source (KML -> DXF if needed)
+  2. TrackGenerator.run (tracks + labels + T.C + direction + overruns)
+  3. _generate_platforms (each PlatformGenerator.run + overlap check)
+  4. _generate_crossovers (plan -> validate -> draw splines + SRJs)
+  5. _generate_stations (footprints + dims + C/L)
+  Returns output DXF path. Console prints LOOP status blocks (C1/C2/
+  D/A/B/F/R/S/X/OL), crossover validation report + per-crossover debug
+  line (TC/N/F/A/OL/footprint), and OK lines with SRJ1->SRJ2 + OL.
+
+  Final layers include: MAIN_LINE, LOOP_N, PROPOSED_*, CROSSOVERS, SRJ,
+  PLATFORM_N (+_TEXT, -DIM, -STAIRS), STATION-BUILDING, STATION-CENTER,
+  TRACK_LABELS, TRACK_CENTERS, DIRECTION, OVER_RUN, TURNOUT_*,
+  LOOP_CROSSOVER. Close the DXF in AutoCAD before rerunning (file is
+  overwritten).

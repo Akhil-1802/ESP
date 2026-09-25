@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:globalmapper="https://www.bluemarblegeo.com/globalmapper">
+<Document>
+  <!-- Begin Style Definitions -->
+  <Style id="line1">
+    <LineStyle>
+      <color>FF808080</color>
+      <width>1</width>
+    </LineStyle>
+  </Style>
+  <Folder>
+    <name>Line Features</name>
+    <description>Line Features</description>
+    <Placemark>
+      <description>Unclassified Line Feature</description>
+      <name>ESP</name>
+      <styleUrl>#line1</styleUrl>
+      <LineString>
+        <coordinates>
+          87.627371254,21.828329949,0
+          87.634273474,21.820765319,0
+          87.634264574,21.820775073,0
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Folder>
+</Document>
+</kml>

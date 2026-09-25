@@ -1,0 +1,70 @@
+{
+  "source_path": "../../data/ESP.kml",
+  "output_dxf": "../../output/ESP_FM_check.dxf",
+  "track_source_layer": "MAIN_TRACK",
+  "loops": [
+    {
+      "name": "LOOP_1",
+      "spacing": 5.3,
+      "side": "RIGHT",
+      "first_crossover_chainage": 175.709,
+      "second_crossover_chainage": 925.709,
+      "turnout_designation": "1:12",
+      "turnout_variant": "standard",
+      "crossover_distance_m": 750.0,
+      "extend_start_m": 120.0,
+      "extend_end_m": 120.0
+    }
+  ],
+  "additional_lines": [],
+  "platforms": [
+    {
+      "track_layer": "LOOP_1",
+      "platform_type": "SIDE",
+      "side": "RIGHT",
+      "center_on_track": true,
+      "clearance": 1.68,
+      "platform_width": 8.5,
+      "platform_length": 550.0,
+      "platform_height": 0.84,
+      "platform_name": "PLATFORM 1",
+      "stair_length": 10.0
+    }
+  ],
+  "stations": [
+    {
+      "platform_layer": "PLATFORM_1",
+      "building_length": 40.0,
+      "building_width": 10.0,
+      "platform_side": "RIGHT",
+      "building_name": "STATION BUILDING"
+    }
+  ],
+  "sidings": [
+    {
+      "source_track": "MAIN_LINE",
+      "start_chainage_m": 175,
+      "direction": "FORWARD",
+      "side": "LEFT",
+      "turnout": "1:12",
+      "standing_length_m": 200.0
+    }
+  ],
+  "crossovers": [
+    {
+      "from_track": "LOOP_1",
+      "to_track": "MAIN_LINE",
+      "from_chainage_m": 175.709,
+      "turnout": "1:12",
+      "direction": "REVERSE"
+    },
+    {
+      "from_track": "LOOP_1",
+      "to_track": "MAIN_LINE",
+      "from_chainage_m": 925.709,
+      "turnout": "1:12",
+      "direction": "FORWARD"
+    }
+  ],
+  "main_directions": {}
+}

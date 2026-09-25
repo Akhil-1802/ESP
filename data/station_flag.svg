@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Indian Railway Station Flag Symbol (reference design).
+  
+  This SVG is the editable master for the station flag drawn by
+  ESP/station/station_flag.py.  If you change shapes here, update
+  the DXF-drawing function draw_station_flag() to match.
+
+  Coordinate system:
+    - Origin (0,0) is at the top-left of the flag (attached to station centerline).
+    - Flag body: red waving flag outline from Y=0 to Y=-10, width=15 units.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-2 -15 19 17" width="380" height="340"
+     transform="scale(1, -1)">
+
+  <!-- Station Centerline (Dashed) -->
+  <line x1="0" y1="2" x2="0" y2="-15" stroke="red" stroke-width="0.3" stroke-dasharray="1.5, 0.6"/>
+
+  <!-- Red Waving Flag Body (Cubic Bezier outline) -->
+  <path d="M 0,0 C 4.5,1.5 9.75,-5.5 15,-3 L 15,-13 C 9.75,-15.5 4.5,-8.5 0,-10 Z"
+        fill="none" stroke="red" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

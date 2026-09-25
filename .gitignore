@@ -1,0 +1,28 @@
+venv
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+env/
+*.egg-info/
+
+# Outputs / local artefacts (regenerated every run)
+output/*.dxf
+*.kml.converted
+backend/output/*.dxf
+
+# AutoCAD crash reports / editor junk
+ErrorReports/
+*.bak
+*.dwl
+*.dwl2
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend (React + Vite - install/build artefacts, regenerated)
+frontend/node_modules/
+frontend/dist/

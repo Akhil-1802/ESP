@@ -1,0 +1,15 @@
+{
+  "output_dxf": "ESP_wizard.dxf",
+  "loops": {
+    "count": 2,
+    "spacings": [5.3, 6.3],
+    "sides": ["LEFT", "RIGHT"],
+    "extensions": {"length": 120.0, "side": "BOTH"},
+    "turnout": "1:12"
+  },
+  "crossovers": "DEFAULT",
+  "platforms": [
+    {"track": "LOOP_1", "type": "SIDE", "side": "LEFT"},
+    {"track": "LOOP_2", "type": "SIDE", "side": "RIGHT"}
+  ]
+}
