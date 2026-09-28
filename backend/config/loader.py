@@ -11,6 +11,7 @@ from typing import Any
 
 from fob.config import FOBConfig
 from platform_gen.config import PlatformConfig
+from rob.config import ROBConfig
 from track.specs import CrossoverSpec, LineSpec, LoopSpec, SidingSpec
 from track.turnouts import default_crossing_angle_rad, get_turnout_parameters, select_turnout as _select_turnout
 
@@ -46,6 +47,7 @@ class ESPConfig:
     crossover_preset_turnout: str = "1:12"
     fobs: list = None
     sidings: list = None
+    robs: list = None
 
     def __post_init__(self):
         if self.loops is None:
@@ -62,6 +64,8 @@ class ESPConfig:
             self.fobs = []
         if self.sidings is None:
             self.sidings = []
+        if self.robs is None:
+            self.robs = []
         if self.main_directions is None:
             self.main_directions = {}
         if self.crossover_preset is not None:
@@ -124,6 +128,17 @@ def _load_fob(item: dict[str, Any], number: int = 1):
     values = _strip_comments(dict(item))
     values.setdefault("output_layer", f"FOB_{number}")
     return FOBConfig(**values)
+
+
+def _load_rob(item: dict[str, Any], number: int = 1):
+    """Convert JSON ROB entry to ROBConfig."""
+    values = _strip_comments(dict(item))
+    if not values.get("id"):
+        values["id"] = f"ROB_{number}"
+    values.setdefault("output_layer", f"ROB_{number}")
+    allowed = {f.name for f in _dc.fields(ROBConfig)}
+    values = {k: v for k, v in values.items() if k in allowed}
+    return ROBConfig(**values)
 
 
 def _load_platform(item: dict[str, Any], source: str, output: str, number: int) -> PlatformRequest:
@@ -231,6 +246,7 @@ def load_config_from_json(filename: str) -> ESPConfig:
     crossovers = [_load_crossover(item, idx) for idx, item in enumerate(raw_crossovers or [])]
     fobs = [_load_fob(item, idx) for idx, item in enumerate(data.get("fobs", []) or [], 1)]
     sidings = [_load_siding(item, idx) for idx, item in enumerate(data.get("sidings", []) or [])]
+    robs = [_load_rob(item, idx) for idx, item in enumerate(data.get("robs", []) or [], 1)]
 
     return ESPConfig(
         source_path=source,
@@ -246,4 +262,5 @@ def load_config_from_json(filename: str) -> ESPConfig:
         crossover_preset_turnout=str(preset_turnout or "1:12"),
         fobs=fobs,
         sidings=sidings,
+        robs=robs,
     )

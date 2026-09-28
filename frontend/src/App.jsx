@@ -3,6 +3,7 @@ import {
   CrossoversSection,
   FobsSection,
   PlatformsSection,
+  RobsSection,
   SidingsSection,
   SourceSection,
   StationsSection,
@@ -14,6 +15,7 @@ import {
   blankFob,
   blankLine,
   blankLoop,
+  blankRob,
   blankSiding,
   blankStation,
 } from './lib/formDefaults.js';
@@ -46,6 +48,7 @@ const initialForm = () => ({
   crossovers: [],
   stations: [],
   fobs: [],
+  robs: [],
   sidings: [],
 });
 
@@ -352,6 +355,7 @@ export default function App() {
               <CrossoversSection form={form} set={setForm} tracks={tracks} />
               <StationsSection form={form} set={setForm} layers={layers} />
               <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
+              <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
               <SidingsSection form={form} set={setForm} tracks={tracks} />
             </div>
 

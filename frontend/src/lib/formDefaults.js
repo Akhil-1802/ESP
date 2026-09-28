@@ -71,3 +71,14 @@ export const blankSiding = () => ({
   csl: '120',
   spacing: '5.3',
 });
+
+export const blankRob = () => ({
+  platform: 'PLATFORM_1',
+  referenceEnd: 'START',
+  offset: '50.0',
+  width: '10.0',
+  referenceTrack: 'MAIN_LINE',
+  blockName: 'SGFD',
+});
+
+

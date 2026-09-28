@@ -8,6 +8,7 @@ from .fencing import FencingMixin, FencingStep
 from .fob import FobMixin, FobStep
 from .fouling import FoulingMixin, FoulingStep
 from .platform import PlatformMixin, PlatformStep
+from .rob import RobMixin, RobStep
 from .siding import SidingMixin, SidingStep
 from .station import StationMixin, StationStep
 from .track import TrackMixin, TrackStep
@@ -30,6 +31,8 @@ __all__ = [
     "FencingMixin",
     "FobStep",
     "FobMixin",
+    "RobStep",
+    "RobMixin",
     "ChainageStep",
     "ChainageMixin",
     "CalLabelStep",

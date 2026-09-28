@@ -46,6 +46,12 @@ export const LAYER_CONFIG = {
   'STATION-CENTER': { color: '#6366f1', width: '1.0', dash: '6 3', category: 'station', label: 'Station Center' },
   'STATION-FLAG': { color: '#ef4444', width: '1.4', category: 'station', label: 'Station Flag' },
   FOB_1: { color: '#2dd4bf', width: '2.0', category: 'fob', label: 'Foot Over Bridge' },
+  ROB: { color: '#ef4444', width: '2.5', category: 'rob', label: 'Road Over Bridge (SGFD)' },
+  SGFD: { color: '#ef4444', width: '2.5', category: 'rob', label: 'Road Over Bridge (SGFD)' },
+  'ROB-DIM': { color: '#64748b', width: '0.9', category: 'reference', label: 'ROB Dimensions' },
+  'SGFD-DIM': { color: '#64748b', width: '0.9', category: 'reference', label: 'SGFD Dimensions' },
+  'ROB-CENTER': { color: '#94a3b8', width: '1.0', dash: '6 3', category: 'reference', label: 'ROB Centerline' },
+  'SGFD-CENTER': { color: '#94a3b8', width: '1.0', dash: '6 3', category: 'reference', label: 'SGFD Centerline' },
 
   // Signals
   SRJ: { color: '#ef4444', width: '2.0', category: 'signal', label: 'SRJ Points' },
@@ -91,6 +97,9 @@ export function getLayerStyle(layer) {
   }
   if (u.includes('FOB')) {
     return red({ color: '#2dd4bf', width: '2.0', category: 'fob', label: name });
+  }
+  if (u.includes('ROB') || u.includes('SGFD')) {
+    return red({ color: '#ef4444', width: '2.5', category: 'rob', label: name });
   }
   if (u.includes('FENCE')) {
     return red({ color: '#475569', width: '0.9', opacity: '0.6', category: 'fencing', label: name });
@@ -249,6 +258,28 @@ export function dxfToSvg(input) {
         });
         break;
       }
+      case 'INSERT': {
+        const blk = e.name && dxf.blocks && dxf.blocks[e.name];
+        if (blk && Array.isArray(blk.entities)) {
+          const insX = Number(e.position?.x ?? e.insertionPoint?.x ?? 0);
+          const insY = Number(e.position?.y ?? e.insertionPoint?.y ?? 0);
+          const sx = Number(e.xScale ?? 1), sy = Number(e.yScale ?? 1);
+          const rotRad = ((Number(e.rotation ?? 0)) * Math.PI) / 180;
+          const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+          const tf = (p) => [insX + p[0] * sx * cosR - p[1] * sy * sinR, insY + p[0] * sx * sinR + p[1] * sy * cosR];
+          for (const sub of blk.entities) {
+            if (sub.type === 'LINE') {
+              const pts = vertsOf(sub.vertices);
+              if (pts.length >= 2) {
+                const p0 = tf(pts[0]), p1 = tf(pts[1]);
+                feed(p0[0], p0[1]); feed(p1[0], p1[1]);
+                group.items.push(`<line x1="${r3(p0[0])}" y1="${r3(p0[1])}" x2="${r3(p1[0])}" y2="${r3(p1[1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
+              }
+            }
+          }
+        }
+        break;
+      }
       case 'DIMENSION': {
         const blockName = e.block;
         const block = blockName && dxf.blocks && dxf.blocks[blockName];
@@ -265,28 +296,18 @@ export function dxfToSvg(input) {
             } else if (sub.type === 'INSERT') {
               const blk = sub.name && dxf.blocks && dxf.blocks[sub.name];
               if (blk && Array.isArray(blk.entities)) {
-                const insX = Number(sub.position?.x ?? 0);
-                const insY = Number(sub.position?.y ?? 0);
-                const sx = Number(sub.xScale ?? 1);
-                const sy = Number(sub.yScale ?? 1);
+                const insX = Number(sub.position?.x ?? 0), insY = Number(sub.position?.y ?? 0);
+                const sx = Number(sub.xScale ?? 1), sy = Number(sub.yScale ?? 1);
                 const rotRad = ((Number(sub.rotation ?? 0)) * Math.PI) / 180;
-                const cosR = Math.cos(rotRad);
-                const sinR = Math.sin(rotRad);
-                const tf = (p) => [
-                  insX + (p[0] * sx) * cosR - (p[1] * sy) * sinR,
-                  insY + (p[0] * sx) * sinR + (p[1] * sy) * cosR,
-                ];
+                const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+                const tf = (p) => [insX + (p[0] * sx) * cosR - (p[1] * sy) * sinR, insY + (p[0] * sx) * sinR + (p[1] * sy) * cosR];
                 for (const bEnt of blk.entities) {
                   if (bEnt.type === 'LINE') {
                     const bPts = vertsOf(bEnt.vertices);
                     if (bPts.length >= 2) {
-                      const p0 = tf(bPts[0]);
-                      const p1 = tf(bPts[1]);
-                      feed(p0[0], p0[1]);
-                      feed(p1[0], p1[1]);
-                      group.items.push(
-                        `<line x1="${r3(p0[0])}" y1="${r3(p0[1])}" x2="${r3(p1[0])}" y2="${r3(p1[1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
-                      );
+                      const p0 = tf(bPts[0]), p1 = tf(bPts[1]);
+                      feed(p0[0], p0[1]); feed(p1[0], p1[1]);
+                      group.items.push(`<line x1="${r3(p0[0])}" y1="${r3(p0[1])}" x2="${r3(p1[0])}" y2="${r3(p1[1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
                     }
                   } else if (bEnt.type === 'SOLID' || bEnt.type === 'LWPOLYLINE') {
                     const bPts = vertsOf(bEnt.points || bEnt.vertices);
@@ -294,11 +315,7 @@ export function dxfToSvg(input) {
                       const tfPts = bPts.map(tf);
                       tfPts.forEach((p) => feed(p[0], p[1]));
                       const d = polylinePathD(tfPts, true);
-                      if (d) {
-                        group.items.push(
-                          `<path d="${esc(d)}" fill="${color}" stroke="${color}" stroke-width="${strokeWidth}" ${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
-                        );
-                      }
+                      if (d) group.items.push(`<path d="${esc(d)}" fill="${color}" stroke="${color}" stroke-width="${strokeWidth}" ${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
                     }
                   }
                 }
@@ -380,7 +397,7 @@ export function dxfToSvg(input) {
   const flip = y0 + (y0 + h);
 
   const sortedLayers = Array.from(layerGroups.values()).sort((a, b) => {
-    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, signal: 6, track: 7, crossover: 8 };
+    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, rob: 6, signal: 7, track: 8, crossover: 9 };
     return (order[a.style.category] || 5) - (order[b.style.category] || 5);
   });
 

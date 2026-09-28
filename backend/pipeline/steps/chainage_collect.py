@@ -21,6 +21,7 @@ __all__ = [
     "collect_fm",
     "collect_dead_ends",
     "collect_fob",
+    "collect_robs",
     "collect_optional_layers",
 ]
 
@@ -70,9 +71,8 @@ def determine_side(
             return s
     if host_track and config is not None:
         ht = str(host_track).upper()
-        for item in list(getattr(config, "loops", None) or []) + list(
-            getattr(config, "additional_lines", None) or []
-        ):
+        all_tracks = list(getattr(config, "loops", None) or []) + list(getattr(config, "additional_lines", None) or [])
+        for item in all_tracks:
             if getattr(item, "name", "").upper() == ht and getattr(item, "side", None):
                 return str(item.side).strip().upper()
         for sid in list(getattr(config, "sidings", None) or []):
@@ -112,9 +112,8 @@ def determine_track_side(
             return s
     if track_name:
         tn = str(track_name).upper()
-        for item in list(getattr(config, "loops", None) or []) + list(
-            getattr(config, "additional_lines", None) or []
-        ):
+        all_tracks = list(getattr(config, "loops", None) or []) + list(getattr(config, "additional_lines", None) or [])
+        for item in all_tracks:
             if getattr(item, "name", "").upper() == tn and getattr(item, "side", None):
                 return str(item.side).strip().upper()
         for sid in list(getattr(config, "sidings", None) or []):
@@ -122,12 +121,12 @@ def determine_track_side(
                 return str(sid.side).strip().upper()
         if "MAIN" in tn and default_to:
             dt = str(default_to).upper()
-            for item in list(getattr(config, "loops", None) or []) + list(
-                getattr(config, "additional_lines", None) or []
-            ):
+            for item in all_tracks:
                 if getattr(item, "name", "").upper() == dt and getattr(item, "side", None):
                     return str(item.side).strip().upper()
             for sid in list(getattr(config, "sidings", None) or []):
+                if getattr(sid, "source_track", "").upper() == dt and getattr(sid, "side", None):
+                    return str(sid.side).strip().upper()
                 if getattr(sid, "source_track", "").upper() == dt and getattr(sid, "side", None):
                     return str(sid.side).strip().upper()
     if pt is not None:
@@ -211,29 +210,16 @@ def collect_platform_ends(doc, tracks: dict, datum: StationDatum, config, main_l
     stair_outlines: list = []
     for entity in entities:
         try:
-            if str(entity.dxf.layer) not in stair_layers:
+            if str(entity.dxf.layer) not in stair_layers or entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
                 continue
-            if entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
+            closed = bool(getattr(entity, "is_closed", False)) or bool(int(entity.dxf.get("flags", 0)) & 1)
+            if not closed:
                 continue
-            try:
-                closed = bool(getattr(entity, "is_closed", False))
-            except Exception:
-                closed = False
-            try:
-                if not closed and not (int(entity.dxf.get("flags", 0)) & 1):
-                    continue
-            except Exception:
-                pass
-            pts = _pts(entity)
-            cleaned = [(float(p[0]), float(p[1])) for p in pts]
+            cleaned = [(float(p[0]), float(p[1])) for p in _pts(entity)]
             if len(cleaned) >= 5 and cleaned[0] == cleaned[-1]:
                 cleaned = cleaned[:-1]
-            if len(cleaned) != 4:
-                continue
-            area = abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(cleaned, cleaned[1:] + cleaned[:1]))) / 2.0
-            if area < 1.0:
-                continue
-            stair_outlines.append(cleaned)
+            if len(cleaned) == 4 and abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(cleaned, cleaned[1:] + cleaned[:1]))) >= 2.0:
+                stair_outlines.append(cleaned)
         except Exception:
             continue
 
@@ -328,20 +314,6 @@ def collect_srj_turnout_crossover(
                 out.append((sp_to.point, sp_to.tangent, datum.relative_for_main(second_main), "SRJ", side_to))
         except Exception:
             continue
-
-    for item in siding_results:
-        try:
-            spec, _result = item
-            source = getattr(spec, "source_track", None)
-            s_side = determine_track_side(
-                source, config, configured_side=getattr(spec, "side", None), main_line_points=main_line_points
-            )
-            start_main = float(getattr(spec, "start_chainage_m", 0.0))
-            sp = _point_on_track_helper(tracks, source, start_main, extents)
-            if sp is not None:
-                out.append((sp.point, sp.tangent, datum.relative_for_main(start_main), "SRJ", s_side))
-        except Exception:
-            continue
     return out
 
 
@@ -432,8 +404,31 @@ def collect_dead_ends(doc, tracks_for_datum: dict, datum: StationDatum, config, 
 
 
 def collect_fob(tracks, extents, datum) -> list:
-    """FOB chainage labels are disabled -- always returns no markers."""
     return []
+
+
+def collect_robs(tracks_for_datum: dict, datum: StationDatum, config, main_line_points: list | None = None) -> list:
+    """Station-relative chainage markers for Road Over Bridges (ROB)."""
+    out: list = []
+    for rob in list(getattr(config, "robs", None) or []):
+        ref_track = getattr(rob, "reference_track", None) or "MAIN_LINE"
+        ref_pts = (tracks_for_datum or {}).get(ref_track) or (tracks_for_datum or {}).get("MAIN_LINE")
+        if not ref_pts or len(ref_pts) < 2:
+            continue
+        cleaned = _clean_pts(ref_pts)
+        rob_ch = getattr(rob, "_calculated_chainage", None)
+        if rob_ch is None:
+            continue
+        rob_ch = max(0.0, min(polyline_length(cleaned), float(rob_ch)))
+        sp = point_at_chainage(cleaned, rob_ch)
+        rel_m = datum.relative_for_track(ref_track, rob_ch)
+        rob_side = determine_side(sp.point, main_line_points=main_line_points, config=config, host_track=ref_track)
+        tn = math.hypot(sp.tangent[0], sp.tangent[1]) or 1.0
+        norm = getattr(rob, "_normal", (-sp.tangent[1] / tn, sp.tangent[0] / tn))
+        off = getattr(rob, "_bottom_offset", -10.0) if rob_side == "RIGHT" else getattr(rob, "_top_offset", 10.0)
+        base = (sp.point[0] + norm[0] * off, sp.point[1] + norm[1] * off)
+        out.append((base, (float(sp.tangent[0]), float(sp.tangent[1])), float(rel_m), "BR", rob_side))
+    return out
 
 
 def collect_optional_layers(doc, tracks_for_datum: dict, datum: StationDatum, config, main_line_points: list) -> list:

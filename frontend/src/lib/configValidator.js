@@ -153,5 +153,29 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
       at('Siding', i, `spacing must be >= ${minTrackSpacing} m.`);
   });
 
+  (f.robs || []).forEach((rob, i) => {
+    if ((f.platforms || []).length === 0) {
+      at('ROB', i, 'requires at least one platform to be defined.');
+    }
+    if (isBlank(rob.platform)) {
+      at('ROB', i, 'platform selection is required.');
+    }
+    const end = strOr(rob.referenceEnd, 'START').toUpperCase();
+    if (end !== 'START' && end !== 'END') {
+      at('ROB', i, 'platform end must be either START or END.');
+    }
+    if (!isBlank(rob.offset)) {
+      const off = Number(rob.offset);
+      if (!Number.isFinite(off) || off < 0) {
+        at('ROB', i, 'offset must be a number >= 0.');
+      }
+    }
+    const width = numOr(rob.width, defaults.robWidth || 10.0);
+    if (!Number.isFinite(width) || width <= 0) {
+      at('ROB', i, `width must be a number > 0 (blank = ${defaults.robWidth || 10.0}).`);
+    }
+  });
+
   return errors;
 }
+

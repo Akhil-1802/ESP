@@ -39,6 +39,9 @@ export const DEFAULTS = {
   sidingDirection: 'FORWARD',
   sidingSide: 'LEFT',
   sidingTurnout: '1:8.5',
+  robWidth: 10.0,
+  robOffset: 50.0,
+  robReferenceEnd: 'START',
 };
 
 export const MIN_TRACK_SPACING_M = 5.3;
@@ -77,6 +80,48 @@ export function loopReferenceOptions(form, loopIndex) {
 /** Platform output layers, in order: PLATFORM_1, PLATFORM_2, ... */
 export function platformLayers(form) {
   return (form.platforms || []).map((_, i) => `PLATFORM_${i + 1}`);
+}
+
+/** Get start and end chainage bounds for a referenced platform in form state. */
+export function getPlatformBounds(form, platformLayer) {
+  const platforms = form?.platforms || [];
+  let pIdx = -1;
+  if (typeof platformLayer === 'number') {
+    pIdx = platformLayer;
+  } else if (platformLayer) {
+    const m = String(platformLayer).match(/PLATFORM_(\d+)/i);
+    if (m) {
+      pIdx = parseInt(m[1], 10) - 1;
+    } else {
+      pIdx = platforms.findIndex((_, idx) => `PLATFORM_${idx + 1}` === platformLayer);
+    }
+  }
+  if (pIdx < 0 || pIdx >= platforms.length) {
+    return null;
+  }
+  const p = platforms[pIdx];
+  const pLen = numOr(p.length, DEFAULTS.platformLength);
+  const trackName = p.track || 'MAIN_LINE';
+  const range = getTrackRange(trackName, form);
+  const trackLen = range && Number.isFinite(range.c2) ? range.c2 - range.c1 : (form?.mainLength ? Number(form.mainLength) : 1500.0);
+
+  let startCh = 0.0;
+  if (p.centerOnTrack !== false) {
+    startCh = Math.max(0.0, (trackLen - pLen) / 2.0);
+    if (range && Number.isFinite(range.c1)) {
+      startCh += range.c1;
+    }
+  } else {
+    startCh = numOr(p.startChainage, 0.0);
+  }
+  const endCh = startCh + pLen;
+  return {
+    platform: `PLATFORM_${pIdx + 1}`,
+    track: trackName,
+    start: startCh,
+    end: endCh,
+    length: pLen,
+  };
 }
 
 /** Indices of loops with BOTH chainages blank (auto-centre on MAIN at submit). */
@@ -330,6 +375,29 @@ function buildSiding(s, index) {
   };
 }
 
+function buildRob(r, index) {
+  const blockName = strOr(r.blockName, 'SGFD');
+  const tracksList = Array.isArray(r.tracks)
+    ? r.tracks.filter(Boolean)
+    : typeof r.tracks === 'string' && r.tracks.trim()
+      ? r.tracks.split(',').map((t) => t.trim()).filter(Boolean)
+      : [];
+  return {
+    id: strOr(r.id, `ROB_${index + 1}`),
+    platform: strOr(r.platform, 'PLATFORM_1'),
+    reference_end: strOr(r.referenceEnd, DEFAULTS.robReferenceEnd).toUpperCase(),
+    offset: numOr(r.offset, DEFAULTS.robOffset),
+    width: numOr(r.width, DEFAULTS.robWidth),
+    reference_track: strOr(r.referenceTrack, 'MAIN_LINE'),
+    block_name: blockName,
+    output_layer: strOr(r.outputLayer, blockName),
+    tracks: tracksList,
+    chainage: r.chainage ? String(r.chainage).trim() : null,
+    add_dimension: true,
+    add_chainage: false,
+  };
+}
+
 /** Build full inputconfig-schema JSON from form state. */
 export function buildConfig(form) {
   const f = form || {};
@@ -366,6 +434,7 @@ export function buildConfig(form) {
         : (f.crossovers || []).map(buildCrossover),
     stations: (f.stations || []).map(buildStation),
     fobs: (f.fobs || []).map(buildFob),
+    robs: (f.robs || []).map(buildRob),
     sidings: (f.sidings || []).map(buildSiding),
     main_directions: mainLines.length > 0
       ? {

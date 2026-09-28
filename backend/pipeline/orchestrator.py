@@ -13,6 +13,7 @@ from .steps import (
     CrossoverMixin,
     FencingMixin,
     FobMixin,
+    RobMixin,
     FoulingMixin,
     PlatformMixin,
     SidingMixin,
@@ -32,6 +33,7 @@ class ESPGenerator(
     FoulingMixin,
     FencingMixin,
     FobMixin,
+    RobMixin,
     ChainageMixin,
     CalLabelMixin,
 ):
@@ -108,6 +110,12 @@ class ESPGenerator(
             print("🌉 Generating foot over bridges...")
             self._generate_fobs(tracks)
             print(f"   ✓ Generated {len(self.config.fobs)} FOB(s)")
+
+        # Step 8b: Generate road over bridges (needs tracks and platforms in place)
+        if getattr(self.config, "robs", None):
+            print("🌉 Generating road over bridges (ROB)...")
+            self._generate_robs(tracks)
+            print(f"   ✓ Generated {len(self.config.robs)} ROB(s)")
 
         # Step 9: Station-relative chainage labels (additive only).
         print("📏 Generating station-relative chainage labels...")

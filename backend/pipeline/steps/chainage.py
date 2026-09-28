@@ -21,6 +21,7 @@ from .chainage_collect import (
     collect_dead_ends,
     collect_fm,
     collect_fob,
+    collect_robs,
     collect_optional_layers,
     collect_platform_ends,
     collect_siding,
@@ -42,6 +43,7 @@ _TEXT_LIFT = {
     "LC": 0.0,
     "BRIDGE": 0.0,
     "GRADIENT": 0.0,
+    "BR": 0.0,
 }
 
 _STUB_GAP_M = 2.0
@@ -115,10 +117,11 @@ class ChainageStep(PipelineStep):
     def _collect_fob(self, tracks, extents, datum) -> list:
         return collect_fob(tracks, extents, datum)
 
+    def _collect_robs(self, tracks_for_datum, datum) -> list:
+        return collect_robs(tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None))
+
     def _collect_optional_layers(self, doc, tracks_for_datum, datum) -> list:
-        return collect_optional_layers(
-            doc, tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None)
-        )
+        return collect_optional_layers(doc, tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None))
 
     def _generate_station_chainage_labels(self, tracks: dict) -> None:
         """Add station-relative chainage leaders + labels (additive only)."""
@@ -175,6 +178,7 @@ class ChainageStep(PipelineStep):
         markers += self._collect_fm(datum)
         markers += self._collect_dead_ends(doc, tracks_for_datum, datum)
         markers += self._collect_fob(tracks_for_datum, extents, datum)
+        markers += self._collect_robs(tracks_for_datum, datum)
         markers += self._collect_optional_layers(doc, tracks_for_datum, datum)
         if not markers:
             print("   ! Station chainage labels: no markers found")

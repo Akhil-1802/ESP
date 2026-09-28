@@ -27,9 +27,11 @@ def test_draw_station_flag_direct():
 
     msp = doc.modelspace()
     flag_entities = [e for e in msp if e.dxf.layer == FLAG_LAYER]
-    assert len(flag_entities) == 1
-    flag = flag_entities[0]
-    assert flag.dxftype() == "LWPOLYLINE"
+
+    # 1. Closed outline LWPOLYLINE
+    polylines = [e for e in flag_entities if e.dxftype() == "LWPOLYLINE"]
+    assert len(polylines) == 1
+    flag = polylines[0]
     assert flag.dxf.color == 1
     assert flag.is_closed
 
@@ -44,6 +46,16 @@ def test_draw_station_flag_direct():
 
     xs = [p[0] for p in pts]
     assert max(xs) == pytest.approx(100.0 + FLAG_WIDTH)
+
+    # 2. No circles on flag
+    circles = [e for e in flag_entities if e.dxftype() == "CIRCLE"]
+    assert len(circles) == 0
+
+    # 3. Pole & hatch lines
+    lines = [e for e in flag_entities if e.dxftype() == "LINE"]
+    assert len(lines) > 10  # pole + diagonal hatch lines
+    for line in lines:
+        assert line.dxf.color == 1
 
 
 def test_station_flag_end_to_end(tmp_path):
@@ -75,4 +87,7 @@ def test_station_flag_end_to_end(tmp_path):
 
     doc_out = ezdxf.readfile(str(out))
     flags = [e for e in doc_out.modelspace() if e.dxf.layer == FLAG_LAYER]
-    assert len(flags) == 1
+    assert len(flags) > 0
+    assert any(e.dxftype() == "LWPOLYLINE" for e in flags)
+    assert not any(e.dxftype() == "CIRCLE" for e in flags)
+    assert any(e.dxftype() == "LINE" for e in flags)

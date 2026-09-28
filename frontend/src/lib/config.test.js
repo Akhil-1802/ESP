@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, buildConfig, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
+import { DEFAULTS, buildConfig, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
 
 const base = () => ({
   kmlFile: { name: 'ESP.kml' },
@@ -15,6 +15,7 @@ const base = () => ({
   crossovers: [],
   stations: [],
   fobs: [],
+  robs: [],
 });
 
 describe('defaults', () => {
@@ -437,4 +438,6 @@ describe('sidings', () => {
     });
   });
 });
+
+
 
