@@ -22,7 +22,8 @@ export const blankLine = () => ({
   side: 'LEFT',
 });
 
-export const blankMainLine = () => ({
+export const blankMainLine = (referenceTrack = 'MAIN_LINE') => ({
+  referenceTrack,
   spacing: '',
   side: 'LEFT',
   direction: 'DN',

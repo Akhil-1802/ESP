@@ -99,7 +99,20 @@ class TrackStep(PipelineStep):
         return sorted(chainages)
 
     def _trim_main_lines_to_srj(self, tracks: dict) -> tuple[float, float] | None:
-        """Trim main lines so they only extend 50m past outermost SRJs at both ends."""
+        """Trim main lines past outermost SRJs at both ends (Greenfield only by default)."""
+        cfg = getattr(self, "config", None)
+        if cfg is not None and (getattr(cfg, "workflow", "greenfield") == "brownfield" or getattr(cfg, "is_brownfield", False)):
+            target_track = getattr(cfg, "trim_target_track", None)
+            if not target_track:
+                print("   ℹ️ Brownfield mode: skipping 50m SRJ end-truncation for main lines.")
+                return None
+            # If implemented for a single main line, only that line is targeted
+            target_names = [target_track] if target_track in tracks else []
+            if not target_names:
+                return None
+        else:
+            target_names = None
+
         if "MAIN_LINE" not in tracks:
             return None
 
@@ -131,29 +144,43 @@ class TrackStep(PipelineStep):
             for line in getattr(self.config, "additional_lines", []) or []
         }
 
-        def _is_target(name: str) -> bool:
-            if _is_main_line(name):
-                return True
-            sp = specs_by_name.get(name)
-            if sp is not None and isinstance(sp, LineSpec) and not isinstance(sp, LoopSpec):
-                return True
-            return False
+        if target_names is None:
+            def _is_target(name: str) -> bool:
+                if _is_main_line(name):
+                    return True
+                sp = specs_by_name.get(name)
+                if sp is not None and isinstance(sp, LineSpec) and not isinstance(sp, LoopSpec):
+                    return True
+                return False
 
-        target_names = [n for n in tracks if _is_target(n)]
-        if "MAIN_LINE" not in target_names:
-            target_names.insert(0, "MAIN_LINE")
+            target_names = [n for n in tracks if _is_target(n)]
+            if "MAIN_LINE" not in target_names:
+                target_names.insert(0, "MAIN_LINE")
 
         sliced_main = slice_polyline(cleaned_main, start_dist, end_dist)
         tracks["MAIN_LINE"] = sliced_main
 
-        for name in target_names:
-            if name == "MAIN_LINE":
-                continue
-            spec = specs_by_name.get(name)
-            if spec is not None and hasattr(spec, "spacing") and hasattr(spec, "side"):
-                tracks[name] = _offset_alignment(sliced_main, spec.spacing, spec.side)
-            else:
-                tracks[name] = slice_polyline(tracks[name], start_dist, end_dist)
+        processed = {"MAIN_LINE"}
+        remaining = [n for n in target_names if n != "MAIN_LINE"]
+        while remaining:
+            advanced = False
+            for name in list(remaining):
+                spec = specs_by_name.get(name)
+                ref = getattr(spec, "reference_track", "MAIN_LINE") or "MAIN_LINE"
+                if ref in processed:
+                    base = tracks.get(ref, sliced_main)
+                    if spec is not None and hasattr(spec, "spacing") and hasattr(spec, "side"):
+                        tracks[name] = _offset_alignment(base, spec.spacing, spec.side)
+                    else:
+                        tracks[name] = slice_polyline(tracks[name], start_dist, end_dist)
+                    processed.add(name)
+                    remaining.remove(name)
+                    advanced = True
+            if not advanced:
+                for name in remaining:
+                    tracks[name] = slice_polyline(tracks[name], start_dist, end_dist)
+                    processed.add(name)
+                break
 
         try:
             doc = ezdxf.readfile(self.config.output_dxf)

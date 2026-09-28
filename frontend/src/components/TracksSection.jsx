@@ -33,6 +33,11 @@ export function TracksSection({ form, set }) {
     }
   };
 
+  const mainLineReferenceTracks = (index) => [
+    'MAIN_LINE',
+    ...(form.mainLines || []).slice(0, index).map((_, i) => `MAIN_LINE_${i + 1}`),
+  ];
+
   const loopReferenceTracks = (index) => [
     'MAIN_LINE',
     ...(form.mainLines || []).map((_, i) => `MAIN_LINE_${i + 1}`),
@@ -55,7 +60,12 @@ export function TracksSection({ form, set }) {
         <h3 className="text-sm font-semibold text-slate-700">MAIN lines</h3>
         <button
           type="button"
-          onClick={() => setTop({ mainLines: [...(form.mainLines || []), blankMainLine()] })}
+          onClick={() => {
+            const prevRef = form.mainLines && form.mainLines.length > 0
+              ? `MAIN_LINE_${form.mainLines.length}`
+              : 'MAIN_LINE';
+            setTop({ mainLines: [...(form.mainLines || []), blankMainLine(prevRef)] });
+          }}
           className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
         >
           + Add MAIN line
@@ -66,7 +76,7 @@ export function TracksSection({ form, set }) {
       ) : (
         <>
           <p className="text-[11px] leading-snug text-slate-500">
-            With additional MAIN lines, choose the running direction for every MAIN line. Defaults are MAIN_LINE = UP and added lines = DN.
+            With additional MAIN lines, choose the reference track and running direction for every MAIN line. Defaults are MAIN_LINE = UP and added lines = DN.
           </p>
           <ItemCard title="MAIN_LINE">
             <Grid>
@@ -79,38 +89,51 @@ export function TracksSection({ form, set }) {
               </Field>
             </Grid>
           </ItemCard>
-          {form.mainLines.map((line, i) => (
-            <ItemCard
-              key={i}
-              title={`MAIN_LINE_${i + 1}`}
-              onRemove={() => setTop({ mainLines: form.mainLines.filter((_, k) => k !== i) })}
-            >
-              <Grid>
-                <Field label="Spacing from MAIN_LINE (m)" hint="Blank = 5.3">
-                  <Num
-                    value={line.spacing}
-                    placeholder="5.3"
-                    min="5.3"
-                    onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { spacing: e.target.value }) })}
-                  />
-                </Field>
-                <Field label="Side of MAIN_LINE">
-                  <Sel
-                    value={line.side}
-                    onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { side: e.target.value }) })}
-                    options={['LEFT', 'RIGHT']}
-                  />
-                </Field>
-                <Field label="Direction">
-                  <Sel
-                    value={line.direction || 'DN'}
-                    onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { direction: e.target.value }) })}
-                    options={['UP', 'DN']}
-                  />
-                </Field>
-              </Grid>
-            </ItemCard>
-          ))}
+          {form.mainLines.map((line, i) => {
+            const validRefs = mainLineReferenceTracks(i);
+            const currentRef = validRefs.includes(line.referenceTrack)
+              ? line.referenceTrack
+              : validRefs[validRefs.length - 1];
+            return (
+              <ItemCard
+                key={i}
+                title={`MAIN_LINE_${i + 1}`}
+                onRemove={() => setTop({ mainLines: form.mainLines.filter((_, k) => k !== i) })}
+              >
+                <Grid>
+                  <Field label="Reference track" hint="Line offsets from this track">
+                    <Sel
+                      value={currentRef}
+                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { referenceTrack: e.target.value }) })}
+                      options={validRefs}
+                    />
+                  </Field>
+                  <Field label="Spacing from reference track (m)" hint="Blank = 5.3">
+                    <Num
+                      value={line.spacing}
+                      placeholder="5.3"
+                      min="5.3"
+                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { spacing: e.target.value }) })}
+                    />
+                  </Field>
+                  <Field label="Side of reference track">
+                    <Sel
+                      value={line.side}
+                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { side: e.target.value }) })}
+                      options={['LEFT', 'RIGHT']}
+                    />
+                  </Field>
+                  <Field label="Direction">
+                    <Sel
+                      value={line.direction || 'DN'}
+                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { direction: e.target.value }) })}
+                      options={['UP', 'DN']}
+                    />
+                  </Field>
+                </Grid>
+              </ItemCard>
+            );
+          })}
         </>
       )}
 

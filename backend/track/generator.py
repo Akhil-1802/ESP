@@ -261,8 +261,14 @@ class TrackGenerator:
 
         for line in self.config.additional_lines:
             if isinstance(line, LineSpec) and line.name.startswith("MAIN_LINE_"):
-                tracks[line.name] = _offset_alignment(main, line.spacing, line.side)
-                main_extents[line.name] = (0.0, _polyline_length(main))
+                reference = getattr(line, "reference_track", "MAIN_LINE") or "MAIN_LINE"
+                if reference not in tracks:
+                    raise ValueError(
+                        f"Main line {line.name}: reference track {reference!r} must be created before this line."
+                    )
+                base = tracks[reference]
+                tracks[line.name] = _offset_alignment(base, line.spacing, line.side)
+                main_extents[line.name] = (0.0, _polyline_length(tracks[line.name]))
 
         loop_results: dict[str, object] = {}
         overrun_jobs: list[tuple] = []
@@ -343,7 +349,9 @@ class TrackGenerator:
                         print(f"  Extended: [{eff_c1:.1f}, {eff_c2:.1f}] MAIN m")
                     overrun_jobs.append((line, c1, c2, eff_c1, eff_c2))
             else:
-                tracks[line.name] = _offset_alignment(main, line.spacing, line.side)
+                reference = getattr(line, "reference_track", "MAIN_LINE") or "MAIN_LINE"
+                base = tracks.get(reference, main)
+                tracks[line.name] = _offset_alignment(base, line.spacing, line.side)
 
         return BuiltTracks(
             tracks=tracks,

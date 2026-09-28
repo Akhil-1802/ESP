@@ -182,16 +182,17 @@ export function estimateFobSpan(form, fobIndex) {
   const fb = (f.fobs || [])[fobIndex];
   if (!fb || (fb.platforms || []).length < 2) return null;
   const pos = { MAIN_LINE: 0 };
-  const place = (name, spacing, side) => {
+  const place = (name, spacing, side, refTrack = 'MAIN_LINE') => {
     if (!name || pos[name] !== undefined) return;
     const s = Number(spacing);
     if (!Number.isFinite(s)) return;
-    pos[name] = String(side).toUpperCase() === 'RIGHT' ? -s : s;
+    const refPos = pos[refTrack] !== undefined ? pos[refTrack] : 0;
+    pos[name] = refPos + (String(side).toUpperCase() === 'RIGHT' ? -s : s);
   };
-  (f.loops || []).forEach((l, i) =>
-    place(strOr(l.name, `LOOP_${i + 1}`), numOr(l.spacing, DEFAULTS.loopSpacing), strOr(l.side, 'LEFT')));
   (f.mainLines || []).forEach((l, i) =>
-    place(`MAIN_LINE_${i + 1}`, numOr(l.spacing, DEFAULTS.loopSpacing), strOr(l.side, 'LEFT')));
+    place(`MAIN_LINE_${i + 1}`, numOr(l.spacing, DEFAULTS.loopSpacing), strOr(l.side, 'LEFT'), strOr(l.referenceTrack || l.reference_track, 'MAIN_LINE')));
+  (f.loops || []).forEach((l, i) =>
+    place(strOr(l.name, `LOOP_${i + 1}`), numOr(l.spacing, DEFAULTS.loopSpacing), strOr(l.side, 'LEFT'), strOr(l.referenceTrack, 'MAIN_LINE')));
   (f.additionalLines || []).forEach((l, i) =>
     place(strOr(l.name, `PROPOSED_LINE_${i + 1}`), numOr(l.spacing, DEFAULTS.loopSpacing), strOr(l.side, 'LEFT')));
   const ref = pos[strOr(fb.refTrack, 'MAIN_LINE')];
@@ -339,12 +340,19 @@ export function buildConfig(form) {
     track_source_layer: strOr(f.trackSourceLayer, DEFAULTS.trackSourceLayer),
     loops: (f.loops || []).map(buildLoop),
     additional_lines: [
-      ...mainLines.map((l, i) => ({
-        name: `MAIN_LINE_${i + 1}`,
-        spacing: numOr(l.spacing, DEFAULTS.loopSpacing),
-        side: strOr(l.side, DEFAULTS.loopSide).toUpperCase(),
-        direction: strOr(l.direction, 'DN').toUpperCase(),
-      })),
+      ...mainLines.map((l, i) => {
+        const item = {
+          name: `MAIN_LINE_${i + 1}`,
+          spacing: numOr(l.spacing, DEFAULTS.loopSpacing),
+          side: strOr(l.side, DEFAULTS.loopSide).toUpperCase(),
+          direction: strOr(l.direction, 'DN').toUpperCase(),
+        };
+        const ref = l.referenceTrack || l.reference_track;
+        if (ref) {
+          item.reference_track = strOr(ref, 'MAIN_LINE');
+        }
+        return item;
+      }),
       ...(f.additionalLines || []).map((l, i) => ({
         name: strOr(l.name, `PROPOSED_LINE_${i + 1}`),
         spacing: numOr(l.spacing, DEFAULTS.loopSpacing),

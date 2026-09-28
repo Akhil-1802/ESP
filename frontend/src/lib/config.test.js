@@ -43,6 +43,20 @@ describe('defaults', () => {
     });
   });
 
+  it('builds MAIN lines with reference_track when specified', () => {
+    const cfg = buildConfig({
+      ...base(),
+      mainLines: [
+        { referenceTrack: 'MAIN_LINE', spacing: '5.3', side: 'LEFT', direction: 'DN' },
+        { referenceTrack: 'MAIN_LINE_1', spacing: '5.3', side: 'LEFT', direction: 'DN' },
+      ],
+    });
+    assert.deepEqual(cfg.additional_lines, [
+      { name: 'MAIN_LINE_1', spacing: 5.3, side: 'LEFT', direction: 'DN', reference_track: 'MAIN_LINE' },
+      { name: 'MAIN_LINE_2', spacing: 5.3, side: 'LEFT', direction: 'DN', reference_track: 'MAIN_LINE_1' },
+    ]);
+  });
+
   it('blank loop spacing/turnout fall back to 5.3 m / 1:12', () => {
     const cfg = buildConfig({
       ...base(),
@@ -215,6 +229,25 @@ describe('validateForm', () => {
       fobs: [{ refTrack: 'MAIN_LINE', chainage: '650', platforms: ['PLATFORM_1', 'PLATFORM_2'], width: '', extStart: '', extEnd: '', arms: [] }],
     };
     assert.deepEqual(validateForm(form), []);
+  });
+
+  it('validates MAIN line reference tracks in creation order', () => {
+    const bad = validateForm({
+      ...base(),
+      mainLines: [
+        { referenceTrack: 'MAIN_LINE_2', spacing: '5.3', side: 'LEFT', direction: 'DN' },
+      ],
+    });
+    assert.match(bad.join('\n'), /reference track must be one of: MAIN_LINE/);
+
+    const good = validateForm({
+      ...base(),
+      mainLines: [
+        { referenceTrack: 'MAIN_LINE', spacing: '5.3', side: 'LEFT', direction: 'DN' },
+        { referenceTrack: 'MAIN_LINE_1', spacing: '5.3', side: 'LEFT', direction: 'DN' },
+      ],
+    });
+    assert.equal(good.filter(e => e.includes('MAIN line')).length, 0);
   });
 
   it('blank C1+C2 is allowed (auto-centre), a single blank is rejected', () => {

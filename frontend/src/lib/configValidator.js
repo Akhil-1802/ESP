@@ -24,6 +24,13 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
       at('MAIN line', i, `spacing must be a number >= ${minTrackSpacing} m.`);
     const direction = strOr(l.direction, 'DN').toUpperCase();
     if (!['UP', 'DN'].includes(direction)) at('MAIN line', i, 'direction must be UP or DN.');
+    const ref = l.referenceTrack || l.reference_track;
+    if (ref) {
+      const allowed = ['MAIN_LINE', ...f.mainLines.slice(0, i).map((_, idx) => `MAIN_LINE_${idx + 1}`)];
+      if (!allowed.includes(ref)) {
+        at('MAIN line', i, `reference track must be one of: ${allowed.join(', ')}.`);
+      }
+    }
   });
   if ((f.mainLines || []).length > 0) {
     const direction = strOr(f.mainLineDirection, 'UP').toUpperCase();

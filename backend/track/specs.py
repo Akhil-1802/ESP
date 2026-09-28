@@ -35,6 +35,7 @@ class LineSpec:
     spacing: float
     side: str = "LEFT"
     direction: str = ""  # UP / DN for MAIN lines ("" = unspecified)
+    reference_track: str = "MAIN_LINE"  # Prior track this line offsets from
 
 
 @dataclass
