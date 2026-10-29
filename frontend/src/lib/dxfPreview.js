@@ -239,22 +239,28 @@ export function dxfToSvg(input) {
         const hasAlign = (e.halign !== undefined && e.halign !== 0) || (e.valign !== undefined && e.valign !== 0);
         const at = hasAlign && e.endPoint ? e.endPoint : (e.startPoint || e.position || e.insertionPoint || {});
         if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) break;
-        const str = e.type === 'TEXT' ? String(e.text ?? '') : mtextPlain(e.text);
-        if (!str) break;
+        const raw = e.type === 'TEXT' ? String(e.text ?? '') : mtextPlain(e.text);
+        if (!raw) break;
         const height = Number(e.textHeight ?? e.height ?? e.nominalTextHeight ?? 1) || 1;
-        feed(at.x, at.y);
-        feed(at.x + str.length * height * 0.7, at.y + height);
-        feed(at.x - str.length * height * 0.7, at.y - height);
-        labels.push({
-          x: Number(at.x),
-          y: Number(at.y),
-          str,
-          height,
-          angle: Number(e.rotation ?? 0) || 0,
-          color,
-          layer,
-          halign: Number(e.halign ?? 0),
-          valign: Number(e.valign ?? 0),
+        const lines = raw.split(/\r?\n|\\P/gi);
+        lines.forEach((line, idx) => {
+          const str = line.trim();
+          if (!str) return;
+          const ly = at.y - idx * height * 1.4;
+          feed(at.x, ly);
+          feed(at.x + str.length * height * 0.7, ly + height);
+          feed(at.x - str.length * height * 0.7, ly - height);
+          labels.push({
+            x: Number(at.x),
+            y: Number(ly),
+            str,
+            height,
+            angle: Number(e.rotation ?? 0) || 0,
+            color,
+            layer,
+            halign: Number(e.halign ?? 0),
+            valign: Number(e.valign ?? 0),
+          });
         });
         break;
       }

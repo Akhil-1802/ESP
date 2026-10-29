@@ -174,6 +174,31 @@ describe('defaults', () => {
     assert.equal(cfg.loops[0].extend_start_m, 120);
     assert.equal(cfg.loops[0].extend_end_m, 120);
   });
+
+  it('serializes station building with chainage if provided', () => {
+    const cfg = buildConfig({
+      ...base(),
+      stations: [
+        { platform: 'PLATFORM_1', length: '40', width: '10', side: 'RIGHT', name: 'STATION BUILDING', chainage: '68.48' },
+        { platform: 'PLATFORM_2', length: '', width: '', side: 'LEFT', name: '', chainage: '' },
+      ],
+    });
+    assert.deepEqual(cfg.stations[0], {
+      platform_layer: 'PLATFORM_1',
+      building_length: 40,
+      building_width: 10,
+      platform_side: 'RIGHT',
+      building_name: 'STATION BUILDING',
+      station_chainage: '68.48',
+    });
+    assert.deepEqual(cfg.stations[1], {
+      platform_layer: 'PLATFORM_2',
+      building_length: 40,
+      building_width: 10,
+      platform_side: 'LEFT',
+      building_name: 'STATION 2',
+    });
+  });
 });
 
 describe('helpers', () => {

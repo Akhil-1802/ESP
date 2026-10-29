@@ -44,6 +44,7 @@ export const blankStation = () => ({
   width: '',
   side: 'RIGHT',
   name: '',
+  chainage: '',
 });
 
 export const blankFob = () => ({

@@ -24,6 +24,35 @@ from .station_label import clear_platform_label_from_station
 __all__ = ["StationStep", "StationMixin"]
 
 
+def _format_station_chainage(val: str | float | None) -> str | None:
+    if val is None:
+        return None
+    val_str = str(val).strip()
+    if not val_str:
+        return None
+
+    cleaned = val_str
+    upper = cleaned.upper()
+    for prefix in ("CH :", "CH:", "CH", "KM :", "KM:", "KM"):
+        if upper.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+            upper = cleaned.upper()
+            break
+
+    if upper.endswith("KM"):
+        cleaned = cleaned[:-2].strip()
+    elif upper.endswith("M"):
+        cleaned = cleaned[:-1].strip()
+
+    try:
+        num = float(cleaned)
+        return f"KM: {num:.3f}"
+    except (ValueError, TypeError):
+        if "." not in cleaned and "+" not in cleaned:
+            return f"KM: {cleaned}.000"
+        return f"KM: {cleaned}"
+
+
 class StationStep(PipelineStep):
     """Pipeline step: Station buildings: footprints, overlap checks, writing."""
 
@@ -172,25 +201,41 @@ class StationStep(PipelineStep):
                     dxfattribs={"layer": cl_layer, "color": 1},
                 )
                 s = e + gap
-            cl_text = f"C/L OF {request.building_name}\\PSTN. BLDG. CH:0.00M"
+            km_label = _format_station_chainage(getattr(request, "station_chainage", None))
+            line1_text = f"C/L OF {request.building_name} CH:0.00 KM"
+            prefix = f"C/L OF {request.building_name} "
+            prefix_offset = len(prefix) * 0.7
+
+            tx_tangent, ty_tangent = math.cos(ang), math.sin(ang)
             tx, ty = cx + px * (half + 3.0) - 25.0, cy + py * (half + 3.0)
-            if doc.dxfversion >= "AC1015":
-                cl_pos = _resolve_text_insert(doc, cl_text, 1.0, 0.0, (tx, ty), anchor="top-left")
-                t = doc.modelspace().add_mtext(
-                    cl_text,
-                    dxfattribs={"layer": cl_layer, "color": 1, "style": _ensure_text_style(doc), "char_height": 1.0},
-                )
-                t.set_location(cl_pos, attachment_point=1)
-            else:
-                c1_pos = _resolve_text_insert(doc, f"C/L OF {request.building_name}", 1.0, 0.0, (tx, ty, 0))
-                c2_pos = _resolve_text_insert(doc, "STN. BLDG. CH:0.00M", 1.0, 0.0, (tx, ty - 2.0, 0))
+
+            c1_pos = _resolve_text_insert(doc, line1_text, 1.0, math.degrees(ang), (tx, ty, 0))
+            doc.modelspace().add_text(
+                line1_text,
+                dxfattribs={
+                    "layer": cl_layer,
+                    "color": 1,
+                    "style": _ensure_text_style(doc),
+                    "height": 1.0,
+                    "rotation": math.degrees(ang),
+                    "insert": (c1_pos[0], c1_pos[1], 0),
+                },
+            )
+
+            if km_label:
+                ch2_x = tx + tx_tangent * prefix_offset - px * 2.0
+                ch2_y = ty + ty_tangent * prefix_offset - py * 2.0
+                c2_pos = _resolve_text_insert(doc, km_label, 1.0, math.degrees(ang), (ch2_x, ch2_y, 0))
                 doc.modelspace().add_text(
-                    f"C/L OF {request.building_name}",
-                    dxfattribs={"layer": cl_layer, "color": 1, "style": _ensure_text_style(doc), "height": 1.0, "insert": (c1_pos[0], c1_pos[1], 0)},
-                )
-                doc.modelspace().add_text(
-                    "STN. BLDG. CH:0.00M",
-                    dxfattribs={"layer": cl_layer, "color": 1, "style": _ensure_text_style(doc), "height": 1.0, "insert": (c2_pos[0], c2_pos[1], 0)},
+                    km_label,
+                    dxfattribs={
+                        "layer": cl_layer,
+                        "color": 1,
+                        "style": _ensure_text_style(doc),
+                        "height": 1.0,
+                        "rotation": math.degrees(ang),
+                        "insert": (c2_pos[0], c2_pos[1], 0),
+                    },
                 )
 
             dir_layer = "DIRECTION"

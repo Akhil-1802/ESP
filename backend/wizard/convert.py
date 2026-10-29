@@ -279,7 +279,7 @@ def _build_stations(raw: object) -> list[dict]:
     for number, item in enumerate(raw, 1):
         if not isinstance(item, dict):
             raise ValueError(f"stations[{number - 1}] must be an object.")
-        items.append({
+        entry = {
             "platform_layer": str(item.get("platform", item.get("platform_layer", "PLATFORM_1"))),
             "building_length": float(item.get("length", item.get("building_length", 40.0))),
             "building_width": float(item.get("width", item.get("building_width", 10.0))),
@@ -289,7 +289,11 @@ def _build_stations(raw: object) -> list[dict]:
                 f"stations[{number - 1}].side",
             ),
             "building_name": str(item.get("name", item.get("building_name", "STATION BUILDING"))),
-        })
+        }
+        ch = item.get("station_chainage", item.get("chainage", None))
+        if ch is not None and str(ch).strip() != "":
+            entry["station_chainage"] = str(ch).strip()
+        items.append(entry)
     return items
 
 

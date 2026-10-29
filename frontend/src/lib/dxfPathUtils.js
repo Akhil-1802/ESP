@@ -100,7 +100,7 @@ export function arcPathD(cx, cy, radius, a0deg, a1deg) {
 
 export function mtextPlain(raw) {
   return String(raw ?? '')
-    .replace(/\\P/gi, ' ')
+    .replace(/\\P/gi, '\n')
     .replace(/\\[^;]*;/g, '')
     .replace(/[{}]/g, '')
     .trim();

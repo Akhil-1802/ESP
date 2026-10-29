@@ -60,6 +60,13 @@ export function StationsSection({ form, set, layers }) {
                 onChange={(e) => setTop({ stations: patchAt(form.stations, i, { name: e.target.value }) })}
               />
             </Field>
+            <Field label="Station chainage (KM)" hint="e.g. 125 (shown as KM: 125.000 below CH:0.00 KM)">
+              <Text
+                value={s.chainage ?? ''}
+                placeholder="125"
+                onChange={(e) => setTop({ stations: patchAt(form.stations, i, { chainage: e.target.value }) })}
+              />
+            </Field>
           </Grid>
         </ItemCard>
       ))}

@@ -29,6 +29,7 @@ class StationRequest:
     building_width: float
     platform_side: str = "RIGHT"
     building_name: str = "STATION BUILDING"
+    station_chainage: str | float | None = None
 
 
 @dataclass
@@ -222,7 +223,13 @@ def load_config_from_json(filename: str) -> ESPConfig:
     output = _resolve_path(data["output_dxf"], config_path)
 
     platforms = [_load_platform(item, output, output, idx) for idx, item in enumerate(data.get("platforms", []), 1)]
-    stations = [StationRequest(**_strip_comments(item)) for item in data.get("stations", [])]
+    def _load_station(item: dict) -> StationRequest:
+        cleaned = _strip_comments(item)
+        if "station_chainage" not in cleaned and "chainage" in cleaned:
+            cleaned["station_chainage"] = cleaned.pop("chainage")
+        return StationRequest(**cleaned)
+
+    stations = [_load_station(item) for item in data.get("stations", [])]
     loops = [LoopSpec(**_strip_comments(item)) for item in data.get("loops", [])]
     additional_lines = [LineSpec(**_strip_comments(item)) for item in data.get("additional_lines", [])]
     raw_crossovers = data.get("crossovers", [])

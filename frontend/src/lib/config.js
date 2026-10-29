@@ -323,13 +323,18 @@ function buildPlatform(p) {
 }
 
 function buildStation(s, index) {
-  return {
+  const entry = {
     platform_layer: strOr(s.platform, ''),
     building_length: numOr(s.length, DEFAULTS.stationLength),
     building_width: numOr(s.width, DEFAULTS.stationWidth),
     platform_side: strOr(s.side, DEFAULTS.stationSide).toUpperCase(),
     building_name: strOr(s.name, index === 0 ? DEFAULTS.stationName : `STATION ${index + 1}`),
   };
+  const ch = !isBlank(s.chainage) ? s.chainage : s.station_chainage;
+  if (!isBlank(ch)) {
+    entry.station_chainage = String(ch).trim();
+  }
+  return entry;
 }
 
 function buildFob(f) {
