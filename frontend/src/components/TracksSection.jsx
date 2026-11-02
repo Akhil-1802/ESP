@@ -44,102 +44,120 @@ export function TracksSection({ form, set }) {
     ...(form.loops || []).slice(0, index).map((loop, i) => loop.name.trim() || `LOOP_${i + 1}`),
   ];
 
+  const addMainLine = () => {
+    const prevRef = form.mainLines && form.mainLines.length > 0
+      ? `MAIN_LINE_${form.mainLines.length}`
+      : 'MAIN_LINE';
+    setTop({ mainLines: [...(form.mainLines || []), blankMainLine(prevRef)] });
+  };
+
+  const addLoop = () => {
+    setTop({ loops: [...form.loops, blankLoop()] });
+  };
+
   return (
     <Section
       id="tracks"
       title="2 · MAIN lines, loops & additional lines"
-      hint="Loops are bounded parallel lines (C1 → C2). Blank spacing = 5.3 m, blank turnout = 1:12, blank distance = 750 m. Leave C1+C2 blank (or Auto-centre) for a 750 m loop centred on MAIN — the centre is read from your KML."
       count={form.mainLines.length + form.loops.length}
-      onAdd={() => setTop({ loops: [...form.loops, blankLoop()] })}
-      addLabel="+ Add loop"
     >
       {autoMsg && (
         <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">{autoMsg}</p>
       )}
-      <div className="flex items-center gap-2 pt-1">
-        <h3 className="text-sm font-semibold text-slate-700">MAIN lines</h3>
-        <button
-          type="button"
-          onClick={() => {
-            const prevRef = form.mainLines && form.mainLines.length > 0
-              ? `MAIN_LINE_${form.mainLines.length}`
-              : 'MAIN_LINE';
-            setTop({ mainLines: [...(form.mainLines || []), blankMainLine(prevRef)] });
-          }}
-          className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
-          + Add MAIN line
-        </button>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between pt-1">
+          <h3 className="text-sm font-semibold text-slate-700">MAIN lines</h3>
+          <button
+            type="button"
+            onClick={addMainLine}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+          >
+            + Add MAIN line
+          </button>
+        </div>
+        {form.mainLines.length === 0 ? (
+          <Empty>One MAIN_LINE is used by default and is marked UP/DN.</Empty>
+        ) : (
+          <>
+            <p className="text-[11px] leading-snug text-slate-500">
+              With additional MAIN lines, choose the reference track and running direction for every MAIN line. Defaults are MAIN_LINE = UP and added lines = DN.
+            </p>
+            <ItemCard title="MAIN_LINE">
+              <Grid>
+                <Field label="Direction">
+                  <Sel
+                    value={form.mainLineDirection || 'UP'}
+                    onChange={(e) => setTop({ mainLineDirection: e.target.value })}
+                    options={['UP', 'DN']}
+                  />
+                </Field>
+              </Grid>
+            </ItemCard>
+            {form.mainLines.map((line, i) => {
+              const validRefs = mainLineReferenceTracks(i);
+              const currentRef = validRefs.includes(line.referenceTrack)
+                ? line.referenceTrack
+                : validRefs[validRefs.length - 1];
+              return (
+                <ItemCard
+                  key={i}
+                  title={`MAIN_LINE_${i + 1}`}
+                  onRemove={() => setTop({ mainLines: form.mainLines.filter((_, k) => k !== i) })}
+                >
+                  <Grid>
+                    <Field label="Reference track" hint="Line offsets from this track">
+                      <Sel
+                        value={currentRef}
+                        onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { referenceTrack: e.target.value }) })}
+                        options={validRefs}
+                      />
+                    </Field>
+                    <Field label="Spacing from reference track (m)" hint="Blank = 5.3">
+                      <Num
+                        value={line.spacing}
+                        placeholder="5.3"
+                        min="5.3"
+                        onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { spacing: e.target.value }) })}
+                      />
+                    </Field>
+                    <Field label="Side of reference track">
+                      <Sel
+                        value={line.side}
+                        onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { side: e.target.value }) })}
+                        options={['LEFT', 'RIGHT']}
+                      />
+                    </Field>
+                    <Field label="Direction">
+                      <Sel
+                        value={line.direction || 'DN'}
+                        onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { direction: e.target.value }) })}
+                        options={['UP', 'DN']}
+                      />
+                    </Field>
+                  </Grid>
+                </ItemCard>
+              );
+            })}
+          </>
+        )}
       </div>
-      {form.mainLines.length === 0 ? (
-        <Empty>One MAIN_LINE is used by default and is marked UP/DN.</Empty>
-      ) : (
-        <>
-          <p className="text-[11px] leading-snug text-slate-500">
-            With additional MAIN lines, choose the reference track and running direction for every MAIN line. Defaults are MAIN_LINE = UP and added lines = DN.
-          </p>
-          <ItemCard title="MAIN_LINE">
-            <Grid>
-              <Field label="Direction">
-                <Sel
-                  value={form.mainLineDirection || 'UP'}
-                  onChange={(e) => setTop({ mainLineDirection: e.target.value })}
-                  options={['UP', 'DN']}
-                />
-              </Field>
-            </Grid>
-          </ItemCard>
-          {form.mainLines.map((line, i) => {
-            const validRefs = mainLineReferenceTracks(i);
-            const currentRef = validRefs.includes(line.referenceTrack)
-              ? line.referenceTrack
-              : validRefs[validRefs.length - 1];
-            return (
-              <ItemCard
-                key={i}
-                title={`MAIN_LINE_${i + 1}`}
-                onRemove={() => setTop({ mainLines: form.mainLines.filter((_, k) => k !== i) })}
-              >
-                <Grid>
-                  <Field label="Reference track" hint="Line offsets from this track">
-                    <Sel
-                      value={currentRef}
-                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { referenceTrack: e.target.value }) })}
-                      options={validRefs}
-                    />
-                  </Field>
-                  <Field label="Spacing from reference track (m)" hint="Blank = 5.3">
-                    <Num
-                      value={line.spacing}
-                      placeholder="5.3"
-                      min="5.3"
-                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { spacing: e.target.value }) })}
-                    />
-                  </Field>
-                  <Field label="Side of reference track">
-                    <Sel
-                      value={line.side}
-                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { side: e.target.value }) })}
-                      options={['LEFT', 'RIGHT']}
-                    />
-                  </Field>
-                  <Field label="Direction">
-                    <Sel
-                      value={line.direction || 'DN'}
-                      onChange={(e) => setTop({ mainLines: patchAt(form.mainLines, i, { direction: e.target.value }) })}
-                      options={['UP', 'DN']}
-                    />
-                  </Field>
-                </Grid>
-              </ItemCard>
-            );
-          })}
-        </>
-      )}
 
-      <h3 className="pt-1 text-sm font-semibold text-slate-700">Loops</h3>
-      {form.loops.length === 0 && <Empty>No loops — add one, or skip for a MAIN-only layout.</Empty>}
-      {form.loops.map((l, i) => (
+      <div className="border-t border-slate-200/80 pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">Loops & Additional Lines</h3>
+          <button
+            type="button"
+            onClick={addLoop}
+            className="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-700 cursor-pointer shadow-sm"
+          >
+            + Add loop
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Loops are bounded parallel lines (C1 → C2). Blank spacing = 5.3 m, blank turnout = 1:12, blank distance = 750 m. Leave C1+C2 blank (or Auto-centre) for a 750 m loop centred on MAIN — the centre is read from your KML.
+        </p>
+        {form.loops.length === 0 && <Empty>No loops — add one, or skip for a MAIN-only layout.</Empty>}
+        {form.loops.map((l, i) => (
         <ItemCard
           key={i}
           title={l.name.trim() || `LOOP_${i + 1}`}
@@ -229,50 +247,53 @@ export function TracksSection({ form, set }) {
           </div>
         </ItemCard>
       ))}
-
-      <div className="flex items-center gap-2 pt-1">
-        <h3 className="text-sm font-semibold text-slate-700">Additional full-length lines</h3>
-        <button
-          type="button"
-          onClick={() => setTop({ additionalLines: [...form.additionalLines, blankLine()] })}
-          className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
-          + Add line
-        </button>
       </div>
-      {form.additionalLines.length === 0 && <Empty>None — proposed full-length parallels go here.</Empty>}
-      {form.additionalLines.map((l, i) => (
-        <ItemCard
-          key={i}
-          title={l.name.trim() || `PROPOSED_LINE_${i + 1}`}
-          onRemove={() => setTop({ additionalLines: form.additionalLines.filter((_, k) => k !== i) })}
-        >
-          <Grid>
-            <Field label="Name *">
-              <Text
-                value={l.name}
-                placeholder={`PROPOSED_LINE_${i + 1}`}
-                onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { name: e.target.value }) })}
-              />
-            </Field>
-            <Field label="Spacing from Referenced Track(m)" hint="Blank = 5.3">
-              <Num
-                value={l.spacing}
-                placeholder="5.3"
-                min="5.3"
-                onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { spacing: e.target.value }) })}
-              />
-            </Field>
-            <Field label="Side of Referenced Track">
-              <Sel
-                value={l.side}
-                onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { side: e.target.value }) })}
-                options={['LEFT', 'RIGHT']}
-              />
-            </Field>
-          </Grid>
-        </ItemCard>
-      ))}
+
+      <div className="border-t border-slate-200/80 pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">Additional full-length lines</h3>
+          <button
+            type="button"
+            onClick={() => setTop({ additionalLines: [...form.additionalLines, blankLine()] })}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+          >
+            + Add line
+          </button>
+        </div>
+        {form.additionalLines.length === 0 && <Empty>None — proposed full-length parallels go here.</Empty>}
+        {form.additionalLines.map((l, i) => (
+          <ItemCard
+            key={i}
+            title={l.name.trim() || `PROPOSED_LINE_${i + 1}`}
+            onRemove={() => setTop({ additionalLines: form.additionalLines.filter((_, k) => k !== i) })}
+          >
+            <Grid>
+              <Field label="Name *">
+                <Text
+                  value={l.name}
+                  placeholder={`PROPOSED_LINE_${i + 1}`}
+                  onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { name: e.target.value }) })}
+                />
+              </Field>
+              <Field label="Spacing from Referenced Track(m)" hint="Blank = 5.3">
+                <Num
+                  value={l.spacing}
+                  placeholder="5.3"
+                  min="5.3"
+                  onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { spacing: e.target.value }) })}
+                />
+              </Field>
+              <Field label="Side of Referenced Track">
+                <Sel
+                  value={l.side}
+                  onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { side: e.target.value }) })}
+                  options={['LEFT', 'RIGHT']}
+                />
+              </Field>
+            </Grid>
+          </ItemCard>
+        ))}
+      </div>
     </Section>
   );
 }

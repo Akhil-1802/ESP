@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 /** Shared form primitives: cards, labeled inputs, list helpers. */
 
-export function Section({ id, title, hint, count, onAdd, addLabel, defaultOpen = true, children }) {
+export function Section({ id, title, hint, count, onAdd, addLabel, actions, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section id={id} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden transition-all">
@@ -25,11 +25,12 @@ export function Section({ id, title, hint, count, onAdd, addLabel, defaultOpen =
           </span>
         )}
         <div className="ml-auto flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {actions}
           {onAdd && (
             <button
               type="button"
               onClick={onAdd}
-              className="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-700 transition-colors shadow-sm"
+              className="rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-700 transition-colors shadow-sm cursor-pointer"
             >
               {addLabel || '+ Add'}
             </button>
