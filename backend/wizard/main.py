@@ -15,6 +15,7 @@ from .convert import (
     _build_proposed,
     _build_sidings,
     _build_stations,
+    _build_gradients,
 )
 from .helpers import _KNOWN_TOP_LEVEL, _count
 
@@ -120,6 +121,7 @@ def wizard_to_config_dict(spec: dict, main_center: float | None = None) -> dict:
         "main_directions": main_directions,
         "fobs": _build_fobs(spec.get("fobs"), main_center),
         "sidings": _build_sidings(spec.get("sidings")),
+        "gradients": _build_gradients(spec.get("gradients")),
     }
     if preset is not None:
         config["crossover_preset"] = preset

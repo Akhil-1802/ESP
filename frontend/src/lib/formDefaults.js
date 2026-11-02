@@ -82,4 +82,15 @@ export const blankRob = () => ({
   blockName: 'SGFD',
 });
 
+export const blankGradient = () => ({
+  track: 'MAIN_LINE',
+  chainage: '',
+  gradientValue: '',
+  direction: 'UP',
+  rl: '',
+  lineLength: '24.0',
+  offset: '12.0',
+});
+
+
 

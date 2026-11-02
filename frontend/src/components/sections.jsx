@@ -6,4 +6,6 @@ export { StationsSection } from './StationsSection.jsx';
 export { FobsSection } from './FobsSection.jsx';
 export { RobsSection } from './RobsSection.jsx';
 export { SidingsSection } from './SidingsSection.jsx';
+export { GradientsSection } from './GradientsSection.jsx';
+
 

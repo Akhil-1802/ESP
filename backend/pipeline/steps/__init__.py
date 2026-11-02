@@ -7,6 +7,7 @@ from .crossover import CrossoverMixin, CrossoverStep
 from .fencing import FencingMixin, FencingStep
 from .fob import FobMixin, FobStep
 from .fouling import FoulingMixin, FoulingStep
+from .gradient import GradientMixin, GradientStep
 from .platform import PlatformMixin, PlatformStep
 from .rob import RobMixin, RobStep
 from .siding import SidingMixin, SidingStep
@@ -33,6 +34,8 @@ __all__ = [
     "FobMixin",
     "RobStep",
     "RobMixin",
+    "GradientStep",
+    "GradientMixin",
     "ChainageStep",
     "ChainageMixin",
     "CalLabelStep",

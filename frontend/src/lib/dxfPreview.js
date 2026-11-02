@@ -57,6 +57,7 @@ export const LAYER_CONFIG = {
   SRJ: { color: '#ef4444', width: '2.0', category: 'signal', label: 'SRJ Points' },
   FM: { color: '#f43f5e', width: '4.0', category: 'signal', label: 'Fouling Marks' },
   CHAINAGE: { color: '#ef4444', width: '1.2', dash: '4 3', category: 'reference', label: 'Station Chainage' },
+  GRADIENT: { color: '#ef4444', width: '1.6', category: 'reference', label: 'Gradient Annotation' },
 
   // Boundary / Fencing
   FENCING: { color: '#475569', width: '0.9', opacity: '0.6', category: 'fencing', label: 'Fencing' },

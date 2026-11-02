@@ -91,11 +91,10 @@ def test_station_center_chainage_in_dxf(tmp_path):
     t2 = next(e for e in cl_entities if "KM: 125.000" in (e.text if e.dxftype() == "MTEXT" else e.dxf.text))
     y1 = t1.dxf.insert[1]
     y2 = t2.dxf.insert[1]
-    assert y2 < y1, f"Line 2 (y={y2}) must be below Line 1 (y={y1})"
-    # Line 2 should be aligned horizontally under the CH part (x2 > x1)
+    # Line 2 should be directly under Line 1, not ahead (x2 ~ x1)
     x1 = t1.dxf.insert[0]
     x2 = t2.dxf.insert[0]
-    assert x2 > x1, f"Line 2 (x={x2}) should be offset under the CH section (x1={x1})"
+    assert x2 == pytest.approx(x1, abs=0.5), f"Line 2 (x={x2}) should be directly under Line 1 (x1={x1})"
 
 
 def test_station_center_without_chainage_in_dxf(tmp_path):

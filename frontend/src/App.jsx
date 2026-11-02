@@ -50,6 +50,7 @@ const initialForm = () => ({
   fobs: [],
   robs: [],
   sidings: [],
+  gradients: [],
 });
 
 export default function App() {

@@ -27,6 +27,8 @@ _KNOWN_TOP_LEVEL = {
     "stations",
     "fobs",
     "sidings",
+    "robs",
+    "gradients",
 }
 
 __all__ = [

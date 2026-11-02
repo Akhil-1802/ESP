@@ -464,5 +464,55 @@ describe('sidings', () => {
   });
 });
 
+describe('gradients', () => {
+  it('serializes gradients with defaults and custom values', () => {
+    const form = {
+      gradients: [
+        {
+          track: 'UP LINE',
+          chainage: '125.400',
+          gradientValue: '1 in 684',
+          direction: 'DOWN',
+          rl: '102.45',
+          lineLength: '30.0',
+          offset: '15.0',
+        },
+      ],
+    };
+    const cfg = buildConfig(form);
+    assert.equal(cfg.gradients.length, 1);
+    assert.deepEqual(cfg.gradients[0], {
+      track: 'UP LINE',
+      chainage: '125.400',
+      gradient_value: '1 in 684',
+      direction: 'DOWN',
+      rl: '102.45',
+      line_length: 30.0,
+      offset: 15.0,
+    });
+  });
+
+  it('validates gradient required fields', () => {
+    const form = {
+      kmlFile: { name: 'test.kml' },
+      gradients: [
+        {
+          track: 'MAIN_LINE',
+          chainage: '',
+          gradientValue: '',
+          direction: 'INVALID',
+          lineLength: '-5',
+        },
+      ],
+    };
+    const errors = validateForm(form);
+    assert(errors.some((e) => e.includes('chainage is required')));
+    assert(errors.some((e) => e.includes('gradient value is required')));
+    assert(errors.some((e) => e.includes('direction must be UP or DOWN')));
+    assert(errors.some((e) => e.includes('line length must be > 0')));
+  });
+});
+
+
 
 

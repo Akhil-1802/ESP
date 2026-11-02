@@ -13,6 +13,7 @@ from .steps import (
     CrossoverMixin,
     FencingMixin,
     FobMixin,
+    GradientMixin,
     RobMixin,
     FoulingMixin,
     PlatformMixin,
@@ -34,6 +35,7 @@ class ESPGenerator(
     FencingMixin,
     FobMixin,
     RobMixin,
+    GradientMixin,
     ChainageMixin,
     CalLabelMixin,
 ):
@@ -116,6 +118,12 @@ class ESPGenerator(
             print("🌉 Generating road over bridges (ROB)...")
             self._generate_robs(tracks)
             print(f"   ✓ Generated {len(self.config.robs)} ROB(s)")
+
+        # Step 8c: Generate gradient annotations
+        if getattr(self.config, "gradients", None):
+            print("📐 Generating gradient annotations...")
+            self._generate_gradients(tracks)
+            print(f"   ✓ Generated {len(self.config.gradients)} gradient annotation(s)")
 
         # Step 9: Station-relative chainage labels (additive only).
         print("📏 Generating station-relative chainage labels...")

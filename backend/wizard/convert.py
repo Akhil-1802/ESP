@@ -29,6 +29,7 @@ __all__ = [
     "_build_stations",
     "_build_fobs",
     "_build_sidings",
+    "_build_gradients",
 ]
 
 
@@ -375,3 +376,34 @@ def _build_sidings(raw: object) -> list[dict]:
             "standing_length_m": float(item.get("standing_length_m", 200.0)),
         })
     return items
+
+
+def _build_gradients(raw: object) -> list[dict]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("'gradients' must be a list.")
+    items = []
+    for number, item in enumerate(raw, 1):
+        if not isinstance(item, dict):
+            raise ValueError(f"gradients[{number - 1}] must be an object.")
+        if "chainage" not in item:
+            raise ValueError(f"gradients[{number - 1}] needs 'chainage'.")
+        entry = {
+            "track_designation": str(item.get("track_designation", item.get("track", "MAIN_LINE"))),
+            "chainage": str(item["chainage"]).strip(),
+            "gradient_value": str(item.get("gradient_value", item.get("value", ""))).strip(),
+            "direction": _choice(
+                str(item.get("direction", "UP")).strip().upper(),
+                ("UP", "DOWN", "DN"),
+                f"gradients[{number - 1}].direction",
+            ),
+            "line_length": float(item.get("line_length", 24.0)),
+            "offset": float(item.get("offset", 12.0)),
+        }
+        rl = item.get("rl")
+        if rl is not None and str(rl).strip() != "":
+            entry["rl"] = str(rl).strip()
+        items.append(entry)
+    return items
+

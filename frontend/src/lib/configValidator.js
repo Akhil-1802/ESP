@@ -176,6 +176,18 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
     }
   });
 
+  (f.gradients || []).forEach((g, i) => {
+    if (isBlank(g.chainage)) at('Gradient', i, 'chainage is required.');
+    if (isBlank(g.gradientValue)) at('Gradient', i, 'gradient value is required (e.g. 1 in 256).');
+    const dir = strOr(g.direction, 'UP').toUpperCase();
+    if (!['UP', 'DOWN', 'DN'].includes(dir)) at('Gradient', i, 'direction must be UP or DOWN.');
+    if (!isBlank(g.lineLength)) {
+      const len = Number(g.lineLength);
+      if (!Number.isFinite(len) || len <= 0) at('Gradient', i, 'line length must be > 0.');
+    }
+  });
+
   return errors;
 }
+
 

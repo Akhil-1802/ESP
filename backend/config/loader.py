@@ -33,6 +33,17 @@ class StationRequest:
 
 
 @dataclass
+class GradientRequest:
+    chainage: float | str
+    gradient_value: str = ""
+    direction: str = "UP"
+    rl: float | str | None = None
+    track_designation: str = "MAIN_LINE"
+    line_length: float = 24.0
+    offset: float = 12.0
+
+
+@dataclass
 class ESPConfig:
     """Root configuration for the entire workflow."""
     source_path: str
@@ -49,6 +60,7 @@ class ESPConfig:
     fobs: list = None
     sidings: list = None
     robs: list = None
+    gradients: list[GradientRequest] = None
 
     def __post_init__(self):
         if self.loops is None:
@@ -67,6 +79,8 @@ class ESPConfig:
             self.sidings = []
         if self.robs is None:
             self.robs = []
+        if self.gradients is None:
+            self.gradients = []
         if self.main_directions is None:
             self.main_directions = {}
         if self.crossover_preset is not None:
@@ -255,6 +269,16 @@ def load_config_from_json(filename: str) -> ESPConfig:
     sidings = [_load_siding(item, idx) for idx, item in enumerate(data.get("sidings", []) or [])]
     robs = [_load_rob(item, idx) for idx, item in enumerate(data.get("robs", []) or [], 1)]
 
+    def _load_gradient(item: dict) -> GradientRequest:
+        cleaned = _strip_comments(item)
+        if "track" in cleaned and "track_designation" not in cleaned:
+            cleaned["track_designation"] = cleaned.pop("track")
+        if "value" in cleaned and "gradient_value" not in cleaned:
+            cleaned["gradient_value"] = cleaned.pop("value")
+        return GradientRequest(**cleaned)
+
+    gradients = [_load_gradient(item) for item in data.get("gradients", []) or []]
+
     return ESPConfig(
         source_path=source,
         output_dxf=output,
@@ -270,4 +294,5 @@ def load_config_from_json(filename: str) -> ESPConfig:
         fobs=fobs,
         sidings=sidings,
         robs=robs,
+        gradients=gradients,
     )

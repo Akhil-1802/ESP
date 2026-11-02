@@ -403,6 +403,18 @@ function buildRob(r, index) {
   };
 }
 
+function buildGradient(g) {
+  return {
+    track: strOr(g.track, 'MAIN_LINE'),
+    chainage: String(g.chainage ?? '').trim(),
+    gradient_value: String(g.gradientValue ?? '').trim(),
+    direction: strOr(g.direction, 'UP').toUpperCase(),
+    rl: !isBlank(g.rl) ? String(g.rl).trim() : null,
+    line_length: numOr(g.lineLength, 24.0),
+    offset: numOr(g.offset, 12.0),
+  };
+}
+
 /** Build full inputconfig-schema JSON from form state. */
 export function buildConfig(form) {
   const f = form || {};
@@ -441,6 +453,7 @@ export function buildConfig(form) {
     fobs: (f.fobs || []).map(buildFob),
     robs: (f.robs || []).map(buildRob),
     sidings: (f.sidings || []).map(buildSiding),
+    gradients: (f.gradients || []).map(buildGradient),
     main_directions: mainLines.length > 0
       ? {
           MAIN_LINE: strOr(f.mainLineDirection, 'UP').toUpperCase(),
