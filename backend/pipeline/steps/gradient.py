@@ -382,9 +382,25 @@ class GradientStep(PipelineStep):
             else:  # STRAIGHT
                 p_right = (p_center[0] + tx * seg_len, p_center[1] + ty * seg_len)
 
-            # Draw left and right slanted/straight line segments meeting at p_center
-            doc.modelspace().add_line(p_left, p_center, dxfattribs={"layer": layer_name, "color": 1})
-            doc.modelspace().add_line(p_center, p_right, dxfattribs={"layer": layer_name, "color": 1})
+            # Create a BLOCK so the gradient is a single, complete component in AutoCAD
+            # that can be selected and moved at one time with its base grip at p_center.
+            clean_ch_str = re.sub(r"[^A-Za-z0-9_]", "_", str(grad.chainage or target_track_ch))
+            base_block_name = f"GRADIENT_{clean_ch_str}"
+            block_name = base_block_name
+            counter = 1
+            while block_name in doc.blocks:
+                counter += 1
+                block_name = f"{base_block_name}_{counter}"
+
+            block = doc.blocks.new(name=block_name, base_point=(0, 0, 0))
+
+            # Draw left and right slanted/straight line segments inside the block (relative to center 0,0)
+            p_left_rel = (p_left[0] - p_center[0], p_left[1] - p_center[1])
+            p_center_rel = (0.0, 0.0)
+            p_right_rel = (p_right[0] - p_center[0], p_right[1] - p_center[1])
+
+            block.add_line(p_left_rel, p_center_rel, dxfattribs={"layer": layer_name, "color": 1})
+            block.add_line(p_center_rel, p_right_rel, dxfattribs={"layer": layer_name, "color": 1})
 
             style_name = ensure_text_style(doc)
 
@@ -419,12 +435,12 @@ class GradientStep(PipelineStep):
                     ang_l += 180.0
                 mid_l = ((p_left[0] + p_center[0]) / 2.0, (p_left[1] + p_center[1]) / 2.0)
                 w_l = len(left_val_clean) * text_h_grad * 0.75
-                ins_l = (
-                    mid_l[0] - ux_l * (w_l / 2.0) + unx_l * 0.40,
-                    mid_l[1] - uy_l * (w_l / 2.0) + uny_l * 0.40,
+                ins_l_rel = (
+                    (mid_l[0] - ux_l * (w_l / 2.0) + unx_l * 0.40) - p_center[0],
+                    (mid_l[1] - uy_l * (w_l / 2.0) + uny_l * 0.40) - p_center[1],
                     0,
                 )
-                doc.modelspace().add_text(
+                block.add_text(
                     left_val_clean,
                     dxfattribs={
                         "layer": layer_name,
@@ -432,7 +448,7 @@ class GradientStep(PipelineStep):
                         "style": style_name,
                         "height": text_h_grad,
                         "rotation": ang_l,
-                        "insert": ins_l,
+                        "insert": ins_l_rel,
                     },
                 )
 
@@ -453,12 +469,12 @@ class GradientStep(PipelineStep):
                     ang_r += 180.0
                 mid_r = ((p_center[0] + p_right[0]) / 2.0, (p_center[1] + p_right[1]) / 2.0)
                 w_r = len(right_val_clean) * text_h_grad * 0.75
-                ins_r = (
-                    mid_r[0] - ux_r * (w_r / 2.0) + unx_r * 0.40,
-                    mid_r[1] - uy_r * (w_r / 2.0) + uny_r * 0.40,
+                ins_r_rel = (
+                    (mid_r[0] - ux_r * (w_r / 2.0) + unx_r * 0.40) - p_center[0],
+                    (mid_r[1] - uy_r * (w_r / 2.0) + uny_r * 0.40) - p_center[1],
                     0,
                 )
-                doc.modelspace().add_text(
+                block.add_text(
                     right_val_clean,
                     dxfattribs={
                         "layer": layer_name,
@@ -466,7 +482,7 @@ class GradientStep(PipelineStep):
                         "style": style_name,
                         "height": text_h_grad,
                         "rotation": ang_r,
-                        "insert": ins_r,
+                        "insert": ins_r_rel,
                     },
                 )
 
@@ -496,9 +512,10 @@ class GradientStep(PipelineStep):
             else:
                 ch_str = f"CH: {target_track_ch:.2f}"
 
-            # Format Left and Right labels matching reference style (Image 2)
-            # If RL is provided: Left has "CH: ... <DIR>", Right has "RL: ..."
-            # If RL is not provided: Left has "CH: ...", Right has "<DIR> LINE"
+            # Format Left and Right labels matching consistent standard:
+            # - Left side of marker: ALWAYS CH only (e.g. "CH: 400.00")
+            # - Right side of marker: RL (if present) and Direction LINE (e.g. "RL: 97.53m" and "UP LINE")
+            left_text = ch_str
             right_labels = []
             if grad.rl is not None and str(grad.rl).strip() != "":
                 rl_clean = str(grad.rl).strip()
@@ -512,10 +529,9 @@ class GradientStep(PipelineStep):
                 if rl_val.upper().endswith("M"):
                     rl_val = rl_val[:-1].strip()
 
-                left_text = f"{ch_str} {dir_short}"
                 right_labels.append(f"RL: {rl_val}m" if not rl_val.endswith("m") else f"RL: {rl_val}")
+                right_labels.append(dir_line_text)
             else:
-                left_text = ch_str
                 right_labels.append(dir_line_text)
 
             # Vertical labels & stem geometry:
@@ -525,12 +541,26 @@ class GradientStep(PipelineStep):
             text_h = 0.75
             gap_side = 0.18
             gap_top = 0.18
-            y_target_top = p_center[1] - gap_top
+
+            # Calculate actual roof line height above the text envelope to prevent poking through slanted lines
+            def get_roof_y(x: float) -> float:
+                if x <= p_center[0]:
+                    dx = p_center[0] - p_left[0]
+                    t = (x - p_left[0]) / dx if abs(dx) > 1e-4 else 1.0
+                    return p_left[1] + t * (p_center[1] - p_left[1])
+                else:
+                    dx = p_right[0] - p_center[0]
+                    t = (x - p_center[0]) / dx if abs(dx) > 1e-4 else 0.0
+                    return p_center[1] + t * (p_right[1] - p_center[1])
+
+            roof_y_left = get_roof_y(p_center[0] - gap_side - text_h * 1.2)
+            roof_y_right = get_roof_y(p_center[0] + gap_side + len(right_labels) * (text_h + 0.25))
+            y_target_top = min(roof_y_left, roof_y_right, p_center[1]) - gap_top
 
             all_vert_texts = []
 
-            # 1. Left of vertical marker: CH label
-            t_ch = doc.modelspace().add_text(
+            # 1. Left of vertical marker: CH label inside block
+            t_ch = block.add_text(
                 left_text,
                 dxfattribs={
                     "layer": layer_name,
@@ -538,7 +568,7 @@ class GradientStep(PipelineStep):
                     "style": style_name,
                     "height": text_h,
                     "rotation": vert_ang,
-                    "insert": (p_center[0], 0.0, 0),
+                    "insert": (0.0, 0.0, 0),
                 },
             )
             bb_ch = None
@@ -547,11 +577,11 @@ class GradientStep(PipelineStep):
             except Exception:
                 pass
 
-            # 2. Right of vertical marker: RL or Direction LINE
+            # 2. Right of vertical marker: RL and/or Direction LINE inside block
             right_ents = []
             bb_r_list = []
             for col_idx, r_label in enumerate(right_labels):
-                t_r = doc.modelspace().add_text(
+                t_r = block.add_text(
                     r_label,
                     dxfattribs={
                         "layer": layer_name,
@@ -559,7 +589,7 @@ class GradientStep(PipelineStep):
                         "style": style_name,
                         "height": text_h,
                         "rotation": vert_ang,
-                        "insert": (p_center[0], 0.0, 0),
+                        "insert": (0.0, 0.0, 0),
                     },
                 )
                 right_ents.append((t_r, col_idx, r_label))
@@ -568,7 +598,7 @@ class GradientStep(PipelineStep):
                 except Exception:
                     pass
 
-            # Both CH and RL labels must start parallel at the exact same baseline point (aligned at the bottom),
+            # Both CH and RL/Direction labels must start parallel at the exact same baseline point (aligned at the bottom),
             # with the tallest label reaching just under the junction line.
             all_y_lengths = []
             if bb_ch is not None:
@@ -583,30 +613,38 @@ class GradientStep(PipelineStep):
                 max_chars = max([len(left_text)] + [len(r) for r in right_labels], default=5)
                 common_ins_y = y_target_top - max_chars * char_w
 
-            # Position CH label at common_ins_y
+            ins_y_rel = common_ins_y - p_center[1]
+
+            # Position CH label inside block at relative coordinates
             if bb_ch is not None:
-                ins_x_ch = (p_center[0] - gap_side) - (bb_ch.extmax[0] - p_center[0])
+                ins_x_ch_rel = -gap_side - bb_ch.extmax[0]
             else:
-                ins_x_ch = p_center[0] - gap_side - text_h * 0.25
-            t_ch.dxf.insert = (ins_x_ch, common_ins_y, 0)
+                ins_x_ch_rel = -gap_side - text_h * 0.25
+            t_ch.dxf.insert = (ins_x_ch_rel, ins_y_rel, 0)
             all_vert_texts.append(t_ch)
 
-            # Position RL / Direction labels at common_ins_y
+            # Position RL / Direction labels inside block at relative coordinates
             for idx, (t_r, col_idx, r_label) in enumerate(right_ents):
                 if idx < len(bb_r_list):
-                    ins_x_r = (p_center[0] + gap_side) - (bb_r_list[idx].extmin[0] - p_center[0]) + col_idx * (text_h + 0.25)
+                    ins_x_r_rel = gap_side - bb_r_list[idx].extmin[0] + col_idx * (text_h + 0.25)
                 else:
-                    ins_x_r = p_center[0] + gap_side + text_h + col_idx * (text_h + 0.25)
-                t_r.dxf.insert = (ins_x_r, common_ins_y, 0)
+                    ins_x_r_rel = gap_side + text_h + col_idx * (text_h + 0.25)
+                t_r.dxf.insert = (ins_x_r_rel, ins_y_rel, 0)
                 all_vert_texts.append(t_r)
 
-            # Vertical marker line (stem):
-            # Extends from p_center down past the common start of the labels by 0.25m, framing the text
-            v_end = (p_center[0], common_ins_y - 0.25)
+            # Vertical marker line (stem) inside block
+            # Extends from (0,0) down past the common start of the labels by 0.25m
+            v_end_rel = (0.0, ins_y_rel - 0.25)
+            block.add_line(
+                p_center_rel,
+                v_end_rel,
+                dxfattribs={"layer": layer_name, "color": 1},
+            )
 
-            doc.modelspace().add_line(
-                p_center,
-                v_end,
+            # Insert block reference into modelspace at p_center as a single complete component
+            doc.modelspace().add_blockref(
+                name=block_name,
+                insert=p_center,
                 dxfattribs={"layer": layer_name, "color": 1},
             )
 

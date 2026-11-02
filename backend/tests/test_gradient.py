@@ -79,6 +79,28 @@ def test_format_chainage_display():
     assert format_chainage_display("450 M") == "CH: 450.00 M"
 
 
+def _get_grad_lines(doc):
+    lines = []
+    for e in doc.modelspace():
+        if e.dxf.layer == "GRADIENT":
+            if e.dxftype() == "LINE":
+                lines.append(e)
+            elif e.dxftype() == "INSERT":
+                lines.extend([sub for sub in e.virtual_entities() if sub.dxftype() == "LINE"])
+    return lines
+
+
+def _get_grad_texts(doc):
+    texts = []
+    for e in doc.modelspace():
+        if e.dxf.layer == "GRADIENT":
+            if e.dxftype() == "TEXT":
+                texts.append(e)
+            elif e.dxftype() == "INSERT":
+                texts.extend([sub for sub in e.virtual_entities() if sub.dxftype() == "TEXT"])
+    return texts
+
+
 def _make_sample_pipeline(
     tmp_path,
     gradients: list[GradientRequest],
@@ -159,9 +181,12 @@ def test_gradient_at_station_center(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [
-        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
-    ]
+    # Verify block reference is inserted
+    block_refs = [e for e in doc.modelspace() if e.dxftype() == "INSERT" and e.dxf.layer == "GRADIENT"]
+    assert len(block_refs) == 1, "Gradient should be created as a block reference (INSERT entity)"
+    assert block_refs[0].dxf.name.startswith("GRADIENT_")
+
+    grad_lines = _get_grad_lines(doc)
     assert grad_lines, "GRADIENT lines should be present"
 
     # Station building is centered at 1000m along the 2000m track
@@ -204,9 +229,7 @@ def test_gradient_greater_than_station_center(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [
-        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
-    ]
+    grad_lines = _get_grad_lines(doc)
     assert grad_lines
     assert not any(line.dxf.start[1] == pytest.approx(0.0, abs=0.5) for line in grad_lines)
     # Station at 1000m, gradient at +400m -> x = 1400m
@@ -232,9 +255,7 @@ def test_gradient_less_than_station_center(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [
-        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
-    ]
+    grad_lines = _get_grad_lines(doc)
     assert grad_lines
     assert not any(line.dxf.start[1] == pytest.approx(0.0, abs=0.5) for line in grad_lines)
     # Station at 1000m, gradient at -300m -> x = 700m
@@ -268,9 +289,7 @@ def test_gradient_on_curved_alignment(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [
-        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
-    ]
+    grad_lines = _get_grad_lines(doc)
     assert grad_lines
 
     # Gradient annotation positioned along transverse normal from track point past station center
@@ -317,9 +336,7 @@ def test_gradient_labels_in_dxf(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    texts = [
-        e.dxf.text for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "TEXT"
-    ]
+    texts = [e.dxf.text for e in _get_grad_texts(doc)]
     assert texts
     combined = "\n".join(texts)
 
@@ -349,12 +366,8 @@ def test_gradient_two_sided_profiles(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [
-        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
-    ]
-    texts = [
-        e.dxf.text for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "TEXT"
-    ]
+    grad_lines = _get_grad_lines(doc)
+    texts = [e.dxf.text for e in _get_grad_texts(doc)]
     combined = "\n".join(texts)
 
     # Values for left and right
@@ -397,7 +410,7 @@ def test_gradient_left_rise_and_down_from_center(tmp_path):
     gen.run()
 
     doc = ezdxf.readfile(str(out))
-    grad_lines = [e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"]
+    grad_lines = _get_grad_lines(doc)
     segments = [l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) > 3.0]
     v_marker = next(l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) < 1e-3)
     p_center_y = max(v_marker.dxf.start[1], v_marker.dxf.end[1])

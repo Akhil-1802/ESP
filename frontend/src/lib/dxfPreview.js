@@ -282,6 +282,28 @@ export function dxfToSvg(input) {
                 feed(p0[0], p0[1]); feed(p1[0], p1[1]);
                 group.items.push(`<line x1="${r3(p0[0])}" y1="${r3(p0[1])}" x2="${r3(p1[0])}" y2="${r3(p1[1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
               }
+            } else if (sub.type === 'MTEXT' || sub.type === 'TEXT') {
+              const at = sub.position || sub.insertionPoint || sub.startPoint || {};
+              if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
+                const str = sub.type === 'TEXT' ? String(sub.text ?? '') : mtextPlain(sub.text);
+                if (str) {
+                  const p = tf([at.x, at.y]);
+                  const h = (Number(sub.textHeight ?? sub.charHeight ?? sub.height ?? 0.8) || 0.8) * Math.abs(sy);
+                  const rot = (Number(sub.rotation ?? 0) + Number(e.rotation ?? 0));
+                  feed(p[0], p[1]);
+                  labels.push({
+                    x: Number(p[0]),
+                    y: Number(p[1]),
+                    str,
+                    height: h,
+                    angle: rot,
+                    color,
+                    layer,
+                    halign: Number(sub.halign ?? 0),
+                    valign: Number(sub.valign ?? 0),
+                  });
+                }
+              }
             }
           }
         }
