@@ -387,20 +387,40 @@ def _build_gradients(raw: object) -> list[dict]:
     for number, item in enumerate(raw, 1):
         if not isinstance(item, dict):
             raise ValueError(f"gradients[{number - 1}] must be an object.")
-        if "chainage" not in item:
-            raise ValueError(f"gradients[{number - 1}] needs 'chainage'.")
+        
+        left_val = item.get("left_gradient_value", item.get("left_value", ""))
+        right_val = item.get("right_gradient_value", item.get("right_value", item.get("gradient_value", item.get("value", ""))))
+        left_dir = item.get("left_direction", item.get("left_slope", "STRAIGHT"))
+        right_dir = item.get("right_direction", item.get("right_slope", item.get("direction", "RISE")))
+
         entry = {
             "track_designation": str(item.get("track_designation", item.get("track", "MAIN_LINE"))),
-            "chainage": str(item["chainage"]).strip(),
             "gradient_value": str(item.get("gradient_value", item.get("value", ""))).strip(),
             "direction": _choice(
                 str(item.get("direction", "UP")).strip().upper(),
-                ("UP", "DOWN", "DN"),
+                ("UP", "DOWN", "DN", "LEVEL", "RISE", "STRAIGHT"),
                 f"gradients[{number - 1}].direction",
             ),
-            "line_length": float(item.get("line_length", 24.0)),
-            "offset": float(item.get("offset", 12.0)),
+            "left_gradient_value": str(left_val).strip() if left_val is not None else None,
+            "left_direction": _choice(
+                str(left_dir).strip().upper(),
+                ("RISE", "DOWN", "DN", "STRAIGHT", "UP", "LEVEL"),
+                f"gradients[{number - 1}].left_direction",
+            ),
+            "right_gradient_value": str(right_val).strip() if right_val is not None else None,
+            "right_direction": _choice(
+                str(right_dir).strip().upper(),
+                ("RISE", "DOWN", "DN", "STRAIGHT", "UP", "LEVEL"),
+                f"gradients[{number - 1}].right_direction",
+            ),
+            "line_length": 10.0,
         }
+        ch = item.get("chainage")
+        if ch is not None and str(ch).strip() != "":
+            entry["chainage"] = str(ch).strip()
+        offset = item.get("offset")
+        if offset is not None and str(offset).strip() != "":
+            entry["offset"] = float(offset)
         rl = item.get("rl")
         if rl is not None and str(rl).strip() != "":
             entry["rl"] = str(rl).strip()

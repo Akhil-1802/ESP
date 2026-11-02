@@ -65,6 +65,12 @@ def test_compute_gradient_offset():
     # Station center 0, gradient in meters
     assert compute_gradient_offset("350 M", "0") == pytest.approx(350.0)
 
+    # Yard chainages in meters (e.g. gradient 400, station 350 -> +50 m)
+    assert compute_gradient_offset("400", "350") == pytest.approx(50.0)
+    assert compute_gradient_offset("400.000", "350.000") == pytest.approx(50.0)
+    assert compute_gradient_offset("400.000", "375.000") == pytest.approx(25.0)
+    assert compute_gradient_offset("300", "350") == pytest.approx(-50.0)
+
 
 def test_format_chainage_display():
     assert format_chainage_display("125.400") == "CH: 125.400 KM"
@@ -159,16 +165,25 @@ def test_gradient_at_station_center(tmp_path):
     assert grad_lines, "GRADIENT lines should be present"
 
     # Station building is centered at 1000m along the 2000m track
-    # Connection point on track should be at x = 1000.0, y = 0.0
-    stems = [
-        line
-        for line in grad_lines
-        if line.dxf.start[1] == pytest.approx(0.0, abs=0.5)
-        and line.dxf.end[1] > 0.0
+    # No stem should connect all the way down to track (y = 0.0)
+    assert not any(line.dxf.start[1] == pytest.approx(0.0, abs=0.5) for line in grad_lines)
+
+    # Slanted/straight segments (left and right) and vertical center marker
+    segments = [l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) > 3.0]
+    assert len(segments) == 2, "Both left and right segments should be drawn"
+    v_marker = next(l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) < 1e-3)
+
+    # The small vertical line is at the CENTER junction (target chainage x = 1000.0)
+    assert v_marker.dxf.start[0] == pytest.approx(1000.0, abs=0.1)
+    # Both segments connect at the center vertical marker
+    assert any(s.dxf.end[0] == pytest.approx(1000.0, abs=0.1) for s in segments)
+    assert any(s.dxf.start[0] == pytest.approx(1000.0, abs=0.1) for s in segments)
+
+    # Verify NO dotted chainage labels (GRADIENT AT CH ...) are created on CHAINAGE layer
+    ch_texts = [
+        e.dxf.text for e in doc.modelspace() if e.dxf.layer == "CHAINAGE" and e.dxftype() == "TEXT"
     ]
-    assert stems, "Connecting stem from track should be present"
-    stem = stems[0]
-    assert stem.dxf.start[0] == pytest.approx(1000.0, abs=1.0)
+    assert not any("GRADIENT AT CH" in t for t in ch_texts)
 
 
 def test_gradient_greater_than_station_center(tmp_path):
@@ -192,15 +207,11 @@ def test_gradient_greater_than_station_center(tmp_path):
     grad_lines = [
         e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
     ]
-    stems = [
-        line
-        for line in grad_lines
-        if line.dxf.start[1] == pytest.approx(0.0, abs=0.5)
-        and line.dxf.end[1] > 0.0
-    ]
-    assert stems
+    assert grad_lines
+    assert not any(line.dxf.start[1] == pytest.approx(0.0, abs=0.5) for line in grad_lines)
     # Station at 1000m, gradient at +400m -> x = 1400m
-    assert stems[0].dxf.start[0] == pytest.approx(1400.0, abs=1.0)
+    starts = [line.dxf.start[0] for line in grad_lines]
+    assert any(x == pytest.approx(1400.0, abs=1.0) for x in starts)
 
 
 def test_gradient_less_than_station_center(tmp_path):
@@ -224,15 +235,11 @@ def test_gradient_less_than_station_center(tmp_path):
     grad_lines = [
         e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
     ]
-    stems = [
-        line
-        for line in grad_lines
-        if line.dxf.start[1] == pytest.approx(0.0, abs=0.5)
-        and line.dxf.end[1] > 0.0
-    ]
-    assert stems
+    assert grad_lines
+    assert not any(line.dxf.start[1] == pytest.approx(0.0, abs=0.5) for line in grad_lines)
     # Station at 1000m, gradient at -300m -> x = 700m
-    assert stems[0].dxf.start[0] == pytest.approx(700.0, abs=1.0)
+    starts = [line.dxf.start[0] for line in grad_lines]
+    assert any(x == pytest.approx(700.0, abs=1.0) for x in starts)
 
 
 def test_gradient_on_curved_alignment(tmp_path):
@@ -266,15 +273,9 @@ def test_gradient_on_curved_alignment(tmp_path):
     ]
     assert grad_lines
 
-    # Find the stem line connecting track to horizontal bar
-    # Its start should be on the curved track (y > 0.0 since it's past station center)
-    vertical_stems = [
-        l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) < 1e-3 and l.dxf.end[1] > l.dxf.start[1]
-    ]
-    assert vertical_stems
-    track_pt = (vertical_stems[0].dxf.start[0], vertical_stems[0].dxf.start[1])
-    assert track_pt[0] > 1000.0
-    assert track_pt[1] > 100.0
+    # Gradient annotation positioned along transverse normal from track point past station center
+    starts = [l.dxf.start for l in grad_lines]
+    assert any(pt[0] > 1000.0 and pt[1] > 100.0 for pt in starts)
 
 
 def test_gradient_outside_extent_raises_error(tmp_path):
@@ -322,10 +323,95 @@ def test_gradient_labels_in_dxf(tmp_path):
     assert texts
     combined = "\n".join(texts)
 
-    assert "1 in 684 DOWN" in combined
-    assert "CH: 125.400 KM" in combined
-    assert "RL: 102.45 M" in combined
-    assert "UP LINE" in combined
+    assert "684" in combined
+    assert "CH: 125.40" in combined
+    assert "RL: 102.45" in combined
+    assert "DN" in combined
+
+
+def test_gradient_two_sided_profiles(tmp_path):
+    """Verify two-sided gradient: left=STRAIGHT (202), right=RISE (1278)."""
+    gen, out = _make_sample_pipeline(
+        tmp_path,
+        gradients=[
+            GradientRequest(
+                track_designation="MAIN_LINE",
+                chainage="125.000",
+                left_gradient_value="202",
+                left_direction="STRAIGHT",
+                right_gradient_value="1278",
+                right_direction="RISE",
+                rl="97.91",
+            )
+        ],
+        station_chainage="125",
+    )
+    gen.run()
+
+    doc = ezdxf.readfile(str(out))
+    grad_lines = [
+        e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"
+    ]
+    texts = [
+        e.dxf.text for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "TEXT"
+    ]
+    combined = "\n".join(texts)
+
+    # Values for left and right
+    assert "202" in combined
+    assert "1278" in combined
+    assert "RL: 97.91" in combined
+
+    # Check that left segment is horizontal (dy = 0) and right segment has upward slope (dy > 0)
+    segments = [l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) > 3.0]
+    assert len(segments) == 2
+
+    # Left segment: from x ≈ 995 to x ≈ 1000
+    left_seg = next(s for s in segments if min(s.dxf.start[0], s.dxf.end[0]) < 999.0)
+    assert abs(left_seg.dxf.start[1] - left_seg.dxf.end[1]) == pytest.approx(0.0, abs=0.01), "Left segment must be STRAIGHT (horizontal)"
+
+    # Right segment: from x ≈ 1000 to x ≈ 1005 (RISE -> higher than center)
+    right_seg = next(s for s in segments if max(s.dxf.start[0], s.dxf.end[0]) > 1001.0)
+    p_center_y = min(left_seg.dxf.start[1], left_seg.dxf.end[1])
+    p_right_outer = max(right_seg.dxf.start[1], right_seg.dxf.end[1])
+    assert p_right_outer > p_center_y, "Right RISE must go upward from center"
+
+
+def test_gradient_left_rise_and_down_from_center(tmp_path):
+    """Verify RISE goes upward from center and DOWN goes downward from center on both sides."""
+    # Test Left RISE + Right DOWN: left outer > center, right outer < center
+    gen, out = _make_sample_pipeline(
+        tmp_path,
+        gradients=[
+            GradientRequest(
+                track_designation="MAIN_LINE",
+                chainage="125.000",
+                left_gradient_value="525",
+                left_direction="RISE",
+                right_gradient_value="260",
+                right_direction="DOWN",
+            )
+        ],
+        station_chainage="125",
+    )
+    gen.run()
+
+    doc = ezdxf.readfile(str(out))
+    grad_lines = [e for e in doc.modelspace() if e.dxf.layer == "GRADIENT" and e.dxftype() == "LINE"]
+    segments = [l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) > 3.0]
+    v_marker = next(l for l in grad_lines if abs(l.dxf.start[0] - l.dxf.end[0]) < 1e-3)
+    p_center_y = max(v_marker.dxf.start[1], v_marker.dxf.end[1])
+
+    left_seg = next(s for s in segments if min(s.dxf.start[0], s.dxf.end[0]) < 999.0)
+    right_seg = next(s for s in segments if max(s.dxf.start[0], s.dxf.end[0]) > 1001.0)
+
+    # Left RISE: left outer endpoint goes UPWARD from center (+y)
+    left_outer_y = left_seg.dxf.start[1] if left_seg.dxf.start[0] < 999.0 else left_seg.dxf.end[1]
+    assert left_outer_y > p_center_y, "Left RISE must go upward from center"
+
+    # Right DOWN: right outer endpoint goes DOWNWARD from center (-y)
+    right_outer_y = right_seg.dxf.start[1] if right_seg.dxf.start[0] > 1001.0 else right_seg.dxf.end[1]
+    assert right_outer_y < p_center_y, "Right DOWN must go downward from center"
 
 
 def test_gradient_json_loading(tmp_path):

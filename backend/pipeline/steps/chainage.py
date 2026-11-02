@@ -42,7 +42,6 @@ _TEXT_LIFT = {
     "RAMP END": 0.0,
     "LC": 0.0,
     "BRIDGE": 0.0,
-    "GRADIENT": 0.0,
     "BR": 0.0,
 }
 

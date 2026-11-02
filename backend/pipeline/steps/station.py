@@ -8,9 +8,12 @@ import ezdxf
 from ezdxf.enums import TextEntityAlignment
 
 from common.dxf import (
+    _inflate,
+    _register_box,
     add_arrow_head as _add_arrow_head,
     draw_arrow_dimension,
     ensure_text_style as _ensure_text_style,
+    estimate_text_aabb,
     resolve_text_insert as _resolve_text_insert,
 )
 from common.geometry import bounds as _bounds
@@ -189,6 +192,7 @@ class StationStep(PipelineStep):
             if cl_layer not in doc.layers:
                 doc.layers.add(cl_layer, color=1)
             ang = math.radians(building.angle)
+            tx_tangent, ty_tangent = math.cos(ang), math.sin(ang)
             px, py = -math.sin(ang), math.cos(ang)
             cx, cy = building.center
             half, dash, gap = 50.0, 6.0, 2.5
@@ -204,7 +208,8 @@ class StationStep(PipelineStep):
             km_label = _format_station_chainage(getattr(request, "station_chainage", None))
             line1_text = f"C/L OF {request.building_name} CH:0.00 KM"
 
-            tx, ty = cx + px * (half + 3.0) - 25.0, cy + py * (half + 3.0)
+            tx = cx + px * (half + 3.0) - tx_tangent * 25.0
+            ty = cy + py * (half + 3.0) - ty_tangent * 25.0
 
             c1_pos = _resolve_text_insert(doc, line1_text, 1.0, math.degrees(ang), (tx, ty, 0))
             doc.modelspace().add_text(
@@ -220,9 +225,13 @@ class StationStep(PipelineStep):
             )
 
             if km_label:
-                ch2_x = c1_pos[0] - px * 2.0
-                ch2_y = c1_pos[1] - py * 2.0
-                c2_pos = _resolve_text_insert(doc, km_label, 1.0, math.degrees(ang), (ch2_x, ch2_y, 0))
+                # Center the KM label relative to line 1
+                w1 = len(line1_text) * 1.0 * 0.7
+                w2 = len(km_label) * 1.0 * 0.7
+                center_offset = (w1 - w2) / 2.0
+                ch2_x = c1_pos[0] - px * 2.0 + tx_tangent * center_offset
+                ch2_y = c1_pos[1] - py * 2.0 + ty_tangent * center_offset
+                c2_pos = (ch2_x, ch2_y, 0)
                 doc.modelspace().add_text(
                     km_label,
                     dxfattribs={
@@ -231,9 +240,11 @@ class StationStep(PipelineStep):
                         "style": _ensure_text_style(doc),
                         "height": 1.0,
                         "rotation": math.degrees(ang),
-                        "insert": (c2_pos[0], c2_pos[1], 0),
+                        "insert": c2_pos,
                     },
                 )
+                box = _inflate(estimate_text_aabb(km_label, 1.0, math.degrees(ang), (ch2_x, ch2_y)), 0.5)
+                _register_box(doc, box)
 
             dir_layer = "DIRECTION"
             if dir_layer not in doc.layers:

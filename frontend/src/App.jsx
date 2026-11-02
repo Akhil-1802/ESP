@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CrossoversSection,
   FobsSection,
+  GradientsSection,
   PlatformsSection,
   RobsSection,
   SidingsSection,
@@ -13,6 +14,7 @@ import {
   blankArm,
   blankCrossover,
   blankFob,
+  blankGradient,
   blankLine,
   blankLoop,
   blankRob,
@@ -358,6 +360,7 @@ export default function App() {
               <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
               <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
               <SidingsSection form={form} set={setForm} tracks={tracks} />
+              <GradientsSection form={form} set={setForm} tracks={tracks} />
             </div>
 
             {/* Drag handle: resize the inputs sidebar */}
@@ -469,4 +472,4 @@ export default function App() {
 }
 
 // Re-exports keep section factories importable for tests/smoke scripts.
-export { blankArm, blankCrossover, blankFob, blankLine, blankLoop, blankSiding, blankStation };
+export { blankArm, blankCrossover, blankFob, blankGradient, blankLine, blankLoop, blankSiding, blankStation };

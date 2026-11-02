@@ -85,11 +85,12 @@ export const blankRob = () => ({
 export const blankGradient = () => ({
   track: 'MAIN_LINE',
   chainage: '',
-  gradientValue: '',
   direction: 'UP',
+  leftValue: '',
+  leftDirection: 'STRAIGHT',
+  rightValue: '',
+  rightDirection: 'RISE',
   rl: '',
-  lineLength: '24.0',
-  offset: '12.0',
 });
 
 

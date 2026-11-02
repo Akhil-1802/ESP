@@ -11,6 +11,7 @@ import re
 from typing import Dict, Sequence, Tuple
 
 import ezdxf
+from ezdxf import bbox
 
 from common.alignment import point_at_chainage
 from common.dxf import ensure_layer, ensure_text_style, resolve_text_insert
@@ -86,13 +87,21 @@ def compute_gradient_offset(grad_ch: str | float, stn_ch: str | float | None) ->
     if grad_unit == "KM" and stn_unit == "M":
         return (grad_val * 1000.0) - stn_val
 
-    # When neither unit is explicitly given:
-    # If values are in typical route KM range (>= 5.0) and close, difference is in KM.
-    if abs(grad_val - stn_val) <= 50.0 and (stn_val >= 5.0 or grad_val >= 5.0):
-        return (grad_val - stn_val) * 1000.0
+    # If either has explicit KM unit
+    if grad_unit == "KM":
+        return (grad_val * 1000.0) - stn_val
+    if stn_unit == "KM":
+        return grad_val - (stn_val * 1000.0)
 
-    # Otherwise assume values are given in meters.
-    return grad_val - stn_val
+    # When neither unit is explicitly given:
+    # If the user provides route KM values with a small fractional difference
+    # (e.g. grad="125.400", stn="125.000", diff = 0.400; or "128.000" vs "125.000"), diff is in KM.
+    diff = grad_val - stn_val
+    if abs(diff) <= 4.0 and (stn_val >= 10.0 and grad_val >= 10.0) and ("." in str(grad_ch) or "." in str(stn_ch)):
+        return diff * 1000.0
+
+    # Otherwise values are in meters (e.g. grad=400, stn=350 -> offset = +50.0 m)
+    return diff
 
 
 def format_chainage_display(grad_ch: str | float) -> str:
@@ -201,6 +210,50 @@ class GradientStep(PipelineStep):
         mid_idx = len(clean_pts) // 2
         return clean_pts[mid_idx]
 
+    def _get_station_flag_distance(
+        self, doc, cleaned_main_track: Sequence[Point], stn_center_pt: Point
+    ) -> tuple[float, str]:
+        """Find transverse distance and side (LEFT/RIGHT) of the station flag from main track."""
+        flag_pts = []
+        try:
+            for e in doc.modelspace():
+                if str(e.dxf.get("layer", "")).upper() == "STATION-FLAG":
+                    if e.dxftype() == "LINE":
+                        flag_pts.extend([(float(e.dxf.start[0]), float(e.dxf.start[1])), (float(e.dxf.end[0]), float(e.dxf.end[1]))])
+                    elif e.dxftype() in ("LWPOLYLINE", "POLYLINE"):
+                        flag_pts.extend([(float(p[0]), float(p[1])) for p in e.get_points()])
+        except Exception:
+            pass
+
+        if flag_pts:
+            avg_x = sum(p[0] for p in flag_pts) / len(flag_pts)
+            avg_y = sum(p[1] for p in flag_pts) / len(flag_pts)
+            proj = nearest_point_on_alignment(cleaned_main_track, (avg_x, avg_y))
+            st = point_at_chainage(cleaned_main_track, float(proj.chainage))
+            tx, ty = st.tangent
+            L = math.hypot(tx, ty) or 1.0
+            tx, ty = tx / L, ty / L
+            nx, ny = -ty, tx  # standard LEFT normal
+            vx = avg_x - proj.point[0]
+            vy = avg_y - proj.point[1]
+            dist = math.hypot(vx, vy)
+            side = "LEFT" if (vx * nx + vy * ny) >= 0 else "RIGHT"
+            if dist > 1.0:
+                return dist, side
+
+        # Fallback using station center point
+        proj = nearest_point_on_alignment(cleaned_main_track, stn_center_pt)
+        st = point_at_chainage(cleaned_main_track, float(proj.chainage))
+        tx, ty = st.tangent
+        L = math.hypot(tx, ty) or 1.0
+        tx, ty = tx / L, ty / L
+        nx, ny = -ty, tx
+        vx = stn_center_pt[0] - proj.point[0]
+        vy = stn_center_pt[1] - proj.point[1]
+        dist = math.hypot(vx, vy)
+        side = "LEFT" if (vx * nx + vy * ny) >= 0 else "RIGHT"
+        return dist + 45.0, side
+
     def _generate_gradients(self, tracks: Dict[str, Sequence[Point]]) -> None:
         """Generate gradient annotations on railway track alignments."""
         gradients = getattr(self.config, "gradients", None)
@@ -223,6 +276,11 @@ class GradientStep(PipelineStep):
 
         stn_center_pt = self._get_station_center_coords(doc, tracks)
 
+        # Find reference main track geometry for station flag transverse axis
+        first_track = tracks.get("MAIN_LINE", next(iter(tracks.values())))
+        cleaned_main = [(float(p[0]), float(p[1])) for p in first_track]
+        flag_dist, flag_side = self._get_station_flag_distance(doc, cleaned_main, stn_center_pt)
+
         for grad in gradients:
             track_name, track_points = self._resolve_track(
                 grad.track_designation, tracks
@@ -233,12 +291,16 @@ class GradientStep(PipelineStep):
 
             total_len = polyline_length(cleaned_track)
 
-            # Project station center onto target track
+            # Project station center onto target track to get station reference chainage
             stn_proj = nearest_point_on_alignment(cleaned_track, stn_center_pt)
             stn_track_ch = float(stn_proj.chainage)
 
-            # Compute relative offset along alignment
-            offset_m = compute_gradient_offset(grad.chainage, stn_ch_input)
+            # Compute relative offset along alignment using chainage
+            if grad.chainage is not None and str(grad.chainage).strip() != "":
+                offset_m = compute_gradient_offset(grad.chainage, stn_ch_input)
+            else:
+                offset_m = 0.0
+
             target_track_ch = stn_track_ch + offset_m
 
             # Bounds check
@@ -249,101 +311,195 @@ class GradientStep(PipelineStep):
                     f"track '{track_name}' extent [0.00 m, {total_len:.2f} m]."
                 )
 
-            # Exact point on track alignment
+            # Exact point and tangent on track alignment at the gradient chainage
             target_track_ch = min(max(target_track_ch, 0.0), total_len)
             sp = point_at_chainage(cleaned_track, target_track_ch)
             px, py = sp.point
+            tx, ty = sp.tangent
+            tangent_len = math.hypot(tx, ty) or 1.0
+            tx, ty = tx / tangent_len, ty / tangent_len
 
-            # Configurable offset and line length
-            off_dist = float(grad.offset) if grad.offset is not None else 12.0
-            line_len = float(grad.line_length) if grad.line_length is not None else 24.0
+            # Normal vector pointing towards the station flag axis
+            if flag_side == "LEFT":
+                nx, ny = -ty, tx
+            else:
+                nx, ny = ty, -tx
 
-            # Annotation bar location
-            bar_y = py + off_dist
-            x_start = px - line_len / 2.0
-            x_end = px + line_len / 2.0
+            # Position along the same transverse axis as the station flag at its proper chainage
+            transverse_dist = flag_dist
+            gx = px + nx * transverse_dist
+            gy = py + ny * transverse_dist
 
-            # 1. Connecting stem / leader line from track to horizontal bar
-            doc.modelspace().add_line(
-                (px, py),
-                (px, bar_y),
-                dxfattribs={"layer": layer_name, "color": 1},
-            )
+            # Fixed compact gradient line length matching reference image (10.0 m total: 5.0m left, 5.0m right)
+            seg_len = 5.0
+            slope_delta = 1.2
+            p_center = (gx, gy)
 
-            # Small 0.6m cross tick at alignment connection point
-            doc.modelspace().add_line(
-                (px - 0.6, py),
-                (px + 0.6, py),
-                dxfattribs={"layer": layer_name, "color": 1},
-            )
+            # Resolve Left and Right values and directions
+            left_raw = getattr(grad, "left_gradient_value", None)
+            right_raw = getattr(grad, "right_gradient_value", None)
+            left_dir_str = str(getattr(grad, "left_direction", None) or "STRAIGHT").strip().upper()
+            right_dir_str = str(getattr(grad, "right_direction", None) or getattr(grad, "direction", None) or "RISE").strip().upper()
 
-            # 2. Straight horizontal annotation line
-            doc.modelspace().add_line(
-                (x_start, bar_y),
-                (x_end, bar_y),
-                dxfattribs={"layer": layer_name, "color": 1},
-            )
+            # Fallback if only gradient_value was provided
+            if not left_raw and not right_raw and getattr(grad, "gradient_value", None):
+                parts = [p.strip() for p in re.split(r"[/,]", str(grad.gradient_value)) if p.strip()]
+                if len(parts) >= 2:
+                    left_raw, right_raw = parts[0], parts[1]
+                else:
+                    right_raw = str(grad.gradient_value).strip()
 
-            # 3. Text labels
+            # Normalize directions
+            def _norm_dir(d: str) -> str:
+                d_up = d.upper()
+                if d_up in ("RISE", "UP"):
+                    return "RISE"
+                if d_up in ("DOWN", "DN"):
+                    return "DOWN"
+                return "STRAIGHT"
+
+            left_dir = _norm_dir(left_dir_str)
+            right_dir = _norm_dir(right_dir_str)
+
+            # Center point is the reference:
+            # - RISE: goes UPWARD (+nx * slope_delta) from center
+            # - DOWN: goes DOWNWARD (-nx * slope_delta) from center
+            # - STRAIGHT: straight / horizontal (0 * nx) from center
+
+            # Left endpoint (extending from center to the left)
+            if left_dir == "RISE":
+                p_left = (p_center[0] - tx * seg_len + nx * slope_delta, p_center[1] - ty * seg_len + ny * slope_delta)
+            elif left_dir == "DOWN":
+                p_left = (p_center[0] - tx * seg_len - nx * slope_delta, p_center[1] - ty * seg_len - ny * slope_delta)
+            else:  # STRAIGHT
+                p_left = (p_center[0] - tx * seg_len, p_center[1] - ty * seg_len)
+
+            # Right endpoint (extending from center to the right)
+            if right_dir == "RISE":
+                p_right = (p_center[0] + tx * seg_len + nx * slope_delta, p_center[1] + ty * seg_len + ny * slope_delta)
+            elif right_dir == "DOWN":
+                p_right = (p_center[0] + tx * seg_len - nx * slope_delta, p_center[1] + ty * seg_len - ny * slope_delta)
+            else:  # STRAIGHT
+                p_right = (p_center[0] + tx * seg_len, p_center[1] + ty * seg_len)
+
+            # Draw left and right slanted/straight line segments meeting at p_center
+            doc.modelspace().add_line(p_left, p_center, dxfattribs={"layer": layer_name, "color": 1})
+            doc.modelspace().add_line(p_center, p_right, dxfattribs={"layer": layer_name, "color": 1})
+
             style_name = ensure_text_style(doc)
-            text_height = 1.0
-            text_x = x_start + 1.0  # inset 1.0 m from line start
 
-            # Above line: Gradient value and direction
-            grad_val_str = str(grad.gradient_value or "").strip()
-            direction_str = str(grad.direction or "UP").strip().upper()
-            line1_above = f"{grad_val_str} {direction_str}".strip() if grad_val_str else direction_str
-            ins1 = resolve_text_insert(
-                doc, line1_above, text_height, 0.0, (text_x, bar_y + 1.2, 0)
-            )
-            doc.modelspace().add_text(
-                line1_above,
-                dxfattribs={
-                    "layer": layer_name,
-                    "color": 1,
-                    "style": style_name,
-                    "height": text_height,
-                    "rotation": 0.0,
-                    "insert": (ins1[0], ins1[1], 0),
-                },
-            )
+            def _clean_num(val_str: str | None) -> str:
+                if not val_str:
+                    return ""
+                s = str(val_str).strip()
+                lower = s.lower()
+                if lower.startswith("1 in "):
+                    return s[5:].strip()
+                if lower.startswith("1 in"):
+                    return s[4:].strip()
+                if lower.startswith("1:"):
+                    return s[2:].strip()
+                return s
 
-            # Track designation label (above line1 or alongside)
-            track_desig_str = str(grad.track_designation or track_name).strip()
-            if track_desig_str:
-                ins_track = resolve_text_insert(
-                    doc, track_desig_str, 0.8, 0.0, (text_x, bar_y + 2.8, 0)
+            # 1. Left gradient value above left segment (close to line with a little space)
+            left_val_clean = _clean_num(left_raw)
+            text_h_grad = 0.8
+            if left_val_clean:
+                dx_l = p_center[0] - p_left[0]
+                dy_l = p_center[1] - p_left[1]
+                hyp_l = math.hypot(dx_l, dy_l) or 1.0
+                ux_l, uy_l = dx_l / hyp_l, dy_l / hyp_l
+                unx_l, uny_l = -uy_l, ux_l
+                if uny_l < 0:
+                    unx_l, uny_l = -unx_l, -uny_l
+                ang_l = math.degrees(math.atan2(uy_l, ux_l))
+                while ang_l > 90.0:
+                    ang_l -= 180.0
+                while ang_l < -90.0:
+                    ang_l += 180.0
+                mid_l = ((p_left[0] + p_center[0]) / 2.0, (p_left[1] + p_center[1]) / 2.0)
+                w_l = len(left_val_clean) * text_h_grad * 0.75
+                ins_l = (
+                    mid_l[0] - ux_l * (w_l / 2.0) + unx_l * 0.40,
+                    mid_l[1] - uy_l * (w_l / 2.0) + uny_l * 0.40,
+                    0,
                 )
                 doc.modelspace().add_text(
-                    track_desig_str,
+                    left_val_clean,
                     dxfattribs={
                         "layer": layer_name,
                         "color": 1,
                         "style": style_name,
-                        "height": 0.8,
-                        "rotation": 0.0,
-                        "insert": (ins_track[0], ins_track[1], 0),
+                        "height": text_h_grad,
+                        "rotation": ang_l,
+                        "insert": ins_l,
                     },
                 )
 
-            # Below line: Gradient chainage label
-            ch_label = format_chainage_display(grad.chainage)
-            ins_ch = resolve_text_insert(
-                doc, ch_label, text_height, 0.0, (text_x, bar_y - 2.0, 0)
-            )
-            doc.modelspace().add_text(
-                ch_label,
-                dxfattribs={
-                    "layer": layer_name,
-                    "color": 1,
-                    "style": style_name,
-                    "height": text_height,
-                    "rotation": 0.0,
-                    "insert": (ins_ch[0], ins_ch[1], 0),
-                },
-            )
+            # 2. Right gradient value above right segment (close to line with a little space)
+            right_val_clean = _clean_num(right_raw)
+            if right_val_clean:
+                dx_r = p_right[0] - p_center[0]
+                dy_r = p_right[1] - p_center[1]
+                hyp_r = math.hypot(dx_r, dy_r) or 1.0
+                ux_r, uy_r = dx_r / hyp_r, dy_r / hyp_r
+                unx_r, uny_r = -uy_r, ux_r
+                if uny_r < 0:
+                    unx_r, uny_r = -unx_r, -uny_r
+                ang_r = math.degrees(math.atan2(uy_r, ux_r))
+                while ang_r > 90.0:
+                    ang_r -= 180.0
+                while ang_r < -90.0:
+                    ang_r += 180.0
+                mid_r = ((p_center[0] + p_right[0]) / 2.0, (p_center[1] + p_right[1]) / 2.0)
+                w_r = len(right_val_clean) * text_h_grad * 0.75
+                ins_r = (
+                    mid_r[0] - ux_r * (w_r / 2.0) + unx_r * 0.40,
+                    mid_r[1] - uy_r * (w_r / 2.0) + uny_r * 0.40,
+                    0,
+                )
+                doc.modelspace().add_text(
+                    right_val_clean,
+                    dxfattribs={
+                        "layer": layer_name,
+                        "color": 1,
+                        "style": style_name,
+                        "height": text_h_grad,
+                        "rotation": ang_r,
+                        "insert": ins_r,
+                    },
+                )
 
-            # Below line: RL label (if provided)
+            # Direction / Line text: prioritize user-selected direction ("UP" or "DN")
+            grad_dir_attr = str(getattr(grad, "direction", "") or "").strip().upper()
+            if grad_dir_attr in ("DN", "DOWN"):
+                dir_short = "DN"
+            elif grad_dir_attr in ("UP", "RISE"):
+                dir_short = "UP"
+            else:
+                desig_upper = str(grad.track_designation or track_name).upper()
+                main_dirs = getattr(self.config, "main_directions", {}) or {}
+                track_dir = main_dirs.get(track_name) or main_dirs.get(grad.track_designation)
+                if track_dir:
+                    dir_short = "UP" if str(track_dir).upper() == "UP" else ("DN" if str(track_dir).upper() in ("DN", "DOWN") else str(track_dir).upper())
+                elif "DN" in desig_upper or "DOWN" in desig_upper:
+                    dir_short = "DN"
+                else:
+                    dir_short = "UP"
+
+            dir_line_text = f"{dir_short} LINE"
+
+            # Chainage text
+            if grad.chainage is not None and str(grad.chainage).strip() != "":
+                ch_num, _ = parse_chainage_val(str(grad.chainage))
+                ch_str = f"CH: {ch_num:.2f}"
+            else:
+                ch_str = f"CH: {target_track_ch:.2f}"
+
+            # Format Left and Right labels matching reference style (Image 2)
+            # If RL is provided: Left has "CH: ... <DIR>", Right has "RL: ..."
+            # If RL is not provided: Left has "CH: ...", Right has "<DIR> LINE"
+            right_labels = []
             if grad.rl is not None and str(grad.rl).strip() != "":
                 rl_clean = str(grad.rl).strip()
                 upper_rl = rl_clean.upper()
@@ -353,23 +509,106 @@ class GradientStep(PipelineStep):
                     rl_val = rl_clean[2:].strip()
                 else:
                     rl_val = rl_clean
-                if not rl_val.upper().endswith("M"):
-                    rl_val = f"{rl_val} M"
-                rl_label = f"RL: {rl_val}"
-                ins_rl = resolve_text_insert(
-                    doc, rl_label, 0.8, 0.0, (text_x, bar_y - 3.4, 0)
-                )
-                doc.modelspace().add_text(
-                    rl_label,
+                if rl_val.upper().endswith("M"):
+                    rl_val = rl_val[:-1].strip()
+
+                left_text = f"{ch_str} {dir_short}"
+                right_labels.append(f"RL: {rl_val}m" if not rl_val.endswith("m") else f"RL: {rl_val}")
+            else:
+                left_text = ch_str
+                right_labels.append(dir_line_text)
+
+            # Vertical labels & stem geometry:
+            # Stem points DOWN from p_center towards the track
+            # Text flows UPWARDS towards p_center at vert_ang = 90.0 degrees
+            vert_ang = 90.0
+            text_h = 0.75
+            gap_side = 0.18
+            gap_top = 0.18
+            y_target_top = p_center[1] - gap_top
+
+            all_vert_texts = []
+
+            # 1. Left of vertical marker: CH label
+            t_ch = doc.modelspace().add_text(
+                left_text,
+                dxfattribs={
+                    "layer": layer_name,
+                    "color": 1,
+                    "style": style_name,
+                    "height": text_h,
+                    "rotation": vert_ang,
+                    "insert": (p_center[0], 0.0, 0),
+                },
+            )
+            bb_ch = None
+            try:
+                bb_ch = bbox.extents([t_ch])
+            except Exception:
+                pass
+
+            # 2. Right of vertical marker: RL or Direction LINE
+            right_ents = []
+            bb_r_list = []
+            for col_idx, r_label in enumerate(right_labels):
+                t_r = doc.modelspace().add_text(
+                    r_label,
                     dxfattribs={
                         "layer": layer_name,
                         "color": 1,
                         "style": style_name,
-                        "height": 0.8,
-                        "rotation": 0.0,
-                        "insert": (ins_rl[0], ins_rl[1], 0),
+                        "height": text_h,
+                        "rotation": vert_ang,
+                        "insert": (p_center[0], 0.0, 0),
                     },
                 )
+                right_ents.append((t_r, col_idx, r_label))
+                try:
+                    bb_r_list.append(bbox.extents([t_r]))
+                except Exception:
+                    pass
+
+            # Both CH and RL labels must start parallel at the exact same baseline point (aligned at the bottom),
+            # with the tallest label reaching just under the junction line.
+            all_y_lengths = []
+            if bb_ch is not None:
+                all_y_lengths.append(bb_ch.extmax[1])
+            for b in bb_r_list:
+                all_y_lengths.append(b.extmax[1])
+
+            char_w = text_h * 0.8
+            if all_y_lengths:
+                common_ins_y = y_target_top - max(all_y_lengths)
+            else:
+                max_chars = max([len(left_text)] + [len(r) for r in right_labels], default=5)
+                common_ins_y = y_target_top - max_chars * char_w
+
+            # Position CH label at common_ins_y
+            if bb_ch is not None:
+                ins_x_ch = (p_center[0] - gap_side) - (bb_ch.extmax[0] - p_center[0])
+            else:
+                ins_x_ch = p_center[0] - gap_side - text_h * 0.25
+            t_ch.dxf.insert = (ins_x_ch, common_ins_y, 0)
+            all_vert_texts.append(t_ch)
+
+            # Position RL / Direction labels at common_ins_y
+            for idx, (t_r, col_idx, r_label) in enumerate(right_ents):
+                if idx < len(bb_r_list):
+                    ins_x_r = (p_center[0] + gap_side) - (bb_r_list[idx].extmin[0] - p_center[0]) + col_idx * (text_h + 0.25)
+                else:
+                    ins_x_r = p_center[0] + gap_side + text_h + col_idx * (text_h + 0.25)
+                t_r.dxf.insert = (ins_x_r, common_ins_y, 0)
+                all_vert_texts.append(t_r)
+
+            # Vertical marker line (stem):
+            # Extends from p_center down past the common start of the labels by 0.25m, framing the text
+            v_end = (p_center[0], common_ins_y - 0.25)
+
+            doc.modelspace().add_line(
+                p_center,
+                v_end,
+                dxfattribs={"layer": layer_name, "color": 1},
+            )
 
         doc.saveas(self.config.output_dxf)
 

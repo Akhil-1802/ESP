@@ -404,14 +404,22 @@ function buildRob(r, index) {
 }
 
 function buildGradient(g) {
+  const leftVal = g.leftValue ?? g.left_gradient_value ?? '';
+  const rightVal = g.rightValue ?? g.right_gradient_value ?? g.gradientValue ?? '';
+  const dir = g.direction
+    ? String(g.direction).trim().toUpperCase()
+    : strOr(g.rightDirection || g.right_direction, 'UP').toUpperCase();
   return {
     track: strOr(g.track, 'MAIN_LINE'),
     chainage: String(g.chainage ?? '').trim(),
-    gradient_value: String(g.gradientValue ?? '').trim(),
-    direction: strOr(g.direction, 'UP').toUpperCase(),
+    direction: dir,
+    left_gradient_value: String(leftVal).trim(),
+    left_direction: strOr(g.leftDirection || g.left_direction, 'STRAIGHT').toUpperCase(),
+    right_gradient_value: String(rightVal).trim(),
+    right_direction: strOr(g.rightDirection || g.right_direction, 'RISE').toUpperCase(),
+    // Backward-compatible alias
+    gradient_value: String(rightVal).trim(),
     rl: !isBlank(g.rl) ? String(g.rl).trim() : null,
-    line_length: numOr(g.lineLength, 24.0),
-    offset: numOr(g.offset, 12.0),
   };
 }
 

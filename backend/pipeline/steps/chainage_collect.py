@@ -432,12 +432,11 @@ def collect_robs(tracks_for_datum: dict, datum: StationDatum, config, main_line_
 
 
 def collect_optional_layers(doc, tracks_for_datum: dict, datum: StationDatum, config, main_line_points: list) -> list:
-    """LC / bridges / gradient posts."""
+    """LC / bridges."""
     out: list = []
     wants = (
         ("LC", ("LC", "LEVEL")),
         ("BRIDGE", ("BRIDGE",)),
-        ("GRADIENT", ("GRADIENT", "GRADE", "KM_POST", "KM-POST", "SEJ", "BUFFER")),
     )
     try:
         entities = list(doc.modelspace())
@@ -448,6 +447,8 @@ def collect_optional_layers(doc, tracks_for_datum: dict, datum: StationDatum, co
         try:
             upper = str(entity.dxf.layer or "").upper()
         except Exception:
+            continue
+        if "GRADIENT" in upper:
             continue
         for tag, keys in wants:
             if tag in layers_present:

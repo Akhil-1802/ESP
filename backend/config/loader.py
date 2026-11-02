@@ -34,13 +34,17 @@ class StationRequest:
 
 @dataclass
 class GradientRequest:
-    chainage: float | str
+    chainage: float | str | None = None
     gradient_value: str = ""
     direction: str = "UP"
+    left_gradient_value: str | None = None
+    left_direction: str = "STRAIGHT"
+    right_gradient_value: str | None = None
+    right_direction: str = "RISE"
     rl: float | str | None = None
     track_designation: str = "MAIN_LINE"
-    line_length: float = 24.0
-    offset: float = 12.0
+    line_length: float = 10.0
+    offset: float | None = None
 
 
 @dataclass
@@ -275,6 +279,28 @@ def load_config_from_json(filename: str) -> ESPConfig:
             cleaned["track_designation"] = cleaned.pop("track")
         if "value" in cleaned and "gradient_value" not in cleaned:
             cleaned["gradient_value"] = cleaned.pop("value")
+        if "left_value" in cleaned and "left_gradient_value" not in cleaned:
+            cleaned["left_gradient_value"] = cleaned.pop("left_value")
+        if "left_slope" in cleaned and "left_direction" not in cleaned:
+            cleaned["left_direction"] = cleaned.pop("left_slope")
+        if "right_value" in cleaned and "right_gradient_value" not in cleaned:
+            cleaned["right_gradient_value"] = cleaned.pop("right_value")
+        if "right_slope" in cleaned and "right_direction" not in cleaned:
+            cleaned["right_direction"] = cleaned.pop("right_slope")
+        if "dir" in cleaned and "direction" not in cleaned:
+            cleaned["direction"] = cleaned.pop("dir")
+        if "direction" in cleaned and cleaned["direction"]:
+            cleaned["direction"] = str(cleaned["direction"]).strip().upper()
+        if "offset" in cleaned and cleaned["offset"] is not None:
+            try:
+                cleaned["offset"] = float(cleaned["offset"])
+            except (ValueError, TypeError):
+                cleaned["offset"] = None
+        if "line_length" in cleaned and cleaned["line_length"] is not None:
+            try:
+                cleaned["line_length"] = float(cleaned["line_length"])
+            except (ValueError, TypeError):
+                cleaned["line_length"] = 10.0
         return GradientRequest(**cleaned)
 
     gradients = [_load_gradient(item) for item in data.get("gradients", []) or []]

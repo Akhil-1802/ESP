@@ -471,11 +471,11 @@ describe('gradients', () => {
         {
           track: 'UP LINE',
           chainage: '125.400',
-          gradientValue: '1 in 684',
-          direction: 'DOWN',
+          leftValue: '525',
+          leftDirection: 'STRAIGHT',
+          rightValue: '260',
+          rightDirection: 'RISE',
           rl: '102.45',
-          lineLength: '30.0',
-          offset: '15.0',
         },
       ],
     };
@@ -484,11 +484,13 @@ describe('gradients', () => {
     assert.deepEqual(cfg.gradients[0], {
       track: 'UP LINE',
       chainage: '125.400',
-      gradient_value: '1 in 684',
-      direction: 'DOWN',
+      left_gradient_value: '525',
+      left_direction: 'STRAIGHT',
+      right_gradient_value: '260',
+      right_direction: 'RISE',
+      gradient_value: '260',
+      direction: 'RISE',
       rl: '102.45',
-      line_length: 30.0,
-      offset: 15.0,
     });
   });
 
@@ -499,17 +501,14 @@ describe('gradients', () => {
         {
           track: 'MAIN_LINE',
           chainage: '',
-          gradientValue: '',
-          direction: 'INVALID',
-          lineLength: '-5',
+          leftValue: '',
+          rightValue: '',
         },
       ],
     };
     const errors = validateForm(form);
     assert(errors.some((e) => e.includes('chainage is required')));
-    assert(errors.some((e) => e.includes('gradient value is required')));
-    assert(errors.some((e) => e.includes('direction must be UP or DOWN')));
-    assert(errors.some((e) => e.includes('line length must be > 0')));
+    assert(errors.some((e) => e.includes('at least one gradient value')));
   });
 });
 
