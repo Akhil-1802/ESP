@@ -7,6 +7,8 @@ from typing import Dict, Tuple
 
 import ezdxf
 
+from common.constants import DEFAULT_OVERRUN_M
+
 from common.dxf import ensure_bold_text_style as _ensure_bold_text_style
 from common.dxf import resolve_text_insert as _resolve_text_insert
 from common.geometry import polyline_length, readable_angle_deg
@@ -47,9 +49,13 @@ class CrossoverStep(PipelineStep):
             c2 = getattr(loop, "second_crossover_chainage", None)
             if c2 is None:
                 c2 = c1 + getattr(loop, "crossover_distance_m", 750.0)
-            ext_s = getattr(loop, "extend_start_m", 0.0) or 0.0
-            ext_e = getattr(loop, "extend_end_m", 0.0) or 0.0
-            eff = (float(c1) - ext_s, float(c2) + ext_e)
+            if trim:
+                ext_s = getattr(loop, "extend_start_m", 0.0) or 0.0
+                ext_e = getattr(loop, "extend_end_m", 0.0) or 0.0
+            else:
+                ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
+                ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
+            eff = (max(0.0, float(c1) - ext_s), float(c2) + ext_e)
             extents[loop.name] = tuple(trim.get(loop.name, eff))  # type: ignore[assignment]
         return extents
 
@@ -63,12 +69,12 @@ class CrossoverStep(PipelineStep):
             c2 = getattr(loop, "second_crossover_chainage", None)
             if c2 is None:
                 c2 = c1 + getattr(loop, "crossover_distance_m", 750.0)
-            ext_s = getattr(loop, "extend_start_m", 0.0) or 0.0
-            ext_e = getattr(loop, "extend_end_m", 0.0) or 0.0
+            ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
+            ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
             ranges[loop.name] = (
                 float(c1),
                 float(c2),
-                float(c1) - float(ext_s),
+                max(0.0, float(c1) - float(ext_s)),
                 float(c2) + float(ext_e),
             )
         return ranges

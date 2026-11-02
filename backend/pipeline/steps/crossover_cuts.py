@@ -49,13 +49,12 @@ def apply_loop_overrun_cuts(
             print(f"   ! Loop {name} SRJ collect skipped ({exc})")
             continue
         if not srjs:
+            cuts[name] = (None, None)
             continue
         try:
             cut_start, cut_end = _end_cuts(c1, c2, srjs)
         except Exception as exc:
             print(f"   ! Loop {name} cut compute skipped ({exc})")
-            continue
-        if cut_start is None and cut_end is None:
             continue
         cuts[name] = (cut_start, cut_end)
 
@@ -84,14 +83,12 @@ def apply_loop_overrun_cuts(
         side = str(getattr(spec, "side", "LEFT"))
         if not (spacing > 0 and main_points and len(main_points) >= 2):
             continue
-        ov_start = float(getattr(spec, "extend_start_m", 0.0) or 0.0)
-        ov_end = float(getattr(spec, "extend_end_m", 0.0) or 0.0)
-        if ov_start <= 0:
-            ov_start = float(DEFAULT_OVERRUN_M)
-        if ov_end <= 0:
-            ov_end = float(DEFAULT_OVERRUN_M)
-        new_s = float(cut_start) - ov_start if cut_start is not None else float(eff_s)
-        new_e = float(cut_end) + ov_end if cut_end is not None else float(eff_e)
+        ov_start_val = getattr(spec, "extend_start_m", None)
+        ov_end_val = getattr(spec, "extend_end_m", None)
+        ov_start = float(ov_start_val) if ov_start_val is not None else float(DEFAULT_OVERRUN_M)
+        ov_end = float(ov_end_val) if ov_end_val is not None else float(DEFAULT_OVERRUN_M)
+        new_s = float(cut_start) - ov_start if cut_start is not None else float(c1) - ov_start
+        new_e = float(cut_end) + ov_end if cut_end is not None else float(c2) + ov_end
         if main_length is not None:
             if new_s < 0:
                 print(f"   ! Loop {name} START overrun clamped to MAIN start (wanted {new_s:.2f}m).")
@@ -130,7 +127,7 @@ def apply_loop_overrun_cuts(
         print(f"   ! Loop overrun redraw skipped ({exc})")
         return {}, {}, {}, {}
 
-    loop_layers = {name.upper().replace(" ", "_") for name in splits}
+    loop_layers = {name.upper().replace(" ", "_") for name in ranges}
     for entity in list(doc.modelspace()):
         try:
             layer = entity.dxf.layer
@@ -167,12 +164,16 @@ def apply_loop_overrun_cuts(
             continue
         spec = specs_by_name.get(name)
         outward_left = str(getattr(spec, "side", "LEFT")).upper() == "LEFT"
-        if start_stub is not None:
+        ov_s_val = getattr(spec, "extend_start_m", None)
+        ov_e_val = getattr(spec, "extend_end_m", None)
+        ov_s = float(ov_s_val) if ov_s_val is not None else float(DEFAULT_OVERRUN_M)
+        ov_e = float(ov_e_val) if ov_e_val is not None else float(DEFAULT_OVERRUN_M)
+        if start_stub is not None and ov_s > 0:
             try:
                 _draw_stub(doc, start_stub, True, outward_left)
             except Exception:
                 pass
-        if end_stub is not None:
+        if end_stub is not None and ov_e > 0:
             try:
                 _draw_stub(doc, end_stub, False, outward_left)
             except Exception:
@@ -186,31 +187,15 @@ def apply_loop_overrun_cuts(
             try:
                 c1, c2, _eff_s, _eff_e = ranges[name]
                 new_s, new_e = split_full_extents.get(name, (_eff_s, _eff_e))
-                try:
+                s_ann = ov_s if cut_start is None else 0.0
+                e_ann = ov_e if cut_end is None else 0.0
+                if s_ann > 0 or e_ann > 0:
                     spec_one_side = dataclasses.replace(
                         spec,
-                        extend_start_m=(
-                            0.0 if cut_start is not None
-                            else getattr(spec, "extend_start_m", 0.0)
-                        ),
-                        extend_end_m=(
-                            0.0 if cut_end is not None
-                            else getattr(spec, "extend_end_m", 0.0)
-                        ),
+                        extend_start_m=s_ann,
+                        extend_end_m=e_ann,
                     )
-                except Exception:
-                    spec_one_side = copy.copy(spec)
-                    if cut_start is not None:
-                        try:
-                            spec_one_side.extend_start_m = 0.0
-                        except Exception:
-                            pass
-                    if cut_end is not None:
-                        try:
-                            spec_one_side.extend_end_m = 0.0
-                        except Exception:
-                            pass
-                _annotate_ext(doc, spec_one_side, running, c1, c2, float(new_s), float(new_e))
+                    _annotate_ext(doc, spec_one_side, running, c1, c2, float(new_s), float(new_e))
             except Exception:
                 pass
         tracks[name] = list(running)
@@ -220,7 +205,10 @@ def apply_loop_overrun_cuts(
         if spec is not None and name not in splits:
             try:
                 c1, c2, eff_s, eff_e = ranges[name]
-                _annotate_ext(doc, spec, points, c1, c2, eff_s, eff_e)
+                s_ann = float(getattr(spec, "extend_start_m", 0.0) or 0.0)
+                e_ann = float(getattr(spec, "extend_end_m", 0.0) or 0.0)
+                if s_ann > 0 or e_ann > 0:
+                    _annotate_ext(doc, spec, points, c1, c2, eff_s, eff_e)
             except Exception:
                 pass
         try:

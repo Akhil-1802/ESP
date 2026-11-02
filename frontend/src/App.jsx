@@ -60,7 +60,7 @@ export default function App() {
 
   // Panel visibility toggles
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(false);
 
   const sidebarRef = useRef(null);
   // ---- Resizable inputs sidebar -------------------------------------
@@ -444,10 +444,13 @@ export default function App() {
           </aside>
         ) : (
           /* Collapsed strip button */
-          <div className="flex flex-col border-l border-slate-800 bg-slate-950 py-2 px-1">
+          <div
+            onClick={() => setRightOpen(true)}
+            className="flex flex-col items-center border-l border-slate-800 bg-slate-950 py-2 px-1 cursor-pointer hover:bg-slate-900 transition-colors"
+            title="Expand JSON Panel"
+          >
             <button
               type="button"
-              onClick={() => setRightOpen(true)}
               className="flex items-center gap-1 rounded bg-slate-800 p-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer"
               title="Expand JSON Panel"
             >
@@ -455,7 +458,7 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <div className="mt-3 flex flex-col items-center gap-1 font-mono text-[9px] text-slate-500 [writing-mode:vertical-lr] select-none">
+            <div className="mt-3 flex flex-col items-center gap-1 font-mono text-[9px] font-semibold text-slate-400 hover:text-emerald-400 [writing-mode:vertical-lr] select-none tracking-widest uppercase">
               JSON
             </div>
           </div>

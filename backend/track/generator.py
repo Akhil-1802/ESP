@@ -7,7 +7,7 @@ from typing import List, Sequence, Tuple
 
 import ezdxf
 
-from common.constants import LOOP_CROSSOVER_DISTANCE_M
+from common.constants import DEFAULT_OVERRUN_M, LOOP_CROSSOVER_DISTANCE_M
 from common.geometry import (
     cumulative_chainages,
     distance as _distance,
@@ -219,14 +219,11 @@ def _apply_loop_extension(
     ext_end = getattr(loop, "extend_end_m", 0.0) or 0.0
     if ext_start < 0 or ext_end < 0:
         raise ValueError(f"Loop {loop.name}: extensions must be >= 0")
-    if ext_start == 0 and ext_end == 0:
-        return list(base_points), c1, c2
-    eff_c1, eff_c2 = c1 - ext_start, c2 + ext_end
-    if eff_c1 < 0:
-        raise ValueError(
-            f"Loop {loop.name}: start extension {ext_start:g}m puts the loop "
-            f"at {eff_c1:.1f}m, before MAIN start (0m). Reduce it."
-        )
+    # Maintain sufficient preliminary baseline so crossover planning and spacing checks
+    # always find parallel track across the crossover zone; exact overrun trimming happens in Step 10.
+    prelim_s = max(float(ext_start), float(DEFAULT_OVERRUN_M))
+    prelim_e = max(float(ext_end), float(DEFAULT_OVERRUN_M))
+    eff_c1, eff_c2 = max(0.0, c1 - prelim_s), c2 + prelim_e
     return _generate_bounded_loop(main_points, eff_c1, eff_c2, loop.spacing, loop.side), eff_c1, eff_c2
 
 
@@ -311,7 +308,8 @@ class TrackGenerator:
                 if (eff_c1, eff_c2) != (c1, c2):
                     if not quiet:
                         print(f"  Extended: [{eff_c1:.1f}, {eff_c2:.1f}] MAIN m")
-                    overrun_jobs.append((loop, c1, c2, eff_c1, eff_c2))
+                    if (getattr(loop, "extend_start_m", 0.0) or 0.0) > 0 or (getattr(loop, "extend_end_m", 0.0) or 0.0) > 0:
+                        overrun_jobs.append((loop, c1, c2, eff_c1, eff_c2))
             else:
                 tracks[loop.name] = _offset_alignment(base, loop.spacing, loop.side)
                 main_extents[loop.name] = (ref_start, _ref_end)
@@ -347,7 +345,8 @@ class TrackGenerator:
                 if (eff_c1, eff_c2) != (c1, c2):
                     if not quiet:
                         print(f"  Extended: [{eff_c1:.1f}, {eff_c2:.1f}] MAIN m")
-                    overrun_jobs.append((line, c1, c2, eff_c1, eff_c2))
+                    if (getattr(line, "extend_start_m", 0.0) or 0.0) > 0 or (getattr(line, "extend_end_m", 0.0) or 0.0) > 0:
+                        overrun_jobs.append((line, c1, c2, eff_c1, eff_c2))
             else:
                 reference = getattr(line, "reference_track", "MAIN_LINE") or "MAIN_LINE"
                 base = tracks.get(reference, main)
