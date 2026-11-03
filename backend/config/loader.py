@@ -69,6 +69,7 @@ class ESPConfig:
     start_km: float | int | None = None
     start_m: float | int | None = None
     show_alignment_chainages: bool | None = None
+    station_markers: list = None
 
     def __post_init__(self):
         if self.loops is None:
@@ -329,4 +330,5 @@ def load_config_from_json(filename: str) -> ESPConfig:
         start_km=data.get("start_km"),
         start_m=data.get("start_m"),
         show_alignment_chainages=data.get("show_alignment_chainages", None),
+        station_markers=data.get("station_markers") or [],
     )

@@ -45,6 +45,7 @@ const initialForm = () => ({
   mainLength: null,
   outputDxf: '',
   trackSourceLayer: '',
+  stationMarkers: [],
   loops: [],
   mainLines: [],
   mainLineDirection: 'UP',

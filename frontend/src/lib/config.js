@@ -541,6 +541,17 @@ export function buildConfig(form) {
     start_km: startKmVal,
     start_m: startMVal,
     show_alignment_chainages: showAlignmentChainages,
+    station_markers: (f.stationMarkers || []).map((s, idx) => {
+      const kmVal = !isBlank(s.km) ? Number(s.km) : null;
+      const mVal = !isBlank(s.m) ? Number(s.m) : null;
+      return {
+        name: strOr(s.name, `STATION ${idx + 1}`),
+        km: kmVal,
+        m: mVal,
+        chainage: (kmVal !== null || mVal !== null) ? formatStartChainage(s.km, s.m) : strOr(s.chainage, ''),
+        show_flag: s.showFlag !== false,
+      };
+    }),
     output_dxf: strOr(f.outputDxf, DEFAULTS.outputDxf),
     track_source_layer: strOr(f.trackSourceLayer, DEFAULTS.trackSourceLayer),
     loops: (f.loops || []).map(buildLoop),

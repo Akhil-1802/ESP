@@ -93,5 +93,13 @@ export const blankGradient = () => ({
   rl: '',
 });
 
+export const blankStationMarker = (idx = 1) => ({
+  name: `STATION ${idx}`,
+  km: '',
+  m: '',
+  showFlag: true,
+});
+
+
 
 

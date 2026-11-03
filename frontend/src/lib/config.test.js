@@ -563,6 +563,45 @@ describe('formatStartChainage & calculateEndChainageFromKmM', () => {
   });
 });
 
+describe('station markers', () => {
+  it('serializes station markers with KM and M', () => {
+    const form = {
+      stationMarkers: [
+        { name: 'DELHI JN', km: '2', m: '400' },
+        { name: 'NEW DELHI', km: '3', m: '' },
+      ],
+    };
+    const cfg = buildConfig(form);
+    assert.equal(cfg.station_markers.length, 2);
+    assert.deepEqual(cfg.station_markers[0], {
+      name: 'DELHI JN',
+      km: 2,
+      m: 400,
+      chainage: '2+400',
+      show_flag: true,
+    });
+    assert.deepEqual(cfg.station_markers[1], {
+      name: 'NEW DELHI',
+      km: 3,
+      m: null,
+      chainage: '3',
+      show_flag: true,
+    });
+  });
+
+  it('hides alignment chainages and markers when loops or lines are added', () => {
+    const formWithoutLoops = { loops: [] };
+    assert.equal(buildConfig(formWithoutLoops).show_alignment_chainages, true);
+
+    const formWithLoops = { loops: [{ name: 'LOOP_1' }] };
+    assert.equal(buildConfig(formWithLoops).show_alignment_chainages, false);
+
+    const formWithMainLines = { mainLines: [{ side: 'LEFT' }] };
+    assert.equal(buildConfig(formWithMainLines).show_alignment_chainages, false);
+  });
+});
+
+
 
 
 

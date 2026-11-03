@@ -353,3 +353,152 @@ def test_alignment_interval_chainages_hidden_when_loops_present(tmp_path):
     assert len(texts) == 0
 
 
+def test_alignment_station_markers_drawn(tmp_path):
+    """Alignment station markers draw prominent perpendicular lines and labels at given chainage."""
+    tracks = {"MAIN_LINE": _straight(length=1000.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "station_markers.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=2,
+                start_m=0,
+                start_chainage="2",
+                station_markers=[
+                    {"name": "DELHI JUNCTION", "km": 2, "m": 400},
+                    {"name": "NEW DELHI", "km": 2, "m": 900},
+                ],
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    stn_texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == "STATION"]
+    stn_lines = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == "STATION"]
+    flag_polys = [e for e in res.modelspace() if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "STATION-FLAG"]
+    flag_lines = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == "STATION-FLAG"]
+
+    assert "STATION: DELHI JUNCTION" in stn_texts
+    assert "CH: 2+400" in stn_texts
+    assert "STATION: NEW DELHI" in stn_texts
+    assert "CH: 2+900" in stn_texts
+    # 2 station perpendicular lines on STATION layer
+    assert len(stn_lines) == 2
+    # 2 station waving flags on STATION-FLAG layer with polylines and hatch lines
+    assert len(flag_polys) == 2
+    assert len(flag_lines) > 20
+
+
+def test_alignment_station_markers_crossbar_when_flag_disabled(tmp_path):
+    """When station flag is explicitly disabled, draws terminal crossbar instead."""
+    tracks = {"MAIN_LINE": _straight(length=1000.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "station_crossbar.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=2,
+                station_markers=[
+                    {"name": "STATION NO FLAG", "km": 2, "m": 500, "show_flag": False},
+                ],
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    stn_lines = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == "STATION"]
+    flag_polys = [e for e in res.modelspace() if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "STATION-FLAG"]
+
+    # 1 perpendicular line + 1 top crossbar line = 2 lines on STATION
+    assert len(stn_lines) == 2
+    # No flags on STATION-FLAG layer
+    assert len(flag_polys) == 0
+
+
+def test_alignment_station_markers_hidden_when_loops_present(tmp_path):
+    """Station markers along alignment are hidden when loops or other features exist."""
+    tracks = {"MAIN_LINE": _straight(length=1000.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "station_markers_hidden.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=2,
+                loops=[{"name": "LOOP_1"}],
+                station_markers=[{"name": "DELHI", "km": 2, "m": 400}],
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    stn_texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == "STATION"]
+    assert len(stn_texts) == 0
+
+
+def test_station_marker_separates_left_and_right_and_omits_interval_collision(tmp_path):
+    """Station marker places name on left and chainage on right, and omits colliding interval tick."""
+    tracks = {"MAIN_LINE": _straight(length=1000.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "station_separation.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=5,
+                start_m=0,
+                start_chainage="5",
+                station_markers=[
+                    {"name": "STATION 1", "km": 5, "m": 200},
+                ],
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    interval_texts = [e for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    interval_str = [e.dxf.text for e in interval_texts]
+
+    # Interval tick at 200m (CH-5+200) was omitted so it doesn't collide with the station at 200m
+    assert "CH-5+200" not in interval_str
+    # Adjacent interval ticks exist
+    assert "CH-5+100" in interval_str
+    assert "CH-5+300" in interval_str
+
+    # Station texts are on layer STATION
+    stn_entities = [e for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == "STATION"]
+    stn_name_e = next(e for e in stn_entities if "STATION: STATION 1" in e.dxf.text)
+    stn_ch_e = next(e for e in stn_entities if "CH: 5+200" in e.dxf.text)
+
+    # Station name is to the LEFT of the station line (x < 200)
+    assert stn_name_e.dxf.insert[0] < 200.0
+    # Station chainage is to the RIGHT of the station line (x > 200)
+    assert stn_ch_e.dxf.insert[0] > 200.0
+    # Horizontal separation between name and chainage is at least 2.5m
+    assert abs(stn_ch_e.dxf.insert[0] - stn_name_e.dxf.insert[0]) >= 2.5
+
+
+
+

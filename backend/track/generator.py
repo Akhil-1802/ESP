@@ -219,11 +219,14 @@ def _apply_loop_extension(
     ext_end = getattr(loop, "extend_end_m", 0.0) or 0.0
     if ext_start < 0 or ext_end < 0:
         raise ValueError(f"Loop {loop.name}: extensions must be >= 0")
+    chainages = cumulative_chainages(main_points)
+    total_len = chainages[-1] if chainages else float("inf")
     # Maintain sufficient preliminary baseline so crossover planning and spacing checks
     # always find parallel track across the crossover zone; exact overrun trimming happens in Step 10.
     prelim_s = max(float(ext_start), float(DEFAULT_OVERRUN_M))
     prelim_e = max(float(ext_end), float(DEFAULT_OVERRUN_M))
-    eff_c1, eff_c2 = max(0.0, c1 - prelim_s), c2 + prelim_e
+    eff_c1 = max(0.0, c1 - prelim_s)
+    eff_c2 = min(total_len, c2 + prelim_e)
     return _generate_bounded_loop(main_points, eff_c1, eff_c2, loop.spacing, loop.side), eff_c1, eff_c2
 
 
