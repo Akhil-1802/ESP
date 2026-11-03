@@ -500,5 +500,48 @@ def test_station_marker_separates_left_and_right_and_omits_interval_collision(tm
     assert abs(stn_ch_e.dxf.insert[0] - stn_name_e.dxf.insert[0]) >= 2.5
 
 
+def test_alignment_interval_chainages_positive_slope_rotation_and_gap(tmp_path):
+    """When track slope has norm_deg > 90 (e.g. 95 deg), text rotation does not flip upside down.
+
+    Top text (CH-...) and bottom text (Ch. ... M) both maintain upwards orientation and have
+    clean gap from the track line without overlapping it.
+    """
+    # Track with slight positive slope (e.g. dy/dx = 8.7 / 100 => norm_deg ~ 95 deg)
+    tracks = {"MAIN_LINE": [(0.0, 0.0), (100.0, 8.7), (200.0, 17.4)]}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "interval_slope.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=9,
+                start_m=600,
+                start_chainage="9+600",
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    texts = [e for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    assert len(texts) > 0
+
+    for t in texts:
+        # Rotation must be positive (in [0, 180)), pointing upwards, not flipped negative
+        assert 0.0 <= t.dxf.rotation < 180.0, f"Text {t.dxf.text} has flipped rotation {t.dxf.rotation}"
+
+    # Verify CH-9+600 top text is safely above the track and does not cross y=0
+    top_t = next(t for t in texts if t.dxf.text == "CH-9+600")
+    assert top_t.dxf.insert[1] > 6.0, f"Top text {top_t.dxf.text} insert y={top_t.dxf.insert[1]} too close to track"
+
+    # Verify Ch. 9600 M bottom text is safely below the track
+    bot_t = next(t for t in texts if t.dxf.text == "Ch. 9600 M")
+    assert bot_t.dxf.insert[1] < 0.0, f"Bottom text {bot_t.dxf.text} insert y={bot_t.dxf.insert[1]} above track"
+
+
 
 

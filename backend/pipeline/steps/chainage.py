@@ -635,18 +635,18 @@ class ChainageStep(PipelineStep):
             p_bot = (px - nx * tick_bot_len, py - ny * tick_bot_len)
             doc.modelspace().add_line(p_bot, p_top, dxfattribs={"layer": layer_name, "color": 1})
 
-            # Normal angle in degrees
+            # Normal angle in degrees: keep in [0, 180) so text always points upwards (along +n)
             norm_deg = math.degrees(math.atan2(ny, nx))
             rot_deg = norm_deg
-            while rot_deg > 90.0:
+            while rot_deg >= 180.0:
                 rot_deg -= 180.0
-            while rot_deg < -90.0:
+            while rot_deg < 0.0:
                 rot_deg += 180.0
 
             # Insert top text (CH-...) along normal at tick_top, offset to left of tick line
             ins_top = (
-                px - tx * 0.5 + nx * (tick_top_len + 0.8),
-                py - ty * 0.5 + ny * (tick_top_len + 0.8),
+                px - tx * 0.5 + nx * (tick_top_len + 1.2),
+                py - ty * 0.5 + ny * (tick_top_len + 1.2),
             )
             doc.modelspace().add_text(
                 top_text,
@@ -661,9 +661,11 @@ class ChainageStep(PipelineStep):
             )
 
             # Insert bottom text (Ch. 1900 M) along normal below track, offset to left of tick line
+            bot_text_len = len(bot_text) * (text_h * 0.7)
+            bot_offset = max(8.5, 1.8 + bot_text_len)
             ins_bot = (
-                px - tx * 0.5 - nx * 8.5,
-                py - ty * 0.5 - ny * 8.5,
+                px - tx * 0.5 - nx * bot_offset,
+                py - ty * 0.5 - ny * bot_offset,
             )
             doc.modelspace().add_text(
                 bot_text,
@@ -839,12 +841,12 @@ class ChainageStep(PipelineStep):
                     dxfattribs={"layer": layer_name, "color": 1},
                 )
 
-            # Normal angle in degrees for readable text rotation
+            # Normal angle in degrees for readable text rotation: keep in [0, 180) so text always points upwards (along +n)
             norm_deg = math.degrees(math.atan2(ny, nx))
             rot_deg = norm_deg
-            while rot_deg > 90.0:
+            while rot_deg >= 180.0:
                 rot_deg -= 180.0
-            while rot_deg < -90.0:
+            while rot_deg < 0.0:
                 rot_deg += 180.0
 
             # Separation of text: LEFT and RIGHT of the station line to guarantee zero overlap.
@@ -888,12 +890,15 @@ class ChainageStep(PipelineStep):
             )
 
             # Bottom of line (below track): Ch. <ch_m> M on the left of the line
+            stn_bot_text = f"Ch. {int(round(ch_m))} M"
+            stn_bot_len = len(stn_bot_text) * (1.0 * 0.7)
+            stn_bot_offset = max(8.5, 1.8 + stn_bot_len)
             ins_bot = (
-                px - tx * 0.8 - nx * 8.5,
-                py - ty * 0.8 - ny * 8.5,
+                px - tx * 0.8 - nx * stn_bot_offset,
+                py - ty * 0.8 - ny * stn_bot_offset,
             )
             doc.modelspace().add_text(
-                f"Ch. {int(round(ch_m))} M",
+                stn_bot_text,
                 dxfattribs={
                     "layer": layer_name,
                     "color": 1,
