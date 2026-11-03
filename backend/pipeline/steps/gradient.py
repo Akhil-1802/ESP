@@ -82,9 +82,9 @@ def compute_gradient_offset(grad_ch: str | float, stn_ch: str | float | None) ->
         return (grad_val - stn_val) * 1000.0
     if grad_unit == "M" and stn_unit == "M":
         return grad_val - stn_val
-    if grad_unit == "M" and stn_unit == "KM":
+    if grad_unit == "M" and (stn_unit == "KM" or (stn_unit is None and stn_val < 1000.0 and grad_val >= 1000.0)):
         return grad_val - (stn_val * 1000.0)
-    if grad_unit == "KM" and stn_unit == "M":
+    if (grad_unit == "KM" or (grad_unit is None and grad_val < 1000.0 and stn_val >= 1000.0)) and stn_unit == "M":
         return (grad_val * 1000.0) - stn_val
 
     # If either has explicit KM unit
@@ -267,21 +267,57 @@ class GradientStep(PipelineStep):
         self._wipe_layers(doc, {layer_name})
         ensure_layer(doc, layer_name, color=1)
 
-        # Determine station center reference chainage
-        stn_ch_input = None
-        for sreq in getattr(self.config, "stations", []) or []:
-            if getattr(sreq, "station_chainage", None) is not None:
-                stn_ch_input = sreq.station_chainage
-                break
-
-        stn_center_pt = self._get_station_center_coords(doc, tracks)
+        all_centres = station_centres_from_dxf(doc)
+        station_markers = getattr(self.config, "station_markers", None) or []
+        stn_requests = getattr(self.config, "stations", None) or []
 
         # Find reference main track geometry for station flag transverse axis
         first_track = tracks.get("MAIN_LINE", next(iter(tracks.values())))
         cleaned_main = [(float(p[0]), float(p[1])) for p in first_track]
-        flag_dist, flag_side = self._get_station_flag_distance(doc, cleaned_main, stn_center_pt)
+        default_stn_center = self._get_station_center_coords(doc, tracks)
 
         for grad in gradients:
+            stn_idx = getattr(grad, "station_index", None)
+            if stn_idx is None and len(station_markers) == 1:
+                stn_idx = 0
+
+            # Determine station reference chainage for this specific station
+            stn_ch_input = None
+            if stn_idx is not None and 0 <= stn_idx < len(station_markers):
+                sm = station_markers[stn_idx]
+                if isinstance(sm, dict):
+                    stn_ch_input = sm.get("chainage") or (f"{sm.get('km')}+{sm.get('m')}" if sm.get("km") is not None else None)
+                else:
+                    stn_ch_input = getattr(sm, "chainage", None)
+
+            if stn_ch_input is None and stn_idx is not None and 0 <= stn_idx < len(stn_requests):
+                stn_ch_input = getattr(stn_requests[stn_idx], "station_chainage", None)
+
+            if stn_ch_input is None:
+                for sreq in stn_requests:
+                    if getattr(sreq, "station_chainage", None) is not None:
+                        stn_ch_input = sreq.station_chainage
+                        break
+
+            # Determine station center point for this specific station
+            if stn_idx is not None and all_centres and 0 <= stn_idx < len(all_centres):
+                stn_center_pt = all_centres[stn_idx]
+            elif stn_idx is not None and 0 <= stn_idx < len(station_markers):
+                try:
+                    km_val = float(sm.get("km", 0) if isinstance(sm, dict) else getattr(sm, "km", 0) or 0)
+                    m_val = float(sm.get("m", 0) if isinstance(sm, dict) else getattr(sm, "m", 0) or 0)
+                    start_km = float(getattr(self.config, "start_km", 0) or 0)
+                    start_m = float(getattr(self.config, "start_m", 0) or 0)
+                    d_m = max(0.0, (km_val * 1000.0 + m_val) - (start_km * 1000.0 + start_m))
+                    stn_center_pt = point_at_chainage(cleaned_main, d_m).point
+                except Exception:
+                    stn_center_pt = default_stn_center
+            elif all_centres:
+                stn_center_pt = all_centres[0]
+            else:
+                stn_center_pt = default_stn_center
+
+            flag_dist, flag_side = self._get_station_flag_distance(doc, cleaned_main, stn_center_pt)
             track_name, track_points = self._resolve_track(
                 grad.track_designation, tracks
             )
@@ -298,6 +334,10 @@ class GradientStep(PipelineStep):
             # Compute relative offset along alignment using chainage
             if grad.chainage is not None and str(grad.chainage).strip() != "":
                 offset_m = compute_gradient_offset(grad.chainage, stn_ch_input)
+            elif getattr(grad, "km", None) is not None and str(grad.km).strip() != "":
+                m_val = getattr(grad, "m", None)
+                km_m_str = f"{grad.km}+{m_val}" if m_val is not None and str(m_val).strip() != "" else str(grad.km)
+                offset_m = compute_gradient_offset(km_m_str, stn_ch_input)
             else:
                 offset_m = 0.0
 

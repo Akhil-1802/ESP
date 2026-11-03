@@ -95,32 +95,58 @@ def _polyline_length(points: Sequence[Point]) -> float:
 
 
 def _nearest_point(points: Sequence[Point], query: Point) -> Point:
+    return _nearest_segment_and_point(points, query)[0]
+
+
+def _nearest_segment_and_point(
+    points: Sequence[Point], query: Point
+) -> tuple[Point, tuple[float, float], float]:
+    """Find nearest point on a polyline to query, returning (nearest_point, segment_direction, distance)."""
     candidates = []
     for first, second in zip(points, points[1:]):
         dx, dy = second[0] - first[0], second[1] - first[1]
-        ratio = ((query[0] - first[0]) * dx + (query[1] - first[1]) * dy) / (dx * dx + dy * dy or 1.0)
+        seg_len = math.hypot(dx, dy)
+        if seg_len < 1e-9:
+            continue
+        ratio = ((query[0] - first[0]) * dx + (query[1] - first[1]) * dy) / (seg_len * seg_len)
         ratio = min(max(ratio, 0.0), 1.0)
-        candidate = (first[0] + ratio * dx, first[1] + ratio * dy)
-        candidates.append((math.hypot(query[0] - candidate[0], query[1] - candidate[1]), candidate))
+        cand = (first[0] + ratio * dx, first[1] + ratio * dy)
+        d = math.hypot(query[0] - cand[0], query[1] - cand[1])
+        candidates.append((d, cand, (dx / seg_len, dy / seg_len)))
     if not candidates:
         raise ValueError("Selected track centerline needs at least two points")
-    return min(candidates)[1]
+    best_dist, best_pt, best_dir = min(candidates, key=lambda c: c[0])
+    return best_pt, best_dir, best_dist
 
 
 def centerline_distance_mm(from_points: Sequence[Point], to_points: Sequence[Point]) -> float:
-    _, direction = _track_frame(from_points)
-    _, target_direction = _track_frame(to_points)
-    angle = abs(
-        math.atan2(
-            direction[0] * target_direction[1] - direction[1] * target_direction[0],
-            direction[0] * target_direction[0] + direction[1] * target_direction[1],
-        )
-    )
+    if len(from_points) < 2 or len(to_points) < 2:
+        raise ValueError("Selected track must contain at least two points")
+
+    len_from = _polyline_length(from_points)
+    len_to = _polyline_length(to_points)
+
+    # Use the midpoint of the shorter polyline to evaluate local parallelism & distance
+    if len_to <= len_from:
+        mid = _midpoint(to_points)
+        _, dir_to, _ = _nearest_segment_and_point(to_points, mid)
+        target, dir_from, _ = _nearest_segment_and_point(from_points, mid)
+    else:
+        mid = _midpoint(from_points)
+        _, dir_from, _ = _nearest_segment_and_point(from_points, mid)
+        target, dir_to, _ = _nearest_segment_and_point(to_points, mid)
+
+    # Compute unoriented angle between the two local tangents
+    cos_angle = abs(dir_from[0] * dir_to[0] + dir_from[1] * dir_to[1])
+    sin_angle = abs(dir_from[0] * dir_to[1] - dir_from[1] * dir_to[0])
+    angle = math.atan2(sin_angle, cos_angle)
+
     if angle > math.radians(PARALLEL_TOLERANCE_DEGREES):
         raise ValueError("Crossover selection requires locally parallel track centerlines")
-    origin = _midpoint(from_points)
-    target = _nearest_point(to_points, origin)
-    distance = abs((target[0] - origin[0]) * (-direction[1]) + (target[1] - origin[1]) * direction[0])
+
+    distance = abs((target[0] - mid[0]) * (-dir_from[1]) + (target[1] - mid[1]) * dir_from[0])
+    if distance <= 1e-9:
+        distance = math.hypot(target[0] - mid[0], target[1] - mid[1])
     distance_mm = distance * MM_PER_UNIT
     if distance_mm <= 0:
         raise ValueError("Selected track centerlines must have a positive separation")
@@ -187,21 +213,6 @@ def generate_crossover_coordinates(
     to_endpoint_chainage_m: float | None = None,
 ) -> list[Point]:
     """Build an ESP crossover as two mirror turnouts with a connecting element."""
-    direction = _track_frame(from_points)[1]
-    target_direction = _track_frame(to_points)[1]
-    alignment = (
-        direction
-        if direction[0] * target_direction[0] + direction[1] * target_direction[1] >= 0
-        else (-direction[0], -direction[1])
-    )
-    normal = (-direction[1], direction[0])
-    from_mid = _midpoint(from_points)
-    to_mid = _nearest_point(to_points, from_mid)
-    signed_distance = (
-        (to_mid[0] - from_mid[0]) * normal[0] + (to_mid[1] - from_mid[1]) * normal[1]
-    ) * MM_PER_UNIT
-    if signed_distance < 0:
-        normal = (-normal[0], -normal[1])
     common_length_m = min(_polyline_length(from_points), _polyline_length(to_points))
     half_x = geometry.horizontal_distance_mm / 2
     center_m = common_length_m / 2 if center_chainage_m is None else center_chainage_m
@@ -215,6 +226,20 @@ def generate_crossover_coordinates(
         to_points,
         to_endpoint_chainage_m if to_endpoint_chainage_m is not None else to_center + half_x / MM_PER_UNIT,
     )
+
+    _, direction, _ = _nearest_segment_and_point(from_points, start)
+    _, target_direction, _ = _nearest_segment_and_point(to_points, end)
+    alignment = (
+        direction
+        if direction[0] * target_direction[0] + direction[1] * target_direction[1] >= 0
+        else (-direction[0], -direction[1])
+    )
+    normal = (-direction[1], direction[0])
+    signed_distance = (
+        (end[0] - start[0]) * normal[0] + (end[1] - start[1]) * normal[1]
+    ) * MM_PER_UNIT
+    if signed_distance < 0:
+        normal = (-normal[0], -normal[1])
 
     crossing_angle = geometry.turnout.crossing_angle_rad
     assert crossing_angle is not None

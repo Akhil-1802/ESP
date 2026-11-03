@@ -50,6 +50,28 @@ _STUB_GAP_M = 2.0
 _DEDUPE_M = 2.0
 
 
+def _calc_text_insert(p_base, normal, tangent, dist_start, text_len, rot_deg, side_offset=0.0):
+    """Calculate DXF text insertion point along a given normal ray.
+
+    Ensures that regardless of whether rot_deg is parallel (+1) or antiparallel (-1)
+    to the normal direction, the text occupies the region [dist_start, dist_start + text_len]
+    away from p_base along normal, preventing it from extending back towards or crossing the track.
+    """
+    nx, ny = normal
+    tx, ty = tangent
+    vx = math.cos(math.radians(rot_deg))
+    vy = math.sin(math.radians(rot_deg))
+    dot = vx * nx + vy * ny
+    if dot >= 0:
+        d_ins = dist_start
+    else:
+        d_ins = dist_start + text_len
+    return (
+        p_base[0] + nx * d_ins + tx * side_offset,
+        p_base[1] + ny * d_ins + ty * side_offset,
+    )
+
+
 class ChainageStep(PipelineStep):
     """Pipeline step: station-relative chainage labels."""
 
@@ -644,9 +666,15 @@ class ChainageStep(PipelineStep):
                 rot_deg += 180.0
 
             # Insert top text (CH-...) along normal at tick_top, offset to left of tick line
-            ins_top = (
-                px - tx * 0.5 + nx * (tick_top_len + 1.2),
-                py - ty * 0.5 + ny * (tick_top_len + 1.2),
+            top_len = len(top_text) * (text_h * 0.75)
+            ins_top = _calc_text_insert(
+                (px, py),
+                (nx, ny),
+                (tx, ty),
+                tick_top_len + 1.5,
+                top_len,
+                rot_deg,
+                side_offset=-0.8,
             )
             doc.modelspace().add_text(
                 top_text,
@@ -661,11 +689,15 @@ class ChainageStep(PipelineStep):
             )
 
             # Insert bottom text (Ch. 1900 M) along normal below track, offset to left of tick line
-            bot_text_len = len(bot_text) * (text_h * 0.7)
-            bot_offset = max(8.5, 1.8 + bot_text_len)
-            ins_bot = (
-                px - tx * 0.5 - nx * bot_offset,
-                py - ty * 0.5 - ny * bot_offset,
+            bot_text_len = len(bot_text) * (text_h * 0.75)
+            ins_bot = _calc_text_insert(
+                (px, py),
+                (-nx, -ny),
+                (tx, ty),
+                tick_bot_len + 1.5,
+                bot_text_len,
+                rot_deg,
+                side_offset=-0.8,
             )
             doc.modelspace().add_text(
                 bot_text,
@@ -850,18 +882,23 @@ class ChainageStep(PipelineStep):
                 rot_deg += 180.0
 
             # Separation of text: LEFT and RIGHT of the station line to guarantee zero overlap.
-            # - STATION: <NAME> sits to the LEFT of the line (-tx)
-            # - CH: <KM+M> sits to the RIGHT of the line (+tx)
-            # - Ch. <ch_m> M sits to the LEFT of the line below track (-nx)
-            text_offset_y = 3.5 if show_flag else 1.5
-
-            # Left of line: STATION: <NAME>
-            ins_left = (
-                p_top[0] - tx * 0.8 + nx * text_offset_y,
-                p_top[1] - ty * 0.8 + ny * text_offset_y,
+            # - Left of line: STATION: <NAME> sits at side_offset -2.5
+            # - Right of line: CH: <KM+M> sits at side_offset +2.5
+            # - Bottom of line (below track): Ch. <ch_m> M sits below p_bot
+            y_start = line_top_len + 3.5 if show_flag else line_top_len + 1.5
+            stn_text = f"STATION: {stn_name.upper()}"
+            stn_len = len(stn_text) * (1.4 * 0.75)
+            ins_left = _calc_text_insert(
+                (px, py),
+                (nx, ny),
+                (tx, ty),
+                y_start,
+                stn_len,
+                rot_deg,
+                side_offset=-2.5,
             )
             doc.modelspace().add_text(
-                f"STATION: {stn_name.upper()}",
+                stn_text,
                 dxfattribs={
                     "layer": layer_name,
                     "color": 1,
@@ -872,13 +909,20 @@ class ChainageStep(PipelineStep):
                 },
             )
 
-            # Right of line: CH: <KM+M>
-            ins_right = (
-                p_top[0] + tx * 2.2 + nx * text_offset_y,
-                p_top[1] + ty * 2.2 + ny * text_offset_y,
+            # CH: <KM+M>
+            ch_text = f"CH: {ch_disp}"
+            ch_len = len(ch_text) * (1.2 * 0.75)
+            ins_right = _calc_text_insert(
+                (px, py),
+                (nx, ny),
+                (tx, ty),
+                y_start,
+                ch_len,
+                rot_deg,
+                side_offset=+2.5,
             )
             doc.modelspace().add_text(
-                f"CH: {ch_disp}",
+                ch_text,
                 dxfattribs={
                     "layer": layer_name,
                     "color": 1,
@@ -891,11 +935,15 @@ class ChainageStep(PipelineStep):
 
             # Bottom of line (below track): Ch. <ch_m> M on the left of the line
             stn_bot_text = f"Ch. {int(round(ch_m))} M"
-            stn_bot_len = len(stn_bot_text) * (1.0 * 0.7)
-            stn_bot_offset = max(8.5, 1.8 + stn_bot_len)
-            ins_bot = (
-                px - tx * 0.8 - nx * stn_bot_offset,
-                py - ty * 0.8 - ny * stn_bot_offset,
+            stn_bot_len = len(stn_bot_text) * (1.0 * 0.75)
+            ins_bot = _calc_text_insert(
+                (px, py),
+                (-nx, -ny),
+                (tx, ty),
+                line_bot_len + 1.5,
+                stn_bot_len,
+                rot_deg,
+                side_offset=-0.8,
             )
             doc.modelspace().add_text(
                 stn_bot_text,

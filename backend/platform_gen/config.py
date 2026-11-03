@@ -67,6 +67,10 @@ class PlatformConfig:
     stair_layer: str = "PLATFORM-STAIRS"
     stair_color: int = 1
 
+    # --- station referencing --------------------------------------------
+    station_index: Optional[int] = None
+    center_chainage: Optional[float] = None
+
     @property
     def effective_arm_length(self) -> float:
         """Centralized platform arm length (defaults to 16.999 m if unspecified)."""
@@ -79,6 +83,9 @@ class PlatformConfig:
     def resolved_end_chainage(self, track_length: float) -> float:
         """Work out the end chainage from whichever inputs were given."""
         start_chainage = self.resolved_start_chainage(track_length)
+        if self.center_chainage is not None:
+            length = self.platform_length or 550.0
+            return min(track_length, start_chainage + length)
         if self.end_chainage is not None:
             return self.end_chainage
         if self.platform_length is not None:
@@ -87,6 +94,10 @@ class PlatformConfig:
 
     def resolved_start_chainage(self, track_length: float) -> float:
         """Return the requested start, or center the platform on the track."""
+        if self.center_chainage is not None:
+            length = self.platform_length or 550.0
+            start = self.center_chainage - (length / 2.0)
+            return max(0.0, min(start, max(0.0, track_length - length)))
         if self.center_on_track:
             length = self.platform_length
             if length is None and self.end_chainage is not None:

@@ -201,3 +201,25 @@ def test_auto_forward_anchors_after_previous():
     assert report.overall_valid, report.errors
     placed = next(r.chainage for r in results if r.id == "C2")
     assert placed > 500.0
+
+
+def test_centerline_distance_curved_long_mainline_with_local_parallel_loop():
+    from track.crossover.core import centerline_distance_mm
+    # Mainline: straight from 0 to 5000, then bends by 15 deg between 5000 and 10000
+    main = [(float(x), 0.0) for x in range(0, 5001, 100)]
+    rad = math.radians(15.0)
+    for x in range(5100, 10001, 100):
+        dx = x - 5000.0
+        main.append((5000.0 + dx * math.cos(rad), dx * math.sin(rad)))
+    # Loop line: parallel to mainline between 2000 and 2750 at 5.3m offset
+    loop = [(float(x), 5.3) for x in range(2000, 2751, 50)]
+    dist_mm = centerline_distance_mm(main, loop)
+    assert dist_mm == pytest.approx(5300.0, abs=10.0)
+
+
+def test_centerline_distance_antiparallel_tracks():
+    from track.crossover.core import centerline_distance_mm
+    from_pts = [(0.0, 0.0), (1000.0, 0.0)]
+    to_pts = [(1000.0, 5.3), (0.0, 5.3)]
+    dist_mm = centerline_distance_mm(from_pts, to_pts)
+    assert dist_mm == pytest.approx(5300.0, abs=1.0)

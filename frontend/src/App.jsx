@@ -3,10 +3,12 @@ import {
   CrossoversSection,
   FobsSection,
   GradientsSection,
+  MainTracksSection,
   PlatformsSection,
   RobsSection,
   SidingsSection,
   SourceSection,
+  StationYardSection,
   StationsSection,
   TracksSection,
 } from './components/sections.jsx';
@@ -358,14 +360,53 @@ export default function App() {
               <StatusBanner status={status} />
 
               <SourceSection form={form} set={setForm} onPreviewKml={onGenerate} />
-              <TracksSection form={form} set={setForm} />
-              <PlatformsSection form={form} set={setForm} tracks={tracks} />
-              <CrossoversSection form={form} set={setForm} tracks={tracks} />
-              <StationsSection form={form} set={setForm} layers={layers} />
-              <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
-              <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
-              <SidingsSection form={form} set={setForm} tracks={tracks} />
-              <GradientsSection form={form} set={setForm} tracks={tracks} />
+
+              <MainTracksSection form={form} set={setForm} />
+
+              {(form.stationMarkers || []).length > 0 ? (
+                <>
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-slate-300">
+                    <span className="font-semibold text-emerald-400 block text-[11px] uppercase tracking-wider">
+                      Station-Referenced Yard Components
+                    </span>
+                    <span className="text-[10.5px] text-slate-400 block mt-0.5">
+                      {(form.stationMarkers || []).length} station{(form.stationMarkers || []).length > 1 ? 's' : ''} configured. Each section below takes its station as reference for loop lines, platforms, and yard elements.
+                    </span>
+                  </div>
+
+                  {(form.stationMarkers || []).map((stn, idx) => (
+                    <StationYardSection
+                      key={idx}
+                      station={stn}
+                      stationIndex={idx}
+                      form={form}
+                      set={setForm}
+                      tracks={tracks}
+                      layers={layers}
+                    />
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-amber-200/90">
+                    <span className="font-semibold text-amber-300 block text-[11px]">
+                      Single / Standalone Layout Mode
+                    </span>
+                    <span className="text-[10.5px] text-amber-200/70 block mt-0.5">
+                      To configure loop lines and platforms referenced to specific stations, enter <strong>No. of stations</strong> in Section 1 above.
+                    </span>
+                  </div>
+
+                  <TracksSection form={form} set={setForm} />
+                  <PlatformsSection form={form} set={setForm} tracks={tracks} />
+                  <CrossoversSection form={form} set={setForm} tracks={tracks} />
+                  <StationsSection form={form} set={setForm} layers={layers} />
+                  <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
+                  <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
+                  <SidingsSection form={form} set={setForm} tracks={tracks} />
+                  <GradientsSection form={form} set={setForm} tracks={tracks} />
+                </>
+              )}
             </div>
 
             {/* Drag handle: resize the inputs sidebar */}

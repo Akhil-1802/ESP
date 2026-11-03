@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import ezdxf
 
-from common.geometry import nearest_point_on_alignment, polygon_contains, polygons_overlap
+from common.geometry import nearest_point_on_alignment, point_at_chainage, polyline_length, polygon_contains, polygons_overlap
 from platform_gen.config import PlatformType as _PlatformType
 from platform_gen.dxf_io import write_platform as _write_platform
 from platform_gen.platform import PlatformGenerator
-from platform_gen.track import _extract_points
+from platform_gen.track import Track, _extract_points
 from station.builder import _polygon_area
 from track.drawing import _add_track_label
 
@@ -156,6 +156,92 @@ class PlatformStep(PipelineStep):
                             f"the stairs of {layer!r}."
                         )
 
+    def _resolve_platform_center(
+        self, platform_cfg, tracks: dict | None = None
+    ) -> None:
+        """Resolve center_chainage along the platform's track from the referenced station marker."""
+        station_markers = getattr(self.config, "station_markers", None) or []
+        if not station_markers:
+            return
+
+        stn_idx = getattr(platform_cfg, "station_index", None)
+        if stn_idx is None:
+            if len(station_markers) == 1:
+                stn_idx = 0
+            else:
+                return
+
+        if not (0 <= stn_idx < len(station_markers)):
+            return
+
+        # Obtain main track points
+        main_pts = (tracks or {}).get("MAIN_LINE")
+        if not main_pts and hasattr(self, "config") and getattr(self.config, "output_dxf", None):
+            try:
+                doc = ezdxf.readfile(self.config.output_dxf)
+                main_pts = Track.from_dxf(doc, layer_name="MAIN_LINE").points
+            except Exception:
+                main_pts = None
+
+        if not main_pts:
+            return
+
+        cleaned_main = [(float(p[0]), float(p[1])) for p in main_pts]
+        total_len = polyline_length(cleaned_main)
+        if total_len <= 0:
+            return
+
+        start_ch_m = getattr(self, "_get_start_chainage_meters", None)
+        if callable(start_ch_m):
+            start_m = start_ch_m()
+        else:
+            start_m = 0.0
+            sk = getattr(self.config, "start_km", None)
+            sm = getattr(self.config, "start_m", None)
+            if sk is not None:
+                try:
+                    start_m = float(sk) * 1000.0 + (float(sm) if sm is not None else 0.0)
+                except (ValueError, TypeError):
+                    start_m = 0.0
+
+        parse_fn = getattr(self, "_parse_alignment_station_markers", None)
+        if callable(parse_fn):
+            parsed = parse_fn(cleaned_main, start_m, total_len)
+        else:
+            parsed = []
+
+        if not parsed or stn_idx >= len(parsed):
+            stn = station_markers[stn_idx]
+            km_val = stn.get("km") if isinstance(stn, dict) else getattr(stn, "km", None)
+            m_val = stn.get("m") if isinstance(stn, dict) else getattr(stn, "m", None)
+            try:
+                stn_ch = float(km_val) * 1000.0 + (float(m_val) if m_val is not None else 0.0)
+            except Exception:
+                stn_ch = 0.0
+            d = stn_ch - start_m if (start_m > 0 and stn_ch >= start_m) else stn_ch
+            stn_d = max(0.0, min(d, total_len))
+        else:
+            stn_d = parsed[stn_idx]["d"]
+
+        stn_pt = point_at_chainage(cleaned_main, stn_d).point
+
+        # Target track for this platform
+        track_layer = platform_cfg.track_layer or "MAIN_LINE"
+        target_pts = (tracks or {}).get(track_layer)
+        if not target_pts and hasattr(self, "config") and getattr(self.config, "output_dxf", None):
+            try:
+                doc = ezdxf.readfile(self.config.output_dxf)
+                target_pts = Track.from_dxf(doc, layer_name=track_layer).points
+            except Exception:
+                target_pts = None
+
+        if not target_pts:
+            target_pts = cleaned_main
+
+        cleaned_target = [(float(p[0]), float(p[1])) for p in target_pts]
+        proj = nearest_point_on_alignment(cleaned_target, stn_pt)
+        platform_cfg.center_chainage = proj.chainage
+
     def _generate_platforms(self, tracks=None) -> None:
         """Generate all platforms (outlines, stairs and tracks validated)."""
         self._platform_footprints = []
@@ -163,6 +249,9 @@ class PlatformStep(PipelineStep):
             platform_cfg = request.config
             platform_cfg.source_dxf = self.config.output_dxf
             platform_cfg.output_dxf = self.config.output_dxf
+
+            if platform_cfg.center_on_track and platform_cfg.center_chainage is None:
+                self._resolve_platform_center(platform_cfg, tracks)
 
             result, doc = PlatformGenerator(platform_cfg).build()
             _write_platform(doc, result, platform_cfg)

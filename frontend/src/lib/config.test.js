@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
+import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getPlatformBounds, getStationTrackDistance, getTrackRange, loopsNeedingCentre, parseKmM, platformLayers, trackOptions, validateForm } from './config.js';
 
 const base = () => ({
   kmlFile: { name: 'ESP.kml' },
@@ -494,6 +494,22 @@ describe('gradients', () => {
     });
   });
 
+  it('serializes stationIndex on gradients when attached to a station', () => {
+    const form = {
+      ...base(),
+      gradients: [
+        {
+          chainage: '125.400',
+          leftValue: '525',
+          rightValue: '260',
+          stationIndex: 1,
+        },
+      ],
+    };
+    const cfg = buildConfig(form);
+    assert.equal(cfg.gradients[0].station_index, 1);
+  });
+
   it('validates gradient required fields', () => {
     const form = {
       kmlFile: { name: 'test.kml' },
@@ -509,6 +525,31 @@ describe('gradients', () => {
     const errors = validateForm(form);
     assert(errors.some((e) => e.includes('chainage is required')));
     assert(errors.some((e) => e.includes('at least one gradient value')));
+  });
+
+  it('supports KM and M options for gradient chainages', () => {
+    // Test parseKmM helper
+    assert.deepEqual(parseKmM('70'), { km: '70', m: '' });
+    assert.deepEqual(parseKmM('125+400'), { km: '125', m: '400' });
+    assert.deepEqual(parseKmM('125.400'), { km: '125', m: '400' });
+    assert.deepEqual(parseKmM('125.050'), { km: '125', m: '50' });
+
+    // Test buildConfig with km and m
+    const form = {
+      ...base(),
+      gradients: [
+        {
+          km: '70',
+          m: '400',
+          leftValue: '525',
+          rightValue: '260',
+        },
+      ],
+    };
+    const cfg = buildConfig(form);
+    assert.equal(cfg.gradients[0].chainage, '70+400');
+    assert.equal(cfg.gradients[0].km, 70);
+    assert.equal(cfg.gradients[0].m, 400);
   });
 });
 
@@ -598,6 +639,64 @@ describe('station markers', () => {
 
     const formWithMainLines = { mainLines: [{ side: 'LEFT' }] };
     assert.equal(buildConfig(formWithMainLines).show_alignment_chainages, false);
+  });
+
+  it('calculates station distance along track alignment correctly', () => {
+    // Start at KM 2 (2000m), Station at KM 4 M 500 (4500m) -> 2500m along track
+    const stn1 = { km: '4', m: '500' };
+    assert.equal(getStationTrackDistance(stn1, '2', ''), 2500);
+
+    // Start at 0, Station at KM 6 (6000m) -> 6000m along track
+    const stn2 = { km: '6', m: '' };
+    assert.equal(getStationTrackDistance(stn2, '', ''), 6000);
+
+    // Plus notation station: 10+200, start at 10+000 -> 200m along track
+    const stn3 = { chainage: '10+200' };
+    assert.equal(getStationTrackDistance(stn3, '10', '0'), 200);
+  });
+
+  it('serializes stationIndex on platforms and centers platform bounds on station point', () => {
+    const cfg = buildConfig({
+      ...base(),
+      stationMarkers: [{ name: 'DELHI', km: '3', m: '000' }],
+      platforms: [{ track: 'MAIN_LINE', stationIndex: 0, length: '500' }],
+    });
+    assert.equal(cfg.platforms[0].station_index, 0);
+
+    const f = {
+      ...base(),
+      startKm: '0',
+      startM: '0',
+      stationMarkers: [{ name: 'DELHI', km: '3', m: '000' }],
+      platforms: [{ track: 'MAIN_LINE', stationIndex: 0, length: 500, centerOnTrack: true }],
+    };
+    // Station is at 3000m. Platform length is 500m -> start at 2750m, end at 3250m.
+    const bounds = getPlatformBounds(f, 'PLATFORM_1');
+    assert.ok(bounds);
+    assert.equal(bounds.start, 2750);
+    assert.equal(bounds.end, 3250);
+    assert.equal(bounds.length, 500);
+  });
+
+  it('serializes stationIndex on loops and centers blank C1/C2 on station distance', () => {
+    const form = {
+      ...base(),
+      startKm: '0',
+      startM: '0',
+      stationMarkers: [{ name: 'KALESH', km: '3', m: '000' }],
+      loops: [{ name: 'LOOP_1', stationIndex: 0, c1: '', c2: '', overrun: '0' }],
+    };
+    const filled = fillCentredChainages(form, { default_c1_m: 500, default_c2_m: 1250 });
+    // Station is at 3000m -> C1 is 3000 - 375 = 2625, C2 is 3000 + 375 = 3375
+    assert.equal(filled.loops[0].c1, '2625');
+    assert.equal(filled.loops[0].c2, '3375');
+
+    const cfg = buildConfig(filled);
+    assert.equal(cfg.loops[0].station_index, 0);
+    assert.equal(cfg.loops[0].first_crossover_chainage, 2625);
+    assert.equal(cfg.loops[0].second_crossover_chainage, 3375);
+    assert.equal(cfg.loops[0].extend_start_m, 0);
+    assert.equal(cfg.loops[0].extend_end_m, 0);
   });
 });
 

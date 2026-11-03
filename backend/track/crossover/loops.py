@@ -108,7 +108,7 @@ def generate_loop(
 
     straight_loop = [sp1_offset, sp2_offset]
     cross_geom = calculate_crossover(
-        "MAIN_LINE", "LOOP_LINE", main_points, straight_loop, turnout_spec
+        "MAIN_LINE", "LOOP_LINE", [p1, p2], straight_loop, turnout_spec
     )
     summary = {
         "type": cross_geom.crossover_type,

@@ -27,6 +27,7 @@ class LoopSpec:
     extend_start_m: float = 0.0  # overrun before C1 (MAIN m, 0 = none)
     extend_end_m: float = 0.0  # overrun past C2 (MAIN m, 0 = none)
     reference_track: str = "MAIN_LINE"  # prior alignment this loop offsets from
+    station_index: int | None = None
 
 
 @dataclass
@@ -70,6 +71,7 @@ class CrossoverSpec:
     direction: str | None = None
     position_mode: str | None = None
     auto_anchor_id: str | None = None  # prior crossover AUTO is placed from
+    station_index: int | None = None
 
 
 @dataclass
@@ -81,6 +83,9 @@ class TrackGenerationConfig:
     additional_lines: List[LoopSpec | LineSpec] = field(default_factory=list)
     crossovers: List[CrossoverSpec] = field(default_factory=list)
     main_directions: dict = field(default_factory=dict)  # track name -> UP / DN
+    station_markers: list = field(default_factory=list)
+    start_km: float | None = None
+    start_m: float | None = None
 
 
 __all__ = [

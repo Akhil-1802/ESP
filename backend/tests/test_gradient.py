@@ -459,3 +459,54 @@ def test_gradient_json_loading(tmp_path):
     assert g.rl == "102.45"
     assert g.line_length == 25.0
     assert g.offset == 10.0
+
+
+def test_gradient_km_and_m_loading_and_pipeline(tmp_path):
+    """Verify gradients specified with km and m are loaded and processed accurately."""
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(
+        """{
+        "source_path": "source.dxf",
+        "output_dxf": "out.dxf",
+        "track_source_layer": "MAIN_TRACK",
+        "gradients": [
+            {
+                "track": "MAIN_LINE",
+                "km": 70,
+                "m": 400,
+                "gradient_value": "260",
+                "direction": "RISE",
+                "rl": "102.45"
+            }
+        ]
+    }""",
+        encoding="utf-8",
+    )
+    loaded = load_config_from_json(str(cfg_file))
+    assert len(loaded.gradients) == 1
+    g = loaded.gradients[0]
+    assert g.chainage == "70+400"
+    assert g.km == 70
+    assert g.m == 400
+
+    # Pipeline execution with km & m
+    gen, out = _make_sample_pipeline(
+        tmp_path,
+        gradients=[
+            GradientRequest(
+                track_designation="MAIN_LINE",
+                km=125,
+                m=400,
+                chainage="125+400",
+                left_gradient_value="525",
+                left_direction="STRAIGHT",
+                right_gradient_value="260",
+                right_direction="RISE",
+            )
+        ],
+        station_chainage="125",
+    )
+    gen.run()
+    doc = ezdxf.readfile(str(out))
+    labels = _get_grad_texts(doc)
+    assert any("CH:" in l.dxf.text for l in labels)

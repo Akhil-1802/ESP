@@ -280,6 +280,33 @@ class TrackGenerator:
                 )
             base = tracks[reference]
             ref_start, _ref_end = main_extents.get(reference, (0.0, _polyline_length(base)))
+
+            if loop.first_crossover_chainage is None:
+                stn_markers = getattr(self.config, "station_markers", None) or []
+                stn_idx = getattr(loop, "station_index", None)
+                if stn_idx is None and len(stn_markers) == 1:
+                    stn_idx = 0
+                if stn_idx is not None and 0 <= stn_idx < len(stn_markers):
+                    stn = stn_markers[stn_idx]
+                    km_val = stn.get("km") if isinstance(stn, dict) else getattr(stn, "km", None)
+                    m_val = stn.get("m") if isinstance(stn, dict) else getattr(stn, "m", None)
+                    try:
+                        stn_ch = float(km_val) * 1000.0 + (float(m_val) if m_val is not None else 0.0)
+                    except Exception:
+                        stn_ch = 0.0
+                    start_m = 0.0
+                    sk = getattr(self.config, "start_km", None)
+                    sm = getattr(self.config, "start_m", None)
+                    if sk is not None:
+                        try:
+                            start_m = float(sk) * 1000.0 + (float(sm) if sm is not None else 0.0)
+                        except (ValueError, TypeError):
+                            start_m = 0.0
+                    stn_d = stn_ch - start_m if (start_m > 0 and stn_ch >= start_m) else stn_ch
+                    dist_m = getattr(loop, "crossover_distance_m", LOOP_CROSSOVER_DISTANCE_M) or LOOP_CROSSOVER_DISTANCE_M
+                    loop.first_crossover_chainage = max(0.0, stn_d - dist_m / 2.0)
+                    loop.second_crossover_chainage = loop.first_crossover_chainage + dist_m
+
             if loop.first_crossover_chainage is not None:
                 c1 = loop.first_crossover_chainage
                 c2 = loop.second_crossover_chainage

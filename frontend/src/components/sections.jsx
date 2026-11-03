@@ -1,4 +1,6 @@
 export { SourceSection } from './SourceSection.jsx';
+export { MainTracksSection } from './MainTracksSection.jsx';
+export { StationYardSection } from './StationYardSection.jsx';
 export { TracksSection } from './TracksSection.jsx';
 export { PlatformsSection } from './PlatformsSection.jsx';
 export { CrossoversSection } from './CrossoversSection.jsx';

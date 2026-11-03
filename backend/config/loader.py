@@ -45,6 +45,9 @@ class GradientRequest:
     track_designation: str = "MAIN_LINE"
     line_length: float = 10.0
     offset: float | None = None
+    station_index: int | None = None
+    km: float | str | None = None
+    m: float | str | None = None
 
 
 @dataclass
@@ -173,6 +176,11 @@ def _load_platform(item: dict[str, Any], source: str, output: str, number: int) 
     values.setdefault("text_layer", f"PLATFORM_{number}_TEXT")
     values["source_dxf"] = source
     values["output_dxf"] = output
+    if "station_index" in values and values["station_index"] is not None:
+        try:
+            values["station_index"] = int(values["station_index"])
+        except (ValueError, TypeError):
+            values["station_index"] = None
     config = PlatformConfig(track_layer=track_layer, **values)
     return PlatformRequest(track_layer, config)
 
@@ -306,6 +314,18 @@ def load_config_from_json(filename: str) -> ESPConfig:
                 cleaned["line_length"] = float(cleaned["line_length"])
             except (ValueError, TypeError):
                 cleaned["line_length"] = 10.0
+        if "station_index" in cleaned and cleaned["station_index"] is not None:
+            try:
+                cleaned["station_index"] = int(cleaned["station_index"])
+            except (ValueError, TypeError):
+                cleaned["station_index"] = None
+        if (not cleaned.get("chainage") or str(cleaned.get("chainage")).strip() == "") and cleaned.get("km") is not None:
+            km_val = cleaned["km"]
+            m_val = cleaned.get("m")
+            if m_val is not None and str(m_val).strip() != "":
+                cleaned["chainage"] = f"{km_val}+{m_val}"
+            else:
+                cleaned["chainage"] = str(km_val)
         return GradientRequest(**cleaned)
 
     gradients = [_load_gradient(item) for item in data.get("gradients", []) or []]

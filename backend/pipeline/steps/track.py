@@ -36,6 +36,9 @@ class TrackStep(PipelineStep):
             self.config.loops,
             self.config.additional_lines,
             main_directions=getattr(self.config, "main_directions", None) or {},
+            station_markers=getattr(self.config, "station_markers", None) or [],
+            start_km=getattr(self.config, "start_km", None),
+            start_m=getattr(self.config, "start_m", None),
         )
         return TrackGenerator(track_config).run()
 

@@ -107,9 +107,16 @@ export function getPlatformBounds(form, platformLayer) {
 
   let startCh = 0.0;
   if (p.centerOnTrack !== false) {
-    startCh = Math.max(0.0, (trackLen - pLen) / 2.0);
-    if (range && Number.isFinite(range.c1)) {
-      startCh += range.c1;
+    const stnMarkers = form?.stationMarkers || [];
+    const stnIdx = p.stationIndex ?? (stnMarkers.length === 1 ? 0 : null);
+    if (stnIdx != null && stnMarkers[stnIdx]) {
+      const stnDist = getStationTrackDistance(stnMarkers[stnIdx], form?.startKm, form?.startM);
+      startCh = Math.max(0.0, stnDist - pLen / 2.0);
+    } else {
+      startCh = Math.max(0.0, (trackLen - pLen) / 2.0);
+      if (range && Number.isFinite(range.c1)) {
+        startCh += range.c1;
+      }
     }
   } else {
     startCh = numOr(p.startChainage, 0.0);
@@ -151,7 +158,39 @@ export function fillFobCentres(form, centre) {
   };
 }
 
-/** Fill every fully-blank C1/C2 pair from a /main-center response. */
+/**
+ * Calculate distance in meters along the track alignment for a station marker.
+ * Accounts for startKm and startM reference datum.
+ */
+export function getStationTrackDistance(stationMarker, startKm, startM) {
+  if (!stationMarker) return 0;
+  const stnKm = !isBlank(stationMarker.km) ? Number(stationMarker.km) : null;
+  const stnM = !isBlank(stationMarker.m) ? Number(stationMarker.m) : 0;
+  let stnAbsoluteM = 0;
+  if (stnKm !== null) {
+    stnAbsoluteM = stnKm * 1000 + stnM;
+  } else {
+    const ch = String(stationMarker.chainage || '').trim();
+    if (ch.includes('+')) {
+      const parts = ch.split('+');
+      stnAbsoluteM = (Number(parts[0]) || 0) * 1000 + (Number(parts[1]) || 0);
+    } else {
+      const num = Number(ch);
+      stnAbsoluteM = Number.isFinite(num) ? (num <= 50 ? num * 1000 : num) : 0;
+    }
+  }
+
+  const startKmNum = !isBlank(startKm) ? Number(startKm) : null;
+  const startMNum = !isBlank(startM) ? Number(startM) : 0;
+  const startAbsoluteM = startKmNum !== null ? startKmNum * 1000 + startMNum : 0;
+
+  if (startAbsoluteM > 0 && stnAbsoluteM >= startAbsoluteM) {
+    return Math.max(0, stnAbsoluteM - startAbsoluteM);
+  }
+  return Math.max(0, stnAbsoluteM);
+}
+
+/** Fill every fully-blank C1/C2 pair from a /main-center response or station reference. */
 export function fillCentredChainages(form, centre) {
   const idx = loopsNeedingCentre(form || {});
   if (idx.length === 0) return form;
@@ -159,9 +198,19 @@ export function fillCentredChainages(form, centre) {
   const c2 = fmt(centre.default_c2_m);
   return {
     ...form,
-    loops: (form.loops || []).map((l, i) =>
-      idx.includes(i) ? { ...l, c1, c2 } : l,
-    ),
+    loops: (form.loops || []).map((l, i) => {
+      if (!idx.includes(i)) return l;
+      if (l.stationIndex != null && form.stationMarkers && form.stationMarkers[l.stationIndex]) {
+        const stn = form.stationMarkers[l.stationIndex];
+        const dist = getStationTrackDistance(stn, form.startKm, form.startM);
+        return {
+          ...l,
+          c1: fmt(Math.max(0, dist - 375)),
+          c2: fmt(dist + 375),
+        };
+      }
+      return { ...l, c1, c2 };
+    }),
   };
 }
 
@@ -280,15 +329,19 @@ function buildLoop(loop, index) {
   entry.turnout_designation = strOr(loop.turnout, DEFAULTS.turnout);
   entry.turnout_variant = strOr(loop.turnoutVariant, DEFAULTS.turnoutVariant);
   entry.crossover_distance_m = numOr(loop.crossoverDistance, DEFAULTS.crossoverDistance);
-  entry.extend_start_m = numOr(loop.extStart, DEFAULTS.loopOverrun);
-  entry.extend_end_m = numOr(loop.extEnd, DEFAULTS.loopOverrun);
+  const overrunVal = loop.overrun !== undefined && loop.overrun !== '' ? loop.overrun : null;
+  entry.extend_start_m = numOr(overrunVal ?? loop.extStart, DEFAULTS.loopOverrun);
+  entry.extend_end_m = numOr(overrunVal ?? loop.extEnd, DEFAULTS.loopOverrun);
+  if (loop.stationIndex != null || loop.station_index != null) {
+    entry.station_index = loop.stationIndex ?? loop.station_index;
+  }
   return entry;
 }
 
 function buildCrossover(x) {
   const raw = strOr(x.chainage, '');
   const chainage = raw.toUpperCase() === 'AUTO' ? 'AUTO' : Number(raw);
-  return {
+  const entry = {
     from_track: strOr(x.from, ''),
     to_track: strOr(x.to, ''),
     from_chainage_m: chainage,
@@ -296,6 +349,10 @@ function buildCrossover(x) {
     direction: strOr(x.direction, DEFAULTS.crossoverDirection).toUpperCase(),
     ...(raw.toUpperCase() === 'AUTO' && !isBlank(x.autoAnchor) ? { auto_anchor_id: strOr(x.autoAnchor, '') } : {}),
   };
+  if (x.stationIndex != null || x.station_index != null) {
+    entry.station_index = x.stationIndex ?? x.station_index;
+  }
+  return entry;
 }
 
 function buildPlatform(p) {
@@ -313,6 +370,9 @@ function buildPlatform(p) {
     platform_height: numOr(p.height, DEFAULTS.platformHeight),
     platform_name: strOr(p.name, DEFAULTS.platformName),
   };
+  if (p.stationIndex != null || p.station_index != null) {
+    entry.station_index = p.stationIndex ?? p.station_index;
+  }
   const armVal = p.armLength ?? p.stairLength;
   if (!(!isBlank(armVal) && Number(armVal) === 0)) {
     const len = numOr(armVal, DEFAULTS.armLength);
@@ -409,9 +469,17 @@ function buildGradient(g) {
   const dir = g.direction
     ? String(g.direction).trim().toUpperCase()
     : strOr(g.rightDirection || g.right_direction, 'UP').toUpperCase();
-  return {
+  
+  let ch = String(g.chainage ?? '').trim();
+  const hasKm = !isBlank(g.km);
+  const hasM = !isBlank(g.m);
+  if (hasKm || hasM) {
+    ch = formatStartChainage(g.km, g.m);
+  }
+
+  const res = {
     track: strOr(g.track, 'MAIN_LINE'),
-    chainage: String(g.chainage ?? '').trim(),
+    chainage: ch,
     direction: dir,
     left_gradient_value: String(leftVal).trim(),
     left_direction: strOr(g.leftDirection || g.left_direction, 'STRAIGHT').toUpperCase(),
@@ -421,6 +489,12 @@ function buildGradient(g) {
     gradient_value: String(rightVal).trim(),
     rl: !isBlank(g.rl) ? String(g.rl).trim() : null,
   };
+  if (hasKm) res.km = Number(g.km);
+  if (hasM) res.m = Number(g.m);
+  if (g.stationIndex != null || g.station_index != null) {
+    res.station_index = Number(g.stationIndex ?? g.station_index);
+  }
+  return res;
 }
 
 /**
@@ -495,6 +569,28 @@ export function formatStartChainage(km, m) {
   const kmNum = Number(km) || 0;
   const mNum = Number(m) || 0;
   return `${kmNum}+${String(Math.round(mNum)).padStart(3, '0')}`;
+}
+
+/**
+ * Parse a chainage string into KM and M components.
+ */
+export function parseKmM(chainageStr) {
+  if (chainageStr == null) return { km: '', m: '' };
+  const s = String(chainageStr).trim();
+  if (!s) return { km: '', m: '' };
+  if (s.includes('+')) {
+    const parts = s.split('+');
+    return { km: parts[0].trim(), m: parts[1].trim() };
+  }
+  const clean = s.replace(/^[A-Za-z\s:]+/, '').replace(/[A-Za-z\s]+$/, '');
+  if (clean.includes('.')) {
+    const parts = clean.split('.');
+    const km = parts[0].trim();
+    const frac = parts[1].trim();
+    const mNum = Math.round(parseFloat(`0.${frac}`) * 1000);
+    return { km, m: mNum ? String(mNum) : '' };
+  }
+  return { km: clean, m: '' };
 }
 
 /**

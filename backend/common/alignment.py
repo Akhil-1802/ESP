@@ -306,8 +306,9 @@ def find_straight_window(
         end = start + window_length
         directions = []
         for index in range(len(points) - 1):
-            midpoint = (chainages[index] + chainages[index + 1]) / 2.0
-            if start <= midpoint <= end:
+            seg_start = chainages[index]
+            seg_end = chainages[index + 1]
+            if max(start, seg_start) < min(end, seg_end) - 1e-6 or (start <= (seg_start + seg_end) / 2.0 <= end):
                 dx = points[index + 1][0] - points[index][0]
                 dy = points[index + 1][1] - points[index][1]
                 seg_len = math.hypot(dx, dy)

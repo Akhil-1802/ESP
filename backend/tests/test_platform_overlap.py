@@ -98,3 +98,34 @@ def test_clear_outer_platform_is_accepted(tmp_path):
     platforms = [_platform_request(
         tmp_path, "PLATFORM_1", "PROPOSED_LINE_1", "LEFT", 400.0, 500.0, stairs=10.0)]
     ESPGenerator(_base_config(tmp_path, platforms, lines)).run()
+
+
+def test_platform_centers_on_station_point(tmp_path):
+    cfg = PlatformConfig(
+        source_dxf=str(tmp_path / "src.dxf"),
+        output_dxf=str(tmp_path / "out.dxf"),
+        track_layer="MAIN_LINE",
+        platform_type="SIDE",
+        side="LEFT",
+        center_on_track=True,
+        station_index=0,
+        platform_length=400.0,
+        clearance=1.68,
+        platform_width=8.5,
+        output_layer="PLATFORM_1",
+        text_layer="PLATFORM_1_TEXT",
+    )
+    esp_cfg = ESPConfig(
+        source_path=str(ROOT / "data" / "ESP.kml"),
+        output_dxf=str(tmp_path / "out.dxf"),
+        track_source_layer="MAIN_TRACK",
+        station_markers=[{"name": "DELHI", "km": 1, "m": 0}],
+        platforms=[PlatformRequest("MAIN_LINE", cfg)],
+    )
+    ESPGenerator(esp_cfg).run()
+
+    # Verify that the generated platform was centered on the station (station at 1000m, length 400m -> start 800m, end 1200m)
+    assert cfg.center_chainage is not None
+    assert abs(cfg.center_chainage - 1000.0) < 5.0
+    assert abs(cfg.resolved_start_chainage(5000.0) - 800.0) < 5.0
+    assert abs(cfg.resolved_end_chainage(5000.0) - 1200.0) < 5.0

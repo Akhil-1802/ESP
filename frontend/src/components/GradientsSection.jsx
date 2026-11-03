@@ -1,6 +1,7 @@
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { patchAt } from '../lib/formUtils.js';
 import { blankGradient } from '../lib/formDefaults.js';
+import { formatStartChainage, parseKmM } from '../lib/config.js';
 import { Empty, Field, Grid, ItemCard, Num, Section, Sel, Text } from './fields.jsx';
 
 export function GradientsSection({ form, set }) {
@@ -22,7 +23,11 @@ export function GradientsSection({ form, set }) {
       {gradients.length === 0 && <Empty>No gradient annotations configured.</Empty>}
 
       {gradients.map((g, i) => {
-        const gradCh = g.chainage ?? '';
+        const parsed = parseKmM(g.chainage);
+        const kmVal = g.km !== undefined && g.km !== null ? String(g.km) : parsed.km;
+        const mVal = g.m !== undefined && g.m !== null ? String(g.m) : parsed.m;
+        const displayCh = formatStartChainage(kmVal, mVal);
+        const gradCh = g.chainage ?? (kmVal ? displayCh : '');
         let offsetDisplay = null;
         if (gradCh !== '') {
           const gVal = parseFloat(String(gradCh).replace(/[^\d.-]/g, ''));
@@ -46,8 +51,8 @@ export function GradientsSection({ form, set }) {
           const lPart = leftVal ? `Left: ${leftVal} (${leftDir})` : null;
           const rPart = rightVal ? `Right: ${rightVal} (${rightDir})` : null;
           cardTitle = [lPart, rPart].filter(Boolean).join(' | ');
-        } else if (g.chainage) {
-          cardTitle = `Gradient at ${g.chainage}`;
+        } else if (g.chainage || kmVal) {
+          cardTitle = `Gradient at ${g.chainage || displayCh}`;
         }
 
         return (
@@ -56,30 +61,73 @@ export function GradientsSection({ form, set }) {
             title={cardTitle}
             onRemove={() => setTop({ gradients: gradients.filter((_, k) => k !== i) })}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="Gradient chainage *" hint="e.g. 400.000 or 125.400">
-                <Text
-                  value={g.chainage ?? ''}
-                  placeholder="400.000"
-                  onChange={(e) => setTop({ gradients: patchAt(gradients, i, { chainage: e.target.value }) })}
-                />
-              </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              {/* KM and M Option */}
+              <div className="sm:col-span-5 grid grid-cols-2 gap-2">
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">
+                    Gradient KM *
+                  </span>
+                  <Text
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={kmVal}
+                    placeholder="e.g. 70"
+                    onChange={(e) => {
+                      const newKm = e.target.value;
+                      const newCh = formatStartChainage(newKm, mVal);
+                      setTop({ gradients: patchAt(gradients, i, { km: newKm, m: mVal, chainage: newCh }) });
+                    }}
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">
+                    M (optional)
+                  </span>
+                  <Text
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={mVal}
+                    placeholder="e.g. 400"
+                    onChange={(e) => {
+                      const newM = e.target.value;
+                      const newCh = formatStartChainage(kmVal, newM);
+                      setTop({ gradients: patchAt(gradients, i, { km: kmVal, m: newM, chainage: newCh }) });
+                    }}
+                  />
+                </div>
+              </div>
 
-              <Field label="Direction">
-                <Sel
-                  value={g.direction || 'UP'}
-                  onChange={(e) => setTop({ gradients: patchAt(gradients, i, { direction: e.target.value }) })}
-                  options={['UP', 'DN']}
-                />
-              </Field>
+              <div className="sm:col-span-3">
+                <Field label="Direction">
+                  <Sel
+                    value={g.direction || 'UP'}
+                    onChange={(e) => setTop({ gradients: patchAt(gradients, i, { direction: e.target.value }) })}
+                    options={['UP', 'DN']}
+                  />
+                </Field>
+              </div>
 
-              <Field label="RL (Reduced Level)" hint="e.g. 102.45">
-                <Text
-                  value={g.rl ?? ''}
-                  placeholder="102.45"
-                  onChange={(e) => setTop({ gradients: patchAt(gradients, i, { rl: e.target.value }) })}
-                />
-              </Field>
+              <div className="sm:col-span-4">
+                <Field label="RL (Reduced Level)" hint="e.g. 102.45">
+                  <Text
+                    value={g.rl ?? ''}
+                    placeholder="102.45"
+                    onChange={(e) => setTop({ gradients: patchAt(gradients, i, { rl: e.target.value }) })}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center justify-between text-[11px] text-slate-500">
+              <span>
+                Chainage:{' '}
+                <strong className="text-slate-700 font-semibold">
+                  {displayCh !== '0.000' || kmVal ? `CH-${displayCh}` : 'e.g. 70 or 125+400'}
+                </strong>
+              </span>
             </div>
 
             {/* Two inputs: Left of Center and Right of Center */}
