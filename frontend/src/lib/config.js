@@ -423,12 +423,72 @@ function buildGradient(g) {
   };
 }
 
+/**
+ * Calculate track end chainage given a start reference chainage and track length in meters.
+ * Supports:
+ * - Plain numbers (e.g. 0.000, 100.00, 125000)
+ * - Railway plus stationing (e.g. 125+400 or 125+400.00)
+ * - Unit strings (e.g. 125.4 KM, 400 M)
+ */
+export function calculateEndChainage(startChainage, lengthMeters) {
+  if (lengthMeters == null || !Number.isFinite(Number(lengthMeters))) {
+    return null;
+  }
+  const len = Number(lengthMeters);
+  if (startChainage == null || String(startChainage).trim() === '') {
+    return null;
+  }
+  const s = String(startChainage).trim();
+
+  // 1. Plus notation: e.g. "125+400"
+  if (s.includes('+')) {
+    const parts = s.split('+');
+    const km = parseFloat(parts[0].trim() || '0');
+    const m = parseFloat(parts[1].trim() || '0');
+    if (Number.isFinite(km) && Number.isFinite(m)) {
+      const totalM = km * 1000 + m + len;
+      const endKm = Math.floor(totalM / 1000);
+      const remM = totalM - endKm * 1000;
+      return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
+    }
+  }
+
+  // 2. Unit suffix: e.g. "125.4 KM" or "400 M"
+  const upper = s.toUpperCase();
+  if (upper.endsWith('KM')) {
+    const num = parseFloat(upper.replace('KM', '').trim());
+    if (Number.isFinite(num)) {
+      const endKm = num + len / 1000;
+      return `${endKm.toFixed(3)} KM`;
+    }
+  }
+  if (upper.endsWith('M')) {
+    const num = parseFloat(upper.replace('M', '').trim());
+    if (Number.isFinite(num)) {
+      const endM = num + len;
+      return `${endM.toFixed(2)} M`;
+    }
+  }
+
+  // 3. Plain numeric string
+  const num = parseFloat(s);
+  if (Number.isFinite(num)) {
+    const endVal = num + len;
+    const decMatch = s.match(/\.(\d+)/);
+    const decimals = decMatch ? Math.max(decMatch[1].length, 2) : 3;
+    return endVal.toFixed(decimals);
+  }
+
+  return null;
+}
+
 /** Build full inputconfig-schema JSON from form state. */
 export function buildConfig(form) {
   const f = form || {};
   const mainLines = f.mainLines || [];
   return {
     source_path: (f.kmlFile && f.kmlFile.name) || 'upload.kml',
+    start_chainage: strOr(f.startChainage, '0.000'),
     output_dxf: strOr(f.outputDxf, DEFAULTS.outputDxf),
     track_source_layer: strOr(f.trackSourceLayer, DEFAULTS.trackSourceLayer),
     loops: (f.loops || []).map(buildLoop),

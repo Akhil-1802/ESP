@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { fetchMainCenter } from '../lib/api.js';
-import { fillCentredChainages, fillFobCentres, fobsNeedingCentre, loopsNeedingCentre } from '../lib/config.js';
+import { calculateEndChainage, fillCentredChainages, fillFobCentres } from '../lib/config.js';
 import { Field, Grid, Section, Text } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
 
@@ -13,7 +13,10 @@ export function SourceSection({ form, set }) {
   const onFile = async (chosen) => {
     setTop({ kmlFile: chosen });
     setCentreMsg('');
-    if (!chosen || (loopsNeedingCentre(form).length === 0 && fobsNeedingCentre(form).length === 0)) return;
+    if (!chosen) {
+      set((f) => ({ ...f, kmlFile: null, mainLength: null, mainCenter: null }));
+      return;
+    }
     setCentreBusy(true);
     try {
       const c = await fetchMainCenter({ kmlFile: chosen });
@@ -23,7 +26,7 @@ export function SourceSection({ form, set }) {
         mainCenter: c.main_center_m,
       }));
       setCentreMsg(
-        `MAIN centre ${c.main_center_m} m — blank C1/C2 set to ${c.default_c1_m} / ${c.default_c2_m} m, blank FOB chainages to ${c.main_center_m} m.`,
+        `KML track length: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
       );
     } catch (err) {
       setCentreMsg(err.message);
@@ -31,6 +34,8 @@ export function SourceSection({ form, set }) {
       setCentreBusy(false);
     }
   };
+
+  const calculatedEnd = calculateEndChainage(form.startChainage ?? '0.000', form.mainLength);
 
   return (
     <Section
@@ -48,9 +53,38 @@ export function SourceSection({ form, set }) {
           />
           {(centreBusy || centreMsg) && (
             <span className="mt-0.5 block text-[11px] leading-snug text-sky-700">
-              {centreBusy ? 'Reading MAIN centre from KML…' : centreMsg}
+              {centreBusy ? 'Reading track geometry from KML…' : centreMsg}
             </span>
           )}
+        </Field>
+        <Field
+          label="Start reference chainage *"
+          hint="Track start chainage (e.g. 0.000 or 125+000)"
+        >
+          <Text
+            value={form.startChainage ?? '0.000'}
+            placeholder="0.000"
+            onChange={(e) => setTop({ startChainage: e.target.value })}
+          />
+        </Field>
+        <Field
+          label="End chainage (calculated)"
+          hint={
+            form.mainLength != null
+              ? `Auto-derived: Start + Length (${form.mainLength.toFixed(2)} m)`
+              : 'Auto-calculated once KML is loaded'
+          }
+        >
+          <input
+            type="text"
+            readOnly
+            disabled
+            value={
+              calculatedEnd ??
+              (form.mainLength != null ? 'Invalid start chainage' : '— (Upload KML to calculate)')
+            }
+            className="w-full rounded-lg border border-slate-200 bg-slate-100/90 px-2.5 py-1.5 text-xs font-semibold text-slate-700 cursor-not-allowed select-all focus:outline-none"
+          />
         </Field>
         <Field label="Output DXF name" hint="Used for the download (default ESP_frontend.dxf)">
           <Text

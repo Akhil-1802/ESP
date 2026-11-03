@@ -39,6 +39,8 @@ import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
 
 const initialForm = () => ({
   kmlFile: null,
+  startChainage: '0.000',
+  mainLength: null,
   outputDxf: '',
   trackSourceLayer: '',
   loops: [],

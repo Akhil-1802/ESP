@@ -65,6 +65,7 @@ class ESPConfig:
     sidings: list = None
     robs: list = None
     gradients: list[GradientRequest] = None
+    start_chainage: float | str | None = 0.0
 
     def __post_init__(self):
         if self.loops is None:
@@ -321,4 +322,5 @@ def load_config_from_json(filename: str) -> ESPConfig:
         sidings=sidings,
         robs=robs,
         gradients=gradients,
+        start_chainage=data.get("start_chainage", 0.0),
     )

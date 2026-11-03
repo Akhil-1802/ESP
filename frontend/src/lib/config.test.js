@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, buildConfig, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
+import { DEFAULTS, buildConfig, calculateEndChainage, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
 
 const base = () => ({
   kmlFile: { name: 'ESP.kml' },
@@ -509,6 +509,31 @@ describe('gradients', () => {
     const errors = validateForm(form);
     assert(errors.some((e) => e.includes('chainage is required')));
     assert(errors.some((e) => e.includes('at least one gradient value')));
+  });
+});
+
+describe('calculateEndChainage', () => {
+  it('calculates end chainage from numeric start chainage', () => {
+    assert.equal(calculateEndChainage('0.000', 1250.45), '1250.450');
+    assert.equal(calculateEndChainage('100.00', 1250.45), '1350.45');
+    assert.equal(calculateEndChainage('50', 500), '550.000');
+  });
+
+  it('calculates end chainage from plus notation (e.g. 125+400)', () => {
+    assert.equal(calculateEndChainage('125+400', 650.0), '126+050.00');
+    assert.equal(calculateEndChainage('0+000', 1000.0), '1+000.00');
+  });
+
+  it('calculates end chainage with units (KM, M)', () => {
+    assert.equal(calculateEndChainage('12.5 KM', 1500), '14.000 KM');
+    assert.equal(calculateEndChainage('200 M', 800), '1000.00 M');
+  });
+
+  it('returns null when length or start chainage is missing/invalid', () => {
+    assert.equal(calculateEndChainage('0.000', null), null);
+    assert.equal(calculateEndChainage('', 1000), null);
+    assert.equal(calculateEndChainage(null, 1000), null);
+    assert.equal(calculateEndChainage('invalid_str', 1000), null);
   });
 });
 
