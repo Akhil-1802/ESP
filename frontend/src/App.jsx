@@ -39,6 +39,8 @@ import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
 
 const initialForm = () => ({
   kmlFile: null,
+  startKm: '',
+  startM: '',
   startChainage: '0.000',
   mainLength: null,
   outputDxf: '',
@@ -354,7 +356,7 @@ export default function App() {
             >
               <StatusBanner status={status} />
 
-              <SourceSection form={form} set={setForm} />
+              <SourceSection form={form} set={setForm} onPreviewKml={onGenerate} />
               <TracksSection form={form} set={setForm} />
               <PlatformsSection form={form} set={setForm} tracks={tracks} />
               <CrossoversSection form={form} set={setForm} tracks={tracks} />

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, buildConfig, calculateEndChainage, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
+import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getPlatformBounds, getTrackRange, loopsNeedingCentre, platformLayers, trackOptions, validateForm } from './config.js';
 
 const base = () => ({
   kmlFile: { name: 'ESP.kml' },
@@ -534,6 +534,32 @@ describe('calculateEndChainage', () => {
     assert.equal(calculateEndChainage('', 1000), null);
     assert.equal(calculateEndChainage(null, 1000), null);
     assert.equal(calculateEndChainage('invalid_str', 1000), null);
+  });
+});
+
+describe('formatStartChainage & calculateEndChainageFromKmM', () => {
+  it('formats start chainage with only KM (e.g. 4 -> "4")', () => {
+    assert.equal(formatStartChainage(4, ''), '4');
+    assert.equal(formatStartChainage('4', null), '4');
+  });
+
+  it('formats start chainage with KM and M (e.g. 1 KM and 900 M -> "1+900")', () => {
+    assert.equal(formatStartChainage(1, 900), '1+900');
+    assert.equal(formatStartChainage('2', '300'), '2+300');
+    assert.equal(formatStartChainage(4, 0), '4+000');
+  });
+
+  it('defaults to 0.000 when both are blank', () => {
+    assert.equal(formatStartChainage('', ''), '0.000');
+  });
+
+  it('calculates end chainage from KM and M with track length', () => {
+    // 4 KM, no M, 1000m track length -> 5
+    assert.equal(calculateEndChainageFromKmM(4, '', 1000), '5');
+    // 4 KM, no M, 1250.45m track length -> 5+250.45
+    assert.equal(calculateEndChainageFromKmM(4, '', 1250.45), '5+250.45');
+    // 1 KM, 900 M, 500m track length -> 2+400.00
+    assert.equal(calculateEndChainageFromKmM(1, 900, 500), '2+400.00');
   });
 });
 

@@ -262,3 +262,94 @@ def test_station_flag_layer_excluded_from_chainage_outer_boundary(tmp_path):
 
     assert left1_y == pytest.approx(left2_y), f"Flag shifted left chainage from {left1_y} to {left2_y}"
     assert right1_y == pytest.approx(right2_y), f"Flag shifted right chainage from {right1_y} to {right2_y}"
+
+
+def test_alignment_interval_chainages_km_only(tmp_path):
+    """When user inputs 4 for KM and nothing for M, shows CH-4 and Ch. 4000 M."""
+    tracks = {"MAIN_LINE": _straight(length=350.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "interval_km.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=4,
+                start_m=None,
+                start_chainage="4",
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    
+    # At start (4000m): top is CH-4 (only 4 shown), bottom is Ch. 4000 M
+    assert "CH-4" in texts
+    assert "Ch. 4000 M" in texts
+    # At +100m: CH-4+100 and Ch. 4100 M
+    assert "CH-4+100" in texts
+    assert "Ch. 4100 M" in texts
+
+
+def test_alignment_interval_chainages_km_and_m(tmp_path):
+    """When user inputs 1 for KM and 900 for M, shows CH-1+900 and Ch. 1900 M."""
+    tracks = {"MAIN_LINE": _straight(length=300.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "interval_km_m.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=1,
+                start_m=900,
+                start_chainage="1+900",
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    
+    assert "CH-1+900" in texts
+    assert "Ch. 1900 M" in texts
+    assert "CH-2+000" in texts
+    assert "Ch. 2000 M" in texts
+
+
+def test_alignment_interval_chainages_hidden_when_loops_present(tmp_path):
+    """When loops are configured as input, alignment interval chainages are hidden."""
+    tracks = {"MAIN_LINE": _straight(length=300.0)}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "interval_hidden.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=1,
+                start_m=900,
+                loops=[{"name": "LOOP_1"}],
+                show_alignment_chainages=False,
+            )
+
+    gen = Gen(dxf_path)
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    assert len(texts) == 0
+
+

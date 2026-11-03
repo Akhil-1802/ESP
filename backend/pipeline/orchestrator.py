@@ -125,7 +125,13 @@ class ESPGenerator(
             self._generate_gradients(tracks)
             print(f"   ✓ Generated {len(self.config.gradients)} gradient annotation(s)")
 
-        # Step 9: Station-relative chainage labels (additive only).
+        # Step 9: Station-relative & alignment interval chainage labels
+        print("📏 Generating alignment interval chainages...")
+        try:
+            self._generate_alignment_interval_chainages(tracks)
+        except Exception as exc:
+            print(f"   ! Alignment interval chainages skipped ({exc})")
+
         print("📏 Generating station-relative chainage labels...")
         try:
             self._generate_station_chainage_labels(tracks)

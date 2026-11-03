@@ -488,6 +488,178 @@ class ChainageStep(PipelineStep):
             return
         print(f"   ✓ Station chainage labels: {drawn} (datum C/L {center[0]:.2f},{center[1]:.2f} = 0.000)")
 
+    def _generate_alignment_interval_chainages(self, tracks: dict) -> None:
+        """Draw regular alignment interval chainage tick marks along MAIN track.
+
+        Places ticks every 100m (plus start and end points) with:
+          - Top text: CH-1+900 (or CH-4 if only KM was specified and m is 0)
+          - Bottom text: Ch. 1900 M
+        """
+        if not tracks:
+            return
+
+        # Hide interval chainages over KML file when loop lines, additional tracks, or other features are configured
+        explicit_show = getattr(self.config, "show_alignment_chainages", None)
+        if explicit_show is False:
+            return
+        if explicit_show is None:
+            loops = getattr(self.config, "loops", None) or []
+            additional_lines = getattr(self.config, "additional_lines", None) or []
+            platforms = getattr(self.config, "platforms", None) or []
+            if len(loops) > 0 or len(additional_lines) > 0 or len(platforms) > 0:
+                return
+
+        try:
+            doc = ezdxf.readfile(self.config.output_dxf)
+        except Exception:
+            return
+
+        from common.dxf import ensure_layer, ensure_text_style
+        layer_name = "CHAINAGE"
+        ensure_layer(doc, layer_name, color=1)
+        style_name = ensure_text_style(doc)
+
+        main_pts = tracks.get("MAIN_LINE") or next(iter(tracks.values()), None)
+        if not main_pts or len(main_pts) < 2:
+            return
+        cleaned = [(float(p[0]), float(p[1])) for p in main_pts]
+        total_len = polyline_length(cleaned)
+        if total_len <= 0:
+            return
+
+        start_km_raw = getattr(self.config, "start_km", None)
+        start_m_raw = getattr(self.config, "start_m", None)
+
+        has_explicit_m = False
+        start_ch_m = 0.0
+
+        if start_km_raw is not None and str(start_km_raw).strip() != "":
+            try:
+                start_km = float(start_km_raw)
+            except ValueError:
+                start_km = 0.0
+            if start_m_raw is not None and str(start_m_raw).strip() != "":
+                try:
+                    start_m = float(start_m_raw)
+                    has_explicit_m = True
+                except ValueError:
+                    start_m = 0.0
+            else:
+                has_explicit_m = False
+                start_m = 0.0
+            start_ch_m = start_km * 1000.0 + start_m
+        elif getattr(self.config, "start_chainage", None) is not None:
+            s = str(self.config.start_chainage).strip()
+            if "+" in s:
+                parts = s.split("+")
+                try:
+                    sk = float(parts[0].strip() or 0)
+                    sm = float(parts[1].strip() or 0)
+                    has_explicit_m = True
+                    start_ch_m = sk * 1000.0 + sm
+                except ValueError:
+                    start_ch_m = 0.0
+            else:
+                try:
+                    num = float(s)
+                    if num <= 50.0 and "." not in s:
+                        start_ch_m = num * 1000.0
+                        has_explicit_m = False
+                    else:
+                        start_ch_m = num
+                        has_explicit_m = (num % 1000 > 0)
+                except ValueError:
+                    start_ch_m = 0.0
+
+        step = 100.0
+        distances_to_mark = [0.0]
+
+        first_100 = math.ceil(start_ch_m / step) * step
+        curr = first_100
+        while (curr - start_ch_m) < total_len - 1e-4:
+            d = curr - start_ch_m
+            if d > 1.0:
+                distances_to_mark.append(d)
+            curr += step
+
+        if abs(distances_to_mark[-1] - total_len) > 5.0:
+            distances_to_mark.append(total_len)
+
+        text_h = 1.0
+        tick_top_len = 6.0
+        tick_bot_len = 14.0
+
+        for d in distances_to_mark:
+            ch_m = start_ch_m + d
+            km_val = int(ch_m // 1000)
+            m_val = ch_m - (km_val * 1000.0)
+
+            # Top label text:
+            # If user filled 4 for KM, and nothing in M, use only 4 when m_val is 0
+            if abs(m_val) < 0.01:
+                if not has_explicit_m:
+                    top_text = f"CH-{km_val}"
+                else:
+                    top_text = f"CH-{km_val}+000"
+            else:
+                top_text = f"CH-{km_val}+{int(round(m_val))}"
+
+            # Bottom label text:
+            bot_text = f"Ch. {int(round(ch_m))} M"
+
+            st = point_at_chainage(cleaned, d)
+            px, py = st.point
+            tx, ty = st.tangent
+            t_len = math.hypot(tx, ty) or 1.0
+            tx, ty = tx / t_len, ty / t_len
+
+            # Normal vector (perpendicular to track)
+            nx, ny = -ty, tx
+
+            # Tick line
+            p_top = (px + nx * tick_top_len, py + ny * tick_top_len)
+            p_bot = (px - nx * tick_bot_len, py - ny * tick_bot_len)
+            doc.modelspace().add_line(p_bot, p_top, dxfattribs={"layer": layer_name, "color": 1})
+
+            # Normal angle in degrees
+            norm_deg = math.degrees(math.atan2(ny, nx))
+            rot_deg = norm_deg
+            while rot_deg > 90.0:
+                rot_deg -= 180.0
+            while rot_deg < -90.0:
+                rot_deg += 180.0
+
+            # Insert top text (CH-...) along normal at tick_top
+            ins_top = (px + nx * (tick_top_len + 0.8), py + ny * (tick_top_len + 0.8))
+            doc.modelspace().add_text(
+                top_text,
+                dxfattribs={
+                    "layer": layer_name,
+                    "color": 1,
+                    "style": style_name,
+                    "height": text_h,
+                    "rotation": rot_deg,
+                    "insert": ins_top,
+                },
+            )
+
+            # Insert bottom text (Ch. 1900 M) along normal below track
+            ins_bot = (px - nx * 8.5, py - ny * 8.5)
+            doc.modelspace().add_text(
+                bot_text,
+                dxfattribs={
+                    "layer": layer_name,
+                    "color": 1,
+                    "style": style_name,
+                    "height": text_h,
+                    "rotation": rot_deg,
+                    "insert": ins_bot,
+                },
+            )
+
+        doc.saveas(self.config.output_dxf)
+        print(f"   ✓ Alignment interval chainages: {len(distances_to_mark)} markers (start {start_ch_m:.1f} m to {start_ch_m + total_len:.1f} m)")
+
 
 class ChainageMixin(ChainageStep):
     """Mixin for backward compatibility."""

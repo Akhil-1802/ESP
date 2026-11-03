@@ -482,13 +482,65 @@ export function calculateEndChainage(startChainage, lengthMeters) {
   return null;
 }
 
+/**
+ * Format start chainage string from KM and optional M inputs.
+ * If user filled 4 for KM and nothing in M, returns "4".
+ * If user filled 1 for KM and 900 for M, returns "1+900".
+ */
+export function formatStartChainage(km, m) {
+  const hasKm = !isBlank(km);
+  const hasM = !isBlank(m);
+  if (!hasKm && !hasM) return '0.000';
+  if (hasKm && !hasM) return String(km).trim();
+  const kmNum = Number(km) || 0;
+  const mNum = Number(m) || 0;
+  return `${kmNum}+${String(Math.round(mNum)).padStart(3, '0')}`;
+}
+
+/**
+ * Calculate end chainage from KM and M inputs + track length in meters.
+ */
+export function calculateEndChainageFromKmM(km, m, lengthMeters) {
+  if (lengthMeters == null || !Number.isFinite(Number(lengthMeters))) return null;
+  const hasKm = !isBlank(km);
+  const hasM = !isBlank(m);
+  if (!hasKm && !hasM) {
+    return Number(lengthMeters).toFixed(2);
+  }
+  const kmNum = Number(km) || 0;
+  const mNum = Number(m) || 0;
+  const startM = kmNum * 1000 + mNum;
+  const endM = startM + Number(lengthMeters);
+
+  const endKm = Math.floor(endM / 1000);
+  const remM = endM - (endKm * 1000);
+
+  if (hasKm && !hasM && remM === 0) {
+    return String(endKm);
+  }
+  return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
+}
+
 /** Build full inputconfig-schema JSON from form state. */
 export function buildConfig(form) {
   const f = form || {};
   const mainLines = f.mainLines || [];
+  const startKmVal = !isBlank(f.startKm) ? Number(f.startKm) : null;
+  const startMVal = !isBlank(f.startM) ? Number(f.startM) : null;
+  const startChStr = !isBlank(f.startKm) || !isBlank(f.startM)
+    ? formatStartChainage(f.startKm, f.startM)
+    : strOr(f.startChainage, '0.000');
+  const hasLoops = (f.loops || []).length > 0;
+  const hasMainLines = (f.mainLines || []).length > 0;
+  const hasAdditionalLines = (f.additionalLines || []).length > 0;
+  const showAlignmentChainages = !hasLoops && !hasMainLines && !hasAdditionalLines;
+
   return {
     source_path: (f.kmlFile && f.kmlFile.name) || 'upload.kml',
-    start_chainage: strOr(f.startChainage, '0.000'),
+    start_chainage: startChStr,
+    start_km: startKmVal,
+    start_m: startMVal,
+    show_alignment_chainages: showAlignmentChainages,
     output_dxf: strOr(f.outputDxf, DEFAULTS.outputDxf),
     track_source_layer: strOr(f.trackSourceLayer, DEFAULTS.trackSourceLayer),
     loops: (f.loops || []).map(buildLoop),
