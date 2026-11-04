@@ -148,3 +148,96 @@ def test_no_srj_leaves_main_lines_full_length(tmp_path):
     pts = list(main_entities[0].get_points())
     assert pts[0][0] == pytest.approx(0.0, abs=1e-2)
     assert pts[-1][0] == pytest.approx(2000.0, abs=1e-2)
+
+
+def test_single_crossover_on_start_side_preserves_far_end(tmp_path):
+    """Guard rule: when only one crossover exists on start side, far end is not truncated."""
+    src = tmp_path / "source.dxf"
+    out = tmp_path / "result.dxf"
+    _create_source_dxf(src, length=1663.0)
+
+    loops = [
+        LoopSpec("LOOP_1", 5.3, "LEFT", 200.0, 950.0, extend_start_m=0.0, extend_end_m=0.0),
+    ]
+    # Single crossover at chainage 200m (on start side of 1663m line)
+    xspecs = [
+        CrossoverSpec("LOOP_1", "MAIN_LINE", 200.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C1",
+                      direction="FORWARD", position_mode="FIXED"),
+    ]
+
+    cfg = ESPConfig(
+        source_path=str(src),
+        output_dxf=str(out),
+        track_source_layer="MAIN_TRACK",
+        loops=loops,
+        additional_lines=[],
+        platforms=[],
+        stations=[],
+        crossovers=xspecs,
+    )
+
+    gen = ESPGenerator(cfg)
+    gen.run()
+
+    assert gen._main_line_trim_range is not None
+    start_dist, end_dist = gen._main_line_trim_range
+
+    # Near end is trimmed 50m before SRJ (200 - 50 = 150m)
+    assert start_dist == pytest.approx(150.0, abs=1e-2)
+    # Far end must NOT be truncated; it must extend all the way to 1663.0m!
+    assert end_dist == pytest.approx(1663.0, abs=1e-2)
+
+    doc = ezdxf.readfile(str(out))
+    main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
+    assert len(main_entities) == 1
+    pts = list(main_entities[0].get_points())
+    assert pts[0][0] == pytest.approx(150.0, abs=1e-2)
+    assert pts[-1][0] == pytest.approx(1663.0, abs=1e-2)
+
+
+def test_single_crossover_on_end_side_preserves_start(tmp_path):
+    """Guard rule: when only one crossover exists on end side, near start is not truncated."""
+    src = tmp_path / "source.dxf"
+    out = tmp_path / "result.dxf"
+    _create_source_dxf(src, length=2000.0)
+
+    loops = [
+        LoopSpec("LOOP_1", 5.3, "LEFT", 1000.0, 1800.0, extend_start_m=0.0, extend_end_m=0.0),
+    ]
+    # Single crossover at chainage 1500m (on end side of 2000m line)
+    xspecs = [
+        CrossoverSpec("LOOP_1", "MAIN_LINE", 1500.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C1",
+                      direction="FORWARD", position_mode="FIXED"),
+    ]
+
+    cfg = ESPConfig(
+        source_path=str(src),
+        output_dxf=str(out),
+        track_source_layer="MAIN_TRACK",
+        loops=loops,
+        additional_lines=[],
+        platforms=[],
+        stations=[],
+        crossovers=xspecs,
+    )
+
+    gen = ESPGenerator(cfg)
+    gen.run()
+
+    assert gen._main_line_trim_range is not None
+    start_dist, end_dist = gen._main_line_trim_range
+
+    # Start must NOT be truncated (remains 0.0m)
+    assert start_dist == pytest.approx(0.0, abs=1e-2)
+    # End is trimmed 50m past outermost SRJ
+    assert end_dist > 1500.0
+    assert end_dist < 2000.0
+
+    doc = ezdxf.readfile(str(out))
+    main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
+    assert len(main_entities) == 1
+    pts = list(main_entities[0].get_points())
+    assert pts[0][0] == pytest.approx(0.0, abs=1e-2)
+    assert pts[-1][0] == pytest.approx(end_dist, abs=1e-2)

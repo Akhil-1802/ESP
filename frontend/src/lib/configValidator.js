@@ -17,6 +17,8 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
   else if (!String(f.kmlFile.name || '').toLowerCase().endsWith('.kml'))
     errors.push('KML file: must be a .kml file.');
 
+  if (f.directKml) return errors;
+
   const names = new Set();
   (f.mainLines || []).forEach((l, i) => {
     const spacing = numOr(l.spacing, defaults.loopSpacing);

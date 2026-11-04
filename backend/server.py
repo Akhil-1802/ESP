@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from common.constants import LOOP_HALF_LENGTH_M
 from config.loader import load_config_from_json
 from pipeline.orchestrator import ESPGenerator
+from platform_gen.kml_io import convert_kml_direct
 from wizard import wizard_main_center, wizard_needs_center, wizard_to_config_dict
 
 BACKEND_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
@@ -145,10 +146,50 @@ def generate(
     local_source = _save_kml_upload(kml, workdir)
 
     download_name = Path(str(config_data.get("output_dxf") or "ESP_output.dxf").strip() or "ESP_output.dxf").name
+
+    # Check for direct 1:1 KML replication mode
+    if config_data.get("direct_kml") or config_data.get("kml_mode") == "direct":
+        out_file = workdir / download_name
+        try:
+            convert_kml_direct(str(local_source), str(out_file))
+        except Exception as exc:
+            shutil.rmtree(workdir, ignore_errors=True)
+            raise HTTPException(422, f"KML direct conversion failed: {exc}") from exc
+        saved_path = _persist_output(out_file, download_name)
+        shutil.rmtree(workdir, ignore_errors=True)
+        return FileResponse(
+            path=str(saved_path),
+            media_type=DXF_MEDIA_TYPE,
+            filename=saved_path.name,
+        )
+
     payload = dict(config_data)
     payload["source_path"] = str(local_source)
     payload["output_dxf"] = str(workdir / download_name)
     return _execute_config_dict(payload, workdir, download_name)
+
+
+@app.post("/convert-kml-direct")
+def convert_kml_direct_endpoint(
+    kml: UploadFile = File(...),
+) -> FileResponse:
+    """Direct 1:1 conversion of KML file to DXF (all lines, North-up / geographic orientation)."""
+    workdir = Path(tempfile.mkdtemp(prefix="esp_direct_"))
+    try:
+        local_source = _save_kml_upload(kml, workdir)
+        download_name = f"{local_source.stem}_direct.dxf"
+        out_file = workdir / download_name
+        convert_kml_direct(str(local_source), str(out_file))
+        saved_path = _persist_output(out_file, download_name)
+        return FileResponse(
+            path=str(saved_path),
+            media_type=DXF_MEDIA_TYPE,
+            filename=saved_path.name,
+        )
+    except Exception as exc:
+        raise HTTPException(422, f"KML direct conversion failed: {exc}") from exc
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 @app.post("/generate-wizard")

@@ -6,7 +6,7 @@ import { isBlank } from '../lib/formUtils.js';
 import { Field, Grid, Section, Text } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
 
-export function SourceSection({ form, set, onPreviewKml }) {
+export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
   const setTop = useFormSetter(set);
   const [centreBusy, setCentreBusy] = useState(false);
   const [centreMsg, setCentreMsg] = useState('');
@@ -91,15 +91,26 @@ export function SourceSection({ form, set, onPreviewKml }) {
               {centreBusy ? 'Reading track geometry from KML…' : centreMsg}
             </span>
           )}
-          {file && onPreviewKml && (
-            <div className="mt-2.5">
-              <button
-                type="button"
-                onClick={onPreviewKml}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer"
-              >
-                <span>👁️ View KML Track with Chainages</span>
-              </button>
+          {file && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {onPreviewKml && (
+                <button
+                  type="button"
+                  onClick={onPreviewKml}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer"
+                >
+                  <span>👁️ View Alignment with Chainages</span>
+                </button>
+              )}
+              {onPreviewDirectKml && (
+                <button
+                  type="button"
+                  onClick={onPreviewDirectKml}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer"
+                >
+                  <span>🗺️ View Exact KML (1:1 Multi-Line)</span>
+                </button>
+              )}
             </div>
           )}
         </Field>

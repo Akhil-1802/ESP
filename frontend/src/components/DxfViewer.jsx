@@ -39,7 +39,7 @@ export function DxfViewer({
     const containerH = Math.max(rect.height, 150);
     const containerAR = containerW / containerH;
 
-    const padFactor = 1.06;
+    const padFactor = 1.05;
     const rawW = result.w * padFactor;
     const rawH = result.h * padFactor;
     const rawAR = rawW / rawH;
@@ -59,10 +59,10 @@ export function DxfViewer({
     return { x: fitX, y: fitY, w: fitW, h: fitH, baseW: fitW, baseH: fitH };
   }, [result]);
 
-  // Initial fitted viewBox derived directly during render
+  // Initial fitted viewBox derived directly during render — tightly focused on track parts
   const initialViewBox = useMemo(() => {
     if (!result || !result.w || !result.h) return null;
-    const padFactor = 1.06;
+    const padFactor = 1.05;
     const rawW = result.w * padFactor;
     const rawH = result.h * padFactor;
     const ar = 16 / 9;
@@ -71,7 +71,29 @@ export function DxfViewer({
     const fitH = rawAR > ar ? rawW / ar : rawH;
     const fitX = result.x0 - (fitW - result.w) / 2;
     const fitY = result.y0 - (fitH - result.h) / 2;
-    return { x: fitX, y: fitY, w: fitW, h: fitH, baseW: fitW, baseH: fitH };
+
+    // Zoom into track parts by default (3.8x zoom eliminates huge blank spaces)
+    const zoom = 3.8;
+    const nextW = fitW / zoom;
+    const nextH = fitH / zoom;
+    let centerX = fitX + fitW / 2;
+    let centerY = fitY + fitH / 2;
+    if (result.featureFocus?.hasFeatures && Number.isFinite(result.featureFocus.x)) {
+      centerX = result.featureFocus.x;
+      centerY = result.featureFocus.y;
+    } else if (result.trackMidpoint && Number.isFinite(result.trackMidpoint.x)) {
+      centerX = result.trackMidpoint.x;
+      centerY = result.trackMidpoint.y;
+    }
+
+    return {
+      x: centerX - nextW / 2,
+      y: centerY - nextH / 2,
+      w: nextW,
+      h: nextH,
+      baseW: fitW,
+      baseH: fitH,
+    };
   }, [result]);
 
   const [customViewBox, setCustomViewBox] = useState(null);
@@ -84,6 +106,41 @@ export function DxfViewer({
       setCustomViewBox(fitted);
     }
   }, [calculateFittedViewBox]);
+
+  const focusTrackInfo = useCallback((zoomMult = 3.8, targetPoint = null) => {
+    const fitted = calculateFittedViewBox();
+    if (!fitted) return;
+    let targetCenterX = fitted.x + fitted.w / 2;
+    let targetCenterY = fitted.y + fitted.h / 2;
+
+    if (targetPoint && Number.isFinite(targetPoint.x) && Number.isFinite(targetPoint.y)) {
+      targetCenterX = targetPoint.x;
+      targetCenterY = targetPoint.y;
+    } else if (result?.featureFocus?.hasFeatures && Number.isFinite(result.featureFocus.x)) {
+      targetCenterX = result.featureFocus.x;
+      targetCenterY = result.featureFocus.y;
+    } else if (result?.trackMidpoint && Number.isFinite(result.trackMidpoint.x)) {
+      targetCenterX = result.trackMidpoint.x;
+      targetCenterY = result.trackMidpoint.y;
+    }
+
+    const nextW = fitted.baseW / zoomMult;
+    const nextH = fitted.baseH / zoomMult;
+    const nextX = targetCenterX - nextW / 2;
+    const nextY = targetCenterY - nextH / 2;
+    setCustomViewBox({ ...fitted, x: nextX, y: nextY, w: nextW, h: nextH });
+  }, [calculateFittedViewBox, result]);
+
+  // Auto-focus and zoom into the track information whenever a new result arrives
+  useEffect(() => {
+    setCustomViewBox(null);
+    if (result && result.w && result.h) {
+      const timer = setTimeout(() => {
+        focusTrackInfo(3.8);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [result?.svg, result?.blob, focusTrackInfo]);
 
   // Window resize observer to keep aspect ratio matching
   useEffect(() => {
@@ -120,8 +177,8 @@ export function DxfViewer({
   const zoomByFactor = (factor, centerXRatio = 0.5, centerYRatio = 0.5) => {
     setViewBox((prev) => {
       if (!prev) return prev;
-      const minW = Math.max(result.w * 0.002, 2);
-      const maxW = result.w * 8;
+      const minW = Math.max(result.w * 0.0005, 0.5);
+      const maxW = result.w * 10;
       const nextW = Math.min(Math.max(prev.w / factor, minW), maxW);
       const nextH = prev.h * (nextW / prev.w);
 
@@ -132,9 +189,17 @@ export function DxfViewer({
     });
   };
 
-  const zoomIn = () => zoomByFactor(1.35);
-  const zoomOut = () => zoomByFactor(1 / 1.35);
+  const zoomIn = () => zoomByFactor(1.4);
+  const zoomOut = () => zoomByFactor(1 / 1.4);
   const reset1to1 = () => fitToView();
+
+  const handleDoubleClick = (e) => {
+    if (!containerRef.current || !viewBox) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const mx = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const my = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    zoomByFactor(2.0, mx / rect.width, my / rect.height);
+  };
 
   const handleWheel = (e) => {
     e.preventDefault();
@@ -220,7 +285,7 @@ export function DxfViewer({
     let s = result.svg;
 
     if (viewBox) {
-      const vbStr = `viewBox="${viewBox.x.toFixed(3)} ${viewBox.y.toFixed(3)} ${viewBox.w.toFixed(3)} ${viewBox.h.toFixed(3)}" preserveAspectRatio="none"`;
+      const vbStr = `viewBox="${viewBox.x.toFixed(3)} ${viewBox.y.toFixed(3)} ${viewBox.w.toFixed(3)} ${viewBox.h.toFixed(3)}" preserveAspectRatio="xMidYMid meet"`;
       s = s.replace(/viewBox="[^"]*"\s*(preserveAspectRatio="[^"]*")?/, vbStr);
       s = s.replace(/width="[^"]*"/, 'width="100%"');
       s = s.replace(/height="[^"]*"/, 'height="100%"');
@@ -273,6 +338,7 @@ export function DxfViewer({
         zoomIn={zoomIn}
         zoomOut={zoomOut}
         fitToView={fitToView}
+        focusTrackInfo={focusTrackInfo}
         reset1to1={reset1to1}
         layersVisible={layersVisible}
         toggleLayer={toggleLayer}
@@ -289,6 +355,7 @@ export function DxfViewer({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
       >
         {activeSvg ? (
           <div

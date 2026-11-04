@@ -135,8 +135,85 @@ class TrackStep(PipelineStep):
         margin = float(getattr(self.config, "main_line_srj_margin_m", None) or MAIN_LINE_SRJ_MARGIN_M)
         main_length = polyline_length(cleaned_main)
 
-        start_dist = max(0.0, min_srj - margin)
-        end_dist = min(main_length, max_srj + margin)
+        # Determine reference station center if available
+        station_ch = None
+        for sm in getattr(self.config, "station_markers", []) or []:
+            d = getattr(sm, "distance_along_m", None)
+            if d is not None and 0 < float(d) < main_length:
+                station_ch = float(d)
+                break
+
+        if station_ch is None:
+            for st_req in getattr(self.config, "stations", []) or []:
+                pl_name = getattr(st_req, "platform_layer", "")
+                for p_req in getattr(self.config, "platforms", []) or []:
+                    p_cfg = getattr(p_req, "config", None)
+                    if p_cfg and getattr(p_req, "track_layer", "") == pl_name:
+                        st_p = getattr(p_cfg, "start_chainage", None)
+                        lg_p = getattr(p_cfg, "length", 0.0) or 0.0
+                        if st_p is not None:
+                            station_ch = float(st_p) + float(lg_p) / 2.0
+                            break
+                if station_ch is not None:
+                    break
+
+        # Guard Rule: Require Turnouts on Both Sides
+        # If turnouts/crossovers only exist on one side of the layout (e.g. there is no turnout
+        # on the other half of the track), do not truncate the far end; keep track extending
+        # all the way to its original KML endpoint.
+        num_crossovers = len(getattr(self.config, "crossovers", []) or [])
+        mid_track = station_ch if station_ch is not None else (main_length / 2.0)
+
+        has_start_turnouts = any(ch < (mid_track - 25.0) for ch in srj_chainages)
+        has_end_turnouts = any(ch > (mid_track + 25.0) for ch in srj_chainages)
+
+        if num_crossovers <= 1 or (station_ch is not None and not (has_start_turnouts and has_end_turnouts)):
+            if has_start_turnouts and not has_end_turnouts:
+                # Turnouts exist only on the start side; do not truncate the far end!
+                start_dist = max(0.0, min_srj - margin)
+                end_dist = main_length
+                print(
+                    f"   ℹ️ Guard rule: Turnouts only exist on start side (<= {mid_track:.1f} m); "
+                    f"far end kept full length to KML endpoint ({main_length:.1f} m)."
+                )
+            elif has_end_turnouts and not has_start_turnouts:
+                # Turnouts exist only on the end side; do not truncate the near end!
+                start_dist = 0.0
+                end_dist = min(main_length, max_srj + margin)
+                print(
+                    f"   ℹ️ Guard rule: Turnouts only exist on end side (>= {mid_track:.1f} m); "
+                    f"near end kept full length to KML startpoint (0.0 m)."
+                )
+            elif num_crossovers <= 1:
+                # Single crossover: check which half of the track it is on
+                if max_srj <= mid_track:
+                    start_dist = max(0.0, min_srj - margin)
+                    end_dist = main_length
+                    print(
+                        f"   ℹ️ Guard rule: Single crossover on start side; "
+                        f"far end kept full length to KML endpoint ({main_length:.1f} m)."
+                    )
+                elif min_srj >= mid_track:
+                    start_dist = 0.0
+                    end_dist = min(main_length, max_srj + margin)
+                    print(
+                        f"   ℹ️ Guard rule: Single crossover on end side; "
+                        f"near end kept full length to KML startpoint (0.0 m)."
+                    )
+                else:
+                    start_dist = 0.0
+                    end_dist = main_length
+                    print(
+                        f"   ℹ️ Guard rule: Single crossover near center; "
+                        f"main lines kept full length ({main_length:.1f} m)."
+                    )
+            else:
+                start_dist = max(0.0, min_srj - margin)
+                end_dist = min(main_length, max_srj + margin)
+        else:
+            # Turnouts exist on both sides of the layout
+            start_dist = max(0.0, min_srj - margin)
+            end_dist = min(main_length, max_srj + margin)
 
         if end_dist <= start_dist:
             print(f"   ! Main line trim skipped: degenerate range [{start_dist:.2f}, {end_dist:.2f}].")

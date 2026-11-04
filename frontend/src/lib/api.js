@@ -50,6 +50,33 @@ export async function generateDxf({ config, kmlFile, apiBase = API_BASE }) {  co
   return { blob, filename: downloadName(res, fallback) };
 }
 
+export async function convertKmlDirect({ kmlFile, apiBase = API_BASE }) {
+  const body = new FormData();
+  body.append('kml', kmlFile, kmlFile.name);
+
+  let res;
+  try {
+    res = await fetch(`${apiBase}/convert-kml-direct`, { method: 'POST', body });
+  } catch (err) {
+    throw new Error(
+      `Cannot reach the backend at ${apiBase} — is it running (python -m uvicorn backend.app:app --port 8000)? (${err.message})`,
+    );
+  }
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const data = await res.json();
+      detail = data.detail || JSON.stringify(data);
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(`Direct KML conversion failed (${res.status}): ${detail}`);
+  }
+  const blob = await res.blob();
+  const fallback = kmlFile.name.replace(/\.kml$/i, '') + '_direct.dxf';
+  return { blob, filename: downloadName(res, fallback) };
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

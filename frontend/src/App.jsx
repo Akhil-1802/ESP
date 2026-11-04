@@ -36,11 +36,12 @@ import {
   trackOptions,
   validateForm,
 } from './lib/config.js';
-import { downloadBlob, fetchMainCenter, generateDxf } from './lib/api.js';
+import { downloadBlob, fetchMainCenter, generateDxf, convertKmlDirect } from './lib/api.js';
 import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
 
 const initialForm = () => ({
   kmlFile: null,
+  directKml: false,
   startKm: '',
   startM: '',
   startChainage: '0.000',
@@ -123,8 +124,40 @@ export default function App() {
   const configText = useMemo(() => JSON.stringify(config, null, 2), [config]);
   const busy = status.kind === 'busy';
 
+  const onPreviewDirectKml = async () => {
+    if (!form.kmlFile) {
+      setStatus({ kind: 'error', messages: ['KML file: upload the track alignment (.kml).'] });
+      sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setStatus({ kind: 'busy' });
+    try {
+      const { blob, filename } = await convertKmlDirect({ kmlFile: form.kmlFile });
+      let preview = { svg: null, w: 0, h: 0, entities: 0, error: '' };
+      try {
+        preview = { ...dxfToSvg(await blob.arrayBuffer()), error: '' };
+      } catch {
+        preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
+      }
+      setResult({
+        blob,
+        filename,
+        json: JSON.stringify({ mode: 'direct_kml_1to1', file: form.kmlFile.name }, null, 2),
+        ...preview,
+      });
+      setStatus({ kind: 'ok', filename });
+    } catch (err) {
+      setStatus({ kind: 'error', messages: [err.message] });
+      sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const onGenerate = async () => {
     let working = form;
+    if (working.directKml) {
+      await onPreviewDirectKml();
+      return;
+    }
     const pendingLoops = loopsNeedingCentre(working);
     const pendingFobs = fobsNeedingCentre(working);
     if (pendingLoops.length > 0 || pendingFobs.length > 0) {
@@ -359,7 +392,7 @@ export default function App() {
             >
               <StatusBanner status={status} />
 
-              <SourceSection form={form} set={setForm} onPreviewKml={onGenerate} />
+              <SourceSection form={form} set={setForm} onPreviewKml={onGenerate} onPreviewDirectKml={onPreviewDirectKml} />
 
               <MainTracksSection form={form} set={setForm} />
 

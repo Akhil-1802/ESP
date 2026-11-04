@@ -12,6 +12,7 @@ export function DxfControls({
   zoomIn,
   zoomOut,
   fitToView,
+  focusTrackInfo,
   reset1to1,
   layersVisible,
   toggleLayer,
@@ -92,6 +93,63 @@ export function DxfControls({
                 </button>
               </div>
 
+              {focusTrackInfo && (
+                <button
+                  type="button"
+                  onClick={() => focusTrackInfo(3.8)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors shadow-2xs flex items-center gap-1 ${
+                    isDark
+                      ? 'border-emerald-500/50 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/80 hover:text-emerald-100'
+                      : 'border-emerald-600 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                  title="Zoom closely to track parts, eliminating empty blank spaces"
+                >
+                  <span>🚂</span>
+                  <span>Track Parts</span>
+                </button>
+              )}
+
+              {focusTrackInfo && result?.trackWaypoints && result.trackWaypoints.length > 1 && (
+                <div
+                  className={`hidden sm:flex items-center gap-0.5 rounded-lg border p-0.5 ${
+                    isDark ? 'border-slate-700 bg-slate-800/80' : 'border-slate-300 bg-slate-100'
+                  }`}
+                  title="Pan camera to specific track segment"
+                >
+                  {result.trackWaypoints.map((wp, i) => (
+                    <button
+                      key={wp.name || i}
+                      type="button"
+                      onClick={() => focusTrackInfo(3.8, wp)}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer transition-colors ${
+                        isDark
+                          ? 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                          : 'text-slate-700 hover:bg-slate-200'
+                      }`}
+                      title={`Focus on track ${wp.name}`}
+                    >
+                      {wp.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {focusTrackInfo && result?.featureFocus?.hasFeatures && (
+                <button
+                  type="button"
+                  onClick={() => focusTrackInfo(3.8)}
+                  className={`rounded-lg border px-2 py-1 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1 ${
+                    isDark
+                      ? 'border-indigo-500/50 bg-indigo-950/50 text-indigo-300 hover:bg-indigo-900/70 hover:text-indigo-100'
+                      : 'border-indigo-400 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                  }`}
+                  title="Focus directly onto station yard, platforms, and loops"
+                >
+                  <span>🚉</span>
+                  <span>Station</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={fitToView}
@@ -105,18 +163,46 @@ export function DxfControls({
                 Fit
               </button>
 
-              <button
-                type="button"
-                onClick={reset1to1}
-                className={`rounded-lg border px-2 py-1 text-xs font-medium cursor-pointer transition-colors ${
-                  isDark
-                    ? 'border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white'
-                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-                title="Reset View"
-              >
-                1:1
-              </button>
+              {focusTrackInfo && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => focusTrackInfo(2.0)}
+                    className={`rounded-lg border px-1.5 py-1 text-xs font-mono font-medium cursor-pointer transition-colors ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+                        : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                    title="Zoom to 200%"
+                  >
+                    2x
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => focusTrackInfo(4.0)}
+                    className={`rounded-lg border px-1.5 py-1 text-xs font-mono font-medium cursor-pointer transition-colors ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+                        : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                    title="Zoom to 400%"
+                  >
+                    4x
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => focusTrackInfo(8.0)}
+                    className={`rounded-lg border px-1.5 py-1 text-xs font-mono font-medium cursor-pointer transition-colors ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+                        : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                    title="Zoom to 800%"
+                  >
+                    8x
+                  </button>
+                </>
+              )}
 
               {/* Theme toggle */}
               <button

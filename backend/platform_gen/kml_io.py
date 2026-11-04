@@ -159,3 +159,176 @@ def convert_kml_to_dxf(kml_path: str, dxf_path: str, layer_name: str = "MAIN_TRA
     out.parent.mkdir(parents=True, exist_ok=True)
     doc.saveas(str(out))
     return str(out)
+
+
+def convert_kml_direct(kml_path: str, dxf_path: str) -> str:
+    """Convert a KML file directly 1:1 into a metric DXF file (North-up / geographic orientation).
+
+    Preserves all Placemarks, LineStrings, MultiGeometries, layer names, and line colors.
+    Does not drop secondary lines, does not take only the main line, and does not rotate.
+    """
+    if Transformer is None:
+        raise ImportError("pyproj and shapely are required for KML conversion")
+
+    tree = ET.parse(kml_path)
+    root = tree.getroot()
+
+    ns = {"kml": "http://www.opengis.net/kml/2.2"}
+
+    # 1. Parse styles for line colors
+    styles: dict[str, str] = {}
+    for style_node in root.findall(".//kml:Style", ns) + root.findall(".//Style"):
+        s_id = style_node.get("{http://www.opengis.net/kml/2.2}id") or style_node.get("id")
+        line_style = (
+            style_node.find(".//kml:LineStyle", ns)
+            if style_node.find(".//kml:LineStyle", ns) is not None
+            else style_node.find(".//LineStyle")
+        )
+        if line_style is not None and s_id:
+            color_elem = (
+                line_style.find(".//kml:color", ns)
+                if line_style.find(".//kml:color", ns) is not None
+                else line_style.find(".//color")
+            )
+            if color_elem is not None and color_elem.text:
+                val = color_elem.text.strip()
+                styles[f"#{s_id}"] = val
+                styles[s_id] = val
+
+    # 2. Extract all features and coordinates
+    features: list[dict] = []
+    all_lons: list[float] = []
+    all_lats: list[float] = []
+
+    placemarks = root.findall(".//kml:Placemark", ns) or root.findall(".//Placemark")
+    if not placemarks:
+        placemarks = [root]
+
+    for idx, pm in enumerate(placemarks, 1):
+        name_elem = pm.find("kml:name", ns) if pm.find("kml:name", ns) is not None else pm.find("name")
+        pm_name = name_elem.text.strip() if (name_elem is not None and name_elem.text) else f"KML_LINE_{idx}"
+
+        color_hex = None
+        style_url = pm.find("kml:styleUrl", ns) if pm.find("kml:styleUrl", ns) is not None else pm.find("styleUrl")
+        if style_url is not None and style_url.text:
+            color_hex = styles.get(style_url.text.strip())
+        if not color_hex:
+            inline_color = (
+                pm.find(".//kml:LineStyle/kml:color", ns)
+                if pm.find(".//kml:LineStyle/kml:color", ns) is not None
+                else pm.find(".//LineStyle/color")
+            )
+            if inline_color is not None and inline_color.text:
+                color_hex = inline_color.text.strip()
+
+        linestrings = pm.findall(".//kml:LineString/kml:coordinates", ns) or pm.findall(".//LineString/coordinates")
+        for ls in linestrings:
+            coord_text = ls.text.strip() if ls.text else ""
+            pts: list[tuple[float, float]] = []
+            for token in coord_text.split():
+                parts = token.split(",")
+                if len(parts) >= 2:
+                    try:
+                        lon, lat = float(parts[0]), float(parts[1])
+                        pts.append((lon, lat))
+                        all_lons.append(lon)
+                        all_lats.append(lat)
+                    except ValueError:
+                        continue
+            if len(pts) >= 2:
+                features.append({
+                    "name": pm_name,
+                    "color_hex": color_hex,
+                    "points": pts,
+                })
+
+    if not features or not all_lons:
+        raise ValueError(f"No valid coordinate lines found in KML {kml_path}")
+
+    # 3. Local UTM projection (metres)
+    center_lon = sum(all_lons) / len(all_lons)
+    center_lat = sum(all_lats) / len(all_lats)
+    utm_zone = int((center_lon + 180) / 6) + 1
+    hemisphere = "north" if center_lat >= 0 else "south"
+    crs_to = f"+proj=utm +zone={utm_zone} +{hemisphere} +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+
+    transformer = Transformer.from_crs("EPSG:4326", crs_to, always_xy=True)
+
+    # 4. Create DXF and write all lines
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+
+    def _kml_color_to_rgb(hex_str: str | None) -> tuple[int, int, int] | None:
+        if not hex_str or len(hex_str) < 6:
+            return None
+        hex_str = hex_str.strip().lower()
+        if len(hex_str) == 8:
+            # aabbggrr
+            try:
+                b = int(hex_str[2:4], 16)
+                g = int(hex_str[4:6], 16)
+                r = int(hex_str[6:8], 16)
+                return (r, g, b)
+            except ValueError:
+                return None
+        elif len(hex_str) == 6:
+            try:
+                r = int(hex_str[0:2], 16)
+                g = int(hex_str[2:4], 16)
+                b = int(hex_str[4:6], 16)
+                return (r, g, b)
+            except ValueError:
+                return None
+        return None
+
+    def _sanitize_layer_name(name: str) -> str:
+        for ch in '<>/\\":;?*|=`':
+            name = name.replace(ch, "_")
+        return name[:255].strip() or "KML_TRACK"
+
+    created_layers: set[str] = set()
+
+    # 4. Transform all points to metric UTM coordinates and normalize to origin (0, 0)
+    transformed_features: list[dict] = []
+    min_x = float("inf")
+    min_y = float("inf")
+    for feat in features:
+        proj_pts: list[tuple[float, float]] = []
+        for lon, lat in feat["points"]:
+            x, y = transformer.transform(lon, lat)
+            fx, fy = float(x), float(y)
+            proj_pts.append((fx, fy))
+            if fx < min_x:
+                min_x = fx
+            if fy < min_y:
+                min_y = fy
+        transformed_features.append({
+            "name": feat["name"],
+            "color_hex": feat["color_hex"],
+            "points": proj_pts,
+        })
+
+    for feat in transformed_features:
+        raw_name = feat["name"]
+        layer_name = _sanitize_layer_name(raw_name)
+        rgb = _kml_color_to_rgb(feat["color_hex"])
+
+        if layer_name not in created_layers:
+            if layer_name not in doc.layers:
+                layer = doc.layers.add(layer_name, color=7)
+                if rgb:
+                    layer.rgb = rgb
+            created_layers.add(layer_name)
+
+        norm_pts = [(x - min_x, y - min_y) for x, y in feat["points"]]
+
+        attribs: dict = {"layer": layer_name}
+        if rgb:
+            attribs["true_color"] = ezdxf.rgb2int(rgb)
+        msp.add_lwpolyline(norm_pts, dxfattribs=attribs)
+
+    out = Path(dxf_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    doc.saveas(str(out))
+    return str(out)
+

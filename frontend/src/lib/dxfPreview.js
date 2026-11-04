@@ -136,13 +136,38 @@ export function dxfToSvg(input) {
   const layerGroups = new Map();
   const labels = [];
   const bounds = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const featureBounds = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  let longestPoints = [];
+  let maxPointsCount = 0;
+  const allTrackCoords = [];
 
-  const feed = (x, y) => {
+  const isFeatureLayer = (layerName) => {
+    const s = String(layerName || '').toUpperCase();
+    return (
+      s.includes('STATION') ||
+      s.includes('PLATFORM') ||
+      s.includes('LOOP') ||
+      s.includes('TURNOUT') ||
+      s.includes('CROSSOVER') ||
+      s.includes('FOB') ||
+      s.includes('ROB') ||
+      s.includes('GRADIENT') ||
+      s.includes('SIGNAL')
+    );
+  };
+
+  const feed = (x, y, layerName = null) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (x < bounds.x0) bounds.x0 = x;
     if (y < bounds.y0) bounds.y0 = y;
     if (x > bounds.x1) bounds.x1 = x;
     if (y > bounds.y1) bounds.y1 = y;
+    if (layerName && isFeatureLayer(layerName)) {
+      if (x < featureBounds.x0) featureBounds.x0 = x;
+      if (y < featureBounds.y0) featureBounds.y0 = y;
+      if (x > featureBounds.x1) featureBounds.x1 = x;
+      if (y > featureBounds.y1) featureBounds.y1 = y;
+    }
   };
 
   const getGroup = (layerName) => {
@@ -169,7 +194,14 @@ export function dxfToSvg(input) {
       case 'LINE': {
         const pts = vertsOf(e.vertices);
         if (pts.length < 2) break;
-        pts.forEach((p) => feed(p[0], p[1]));
+        pts.forEach((p) => {
+          feed(p[0], p[1], layer);
+          allTrackCoords.push(p);
+        });
+        if (pts.length > maxPointsCount) {
+          maxPointsCount = pts.length;
+          longestPoints = pts;
+        }
         group.items.push(
           `<line x1="${r3(pts[0][0])}" y1="${r3(pts[0][1])}" x2="${r3(pts[1][0])}" y2="${r3(pts[1][1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
         );
@@ -179,7 +211,14 @@ export function dxfToSvg(input) {
       case 'POLYLINE': {
         const pts = vertsOf(e.vertices);
         if (pts.length < 2) break;
-        pts.forEach((p) => feed(p[0], p[1]));
+        pts.forEach((p) => {
+          feed(p[0], p[1], layer);
+          allTrackCoords.push(p);
+        });
+        if (pts.length > maxPointsCount) {
+          maxPointsCount = pts.length;
+          longestPoints = pts;
+        }
         const d = polylinePathD(pts, !!e.shape);
         if (d) {
           const u = String(layer || '').toUpperCase();
@@ -194,7 +233,14 @@ export function dxfToSvg(input) {
       case 'SPLINE': {
         const pts = vertsOf(e.fitPoints && e.fitPoints.length ? e.fitPoints : e.controlPoints);
         if (pts.length < 2) break;
-        pts.forEach((p) => feed(p[0], p[1]));
+        pts.forEach((p) => {
+          feed(p[0], p[1], layer);
+          allTrackCoords.push(p);
+        });
+        if (pts.length > maxPointsCount) {
+          maxPointsCount = pts.length;
+          longestPoints = pts;
+        }
         const d = splinePathD(pts, false);
         if (d) {
           group.items.push(
@@ -207,8 +253,8 @@ export function dxfToSvg(input) {
         const c = e.center || {};
         const rad = Number(e.radius);
         if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !finite(rad) || rad <= 0) break;
-        feed(c.x - rad, c.y - rad);
-        feed(c.x + rad, c.y + rad);
+        feed(c.x - rad, c.y - rad, layer);
+        feed(c.x + rad, c.y + rad, layer);
         const d = arcPathD(c.x, c.y, rad, e.startAngle, e.endAngle);
         group.items.push(
           `<path d="${esc(d)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
@@ -219,8 +265,8 @@ export function dxfToSvg(input) {
         const c = e.center || {};
         const rad = Number(e.radius);
         if (!Number.isFinite(c.x) || !Number.isFinite(c.y) || !finite(rad) || rad <= 0) break;
-        feed(c.x - rad, c.y - rad);
-        feed(c.x + rad, c.y + rad);
+        feed(c.x - rad, c.y - rad, layer);
+        feed(c.x + rad, c.y + rad, layer);
         group.items.push(
           `<circle cx="${r3(c.x)}" cy="${r3(c.y)}" r="${r3(rad)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}vector-effect="non-scaling-stroke"/>`,
         );
@@ -229,7 +275,7 @@ export function dxfToSvg(input) {
       case 'POINT': {
         const p = e.position || {};
         if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) break;
-        feed(p.x, p.y);
+        feed(p.x, p.y, layer);
         group.items.push(
           `<circle cx="${r3(p.x)}" cy="${r3(p.y)}" r="1.2" fill="${color}" stroke="none" vector-effect="non-scaling-stroke"/>`,
         );
@@ -248,9 +294,9 @@ export function dxfToSvg(input) {
           const str = line.trim();
           if (!str) return;
           const ly = at.y - idx * height * 1.4;
-          feed(at.x, ly);
-          feed(at.x + str.length * height * 0.7, ly + height);
-          feed(at.x - str.length * height * 0.7, ly - height);
+          feed(at.x, ly, layer);
+          feed(at.x + str.length * height * 0.7, ly + height, layer);
+          feed(at.x - str.length * height * 0.7, ly - height, layer);
           labels.push({
             x: Number(at.x),
             y: Number(ly),
@@ -379,7 +425,7 @@ export function dxfToSvg(input) {
       case 'LEADER': {
         const pts = vertsOf(e.vertices);
         if (pts.length < 2) break;
-        pts.forEach((p) => feed(p[0], p[1]));
+        pts.forEach((p) => feed(p[0], p[1], layer));
         for (let i = 0; i < pts.length - 1; i++) {
           group.items.push(
             `<line x1="${r3(pts[i][0])}" y1="${r3(pts[i][1])}" x2="${r3(pts[i + 1][0])}" y2="${r3(pts[i + 1][1])}" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
@@ -401,7 +447,7 @@ export function dxfToSvg(input) {
           [bx - uy * aw, by + ux * aw],
           [bx + uy * aw, by - ux * aw],
         ];
-        tri.forEach((p) => feed(p[0], p[1]));
+        tri.forEach((p) => feed(p[0], p[1], layer));
         const triD = `M ${r3(tri[0][0])},${r3(tri[0][1])} L ${r3(tri[1][0])},${r3(tri[1][1])} L ${r3(tri[2][0])},${r3(tri[2][1])} Z`;
         group.items.push(
           `<path d="${triD}" fill="${color}" stroke="${color}" stroke-width="${strokeWidth}" ${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
@@ -417,8 +463,8 @@ export function dxfToSvg(input) {
     throw new Error('No drawable entities found in this DXF.');
   }
 
-  const padX = Math.max((bounds.x1 - bounds.x0) * 0.02, 1e-6);
-  const padY = Math.max((bounds.y1 - bounds.y0) * 0.02, 1e-6);
+  const padX = Math.max((bounds.x1 - bounds.x0) * 0.05, 5.0);
+  const padY = Math.max((bounds.y1 - bounds.y0) * 0.05, 5.0);
   const x0 = bounds.x0 - padX;
   const y0 = bounds.y0 - padY;
   const w = Math.max(bounds.x1 - bounds.x0 + padX * 2, 1e-6);
@@ -466,12 +512,59 @@ export function dxfToSvg(input) {
   layerGroups.forEach((g) => (totalEntities += g.items.length));
   totalEntities += labels.length;
 
+  const hasFeatures = Number.isFinite(featureBounds.x0);
+  const fx0 = hasFeatures ? featureBounds.x0 : bounds.x0;
+  const fx1 = hasFeatures ? featureBounds.x1 : bounds.x1;
+  const fy0 = hasFeatures ? featureBounds.y0 : bounds.y0;
+  const fy1 = hasFeatures ? featureBounds.y1 : bounds.y1;
+
+  // In SVG viewBox coordinates, Y is flipped: svgY = flip - worldY
+  const featureFocus = {
+    hasFeatures,
+    x: (fx0 + fx1) / 2,
+    y: flip - (fy0 + fy1) / 2,
+    spanX: Math.max(fx1 - fx0, 10),
+    spanY: Math.max(fy1 - fy0, 10),
+  };
+
+  const samplePts = longestPoints.length >= 2 ? longestPoints : allTrackCoords;
+  let trackMidpoint = null;
+  const trackWaypoints = [];
+
+  if (samplePts.length > 0) {
+    const fractions = [
+      { name: 'Start', f: 0 },
+      { name: '25%', f: 0.25 },
+      { name: 'Center', f: 0.5 },
+      { name: '75%', f: 0.75 },
+      { name: 'End', f: 1.0 },
+    ];
+    for (const fr of fractions) {
+      const idx = Math.min(Math.floor(samplePts.length * fr.f), samplePts.length - 1);
+      const pt = samplePts[idx];
+      if (pt && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) {
+        trackWaypoints.push({
+          name: fr.name,
+          x: pt[0],
+          y: flip - pt[1],
+        });
+      }
+    }
+    const centerWp = trackWaypoints.find((w) => w.name === 'Center') || trackWaypoints[0];
+    if (centerWp) {
+      trackMidpoint = { x: centerWp.x, y: centerWp.y };
+    }
+  }
+
   return {
     svg: parts.join('\n'),
     w,
     h,
     x0,
     y0,
+    featureFocus,
+    trackMidpoint,
+    trackWaypoints,
     entities: totalEntities,
     layers: Array.from(layerGroups.values()).map((g) => ({
       name: g.name,
