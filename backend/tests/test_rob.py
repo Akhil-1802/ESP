@@ -278,8 +278,8 @@ def test_rob_with_station_relative_chainage(tmp_path):
 
     res_doc2 = ezdxf.readfile(dxf_path)
     chainage_texts = [e.dxf.text for e in res_doc2.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == "CHAINAGE"]
-    assert any("BR AT CH -325.000" in t for t in chainage_texts)
-    assert any("BR AT CH +350.000" in t for t in chainage_texts)
+    assert any("BR AT CH - 0+325" in t for t in chainage_texts)
+    assert any("BR AT CH + 0+350" in t for t in chainage_texts)
 
     # Verify chainage dotted leader line starts outside/from the top of bridge (y > 10.0)
     ch_lines = [e for e in res_doc2.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == "CHAINAGE"]
