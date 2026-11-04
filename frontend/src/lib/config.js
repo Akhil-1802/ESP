@@ -164,27 +164,39 @@ export function fillFobCentres(form, centre) {
  */
 export function getStationTrackDistance(stationMarker, startKm, startM) {
   if (!stationMarker) return 0;
-  const stnKm = !isBlank(stationMarker.km) ? Number(stationMarker.km) : null;
-  const stnM = !isBlank(stationMarker.m) ? Number(stationMarker.m) : 0;
+  const hasKm = !isBlank(stationMarker.km);
+  const hasM = !isBlank(stationMarker.m);
   let stnAbsoluteM = 0;
-  if (stnKm !== null) {
-    stnAbsoluteM = stnKm * 1000 + stnM;
+  if (hasKm || hasM) {
+    const kmNum = hasKm ? Number(stationMarker.km) : 0;
+    const mNum = hasM ? Number(stationMarker.m) : 0;
+    const sign = (kmNum < 0 || String(stationMarker.km || '').trim().startsWith('-')) ? -1 : 1;
+    stnAbsoluteM = sign * (Math.abs(kmNum) * 1000 + Math.abs(mNum));
   } else {
     const ch = String(stationMarker.chainage || '').trim();
     if (ch.includes('+')) {
       const parts = ch.split('+');
-      stnAbsoluteM = (Number(parts[0]) || 0) * 1000 + (Number(parts[1]) || 0);
+      const km = Number(parts[0]) || 0;
+      const m = Number(parts[1]) || 0;
+      const sign = km < 0 || parts[0].trim().startsWith('-') ? -1 : 1;
+      stnAbsoluteM = sign * (Math.abs(km) * 1000 + Math.abs(m));
     } else {
       const num = Number(ch);
-      stnAbsoluteM = Number.isFinite(num) ? (num <= 50 ? num * 1000 : num) : 0;
+      stnAbsoluteM = Number.isFinite(num) ? (Math.abs(num) <= 50 ? num * 1000 : num) : 0;
     }
   }
 
-  const startKmNum = !isBlank(startKm) ? Number(startKm) : null;
-  const startMNum = !isBlank(startM) ? Number(startM) : 0;
-  const startAbsoluteM = startKmNum !== null ? startKmNum * 1000 + startMNum : 0;
+  const hasStartKm = !isBlank(startKm);
+  const hasStartM = !isBlank(startM);
+  let startAbsoluteM = 0;
+  if (hasStartKm || hasStartM) {
+    const startKmNum = hasStartKm ? Number(startKm) : 0;
+    const startMNum = hasStartM ? Number(startM) : 0;
+    const sign = (startKmNum < 0 || String(startKm || '').trim().startsWith('-')) ? -1 : 1;
+    startAbsoluteM = sign * (Math.abs(startKmNum) * 1000 + Math.abs(startMNum));
+  }
 
-  if (startAbsoluteM > 0 && stnAbsoluteM >= startAbsoluteM) {
+  if ((hasStartKm || hasStartM) && stnAbsoluteM >= startAbsoluteM) {
     return Math.max(0, stnAbsoluteM - startAbsoluteM);
   }
   return Math.max(0, stnAbsoluteM);
@@ -382,7 +394,7 @@ function buildPlatform(p) {
   return entry;
 }
 
-function buildStation(s, index) {
+function buildStation(s, index, f) {
   const entry = {
     platform_layer: strOr(s.platform, ''),
     building_length: numOr(s.length, DEFAULTS.stationLength),
@@ -390,7 +402,14 @@ function buildStation(s, index) {
     platform_side: strOr(s.side, DEFAULTS.stationSide).toUpperCase(),
     building_name: strOr(s.name, index === 0 ? DEFAULTS.stationName : `STATION ${index + 1}`),
   };
-  const ch = !isBlank(s.chainage) ? s.chainage : s.station_chainage;
+  let ch = !isBlank(s.chainage) ? s.chainage : s.station_chainage;
+  if (isBlank(ch) && (s.stationIndex != null || s.station_index != null)) {
+    const stnIdx = s.stationIndex ?? s.station_index;
+    const stnMarker = f?.stationMarkers?.[stnIdx];
+    if (stnMarker) {
+      ch = formatStartChainage(stnMarker.km, stnMarker.m);
+    }
+  }
   if (!isBlank(ch)) {
     entry.station_chainage = String(ch).trim();
   }
@@ -416,9 +435,16 @@ function buildFob(f) {
     entry.direction = strOr(f.direction, DEFAULTS.fobDirection).toUpperCase();
   }
   const arms = {};
-  for (const arm of f.arms || []) {
-    if (isBlank(arm.platform)) continue;
-    arms[String(arm.platform).trim()] = {
+  const connectedPlats = f.platforms || [];
+  for (let aIdx = 0; aIdx < (f.arms || []).length; aIdx++) {
+    const arm = f.arms[aIdx];
+    let plat = arm.platform;
+    if (isBlank(plat)) {
+      const used = new Set(Object.keys(arms));
+      plat = connectedPlats.find((p) => !used.has(p)) || connectedPlats[aIdx] || '';
+    }
+    if (isBlank(plat)) continue;
+    arms[String(plat).trim()] = {
       length: numOr(arm.length, DEFAULTS.armLength),
       side: strOr(arm.side, DEFAULTS.armSide).toUpperCase(),
     };
@@ -463,7 +489,7 @@ function buildRob(r, index) {
   };
 }
 
-function buildGradient(g) {
+function buildGradient(g, index, f) {
   const leftVal = g.leftValue ?? g.left_gradient_value ?? '';
   const rightVal = g.rightValue ?? g.right_gradient_value ?? g.gradientValue ?? '';
   const dir = g.direction
@@ -475,6 +501,12 @@ function buildGradient(g) {
   const hasM = !isBlank(g.m);
   if (hasKm || hasM) {
     ch = formatStartChainage(g.km, g.m);
+  } else if (!ch && (g.stationIndex != null || g.station_index != null)) {
+    const stnIdx = g.stationIndex ?? g.station_index;
+    const stnMarker = f?.stationMarkers?.[stnIdx];
+    if (stnMarker) {
+      ch = formatStartChainage(stnMarker.km, stnMarker.m);
+    }
   }
 
   const res = {
@@ -517,13 +549,24 @@ export function calculateEndChainage(startChainage, lengthMeters) {
   // 1. Plus notation: e.g. "125+400"
   if (s.includes('+')) {
     const parts = s.split('+');
-    const km = parseFloat(parts[0].trim() || '0');
-    const m = parseFloat(parts[1].trim() || '0');
+    const kmStr = parts[0].trim() || '0';
+    const mStr = parts[1].trim() || '0';
+    const km = parseFloat(kmStr);
+    const m = parseFloat(mStr);
     if (Number.isFinite(km) && Number.isFinite(m)) {
-      const totalM = km * 1000 + m + len;
-      const endKm = Math.floor(totalM / 1000);
-      const remM = totalM - endKm * 1000;
-      return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
+      const sign = km < 0 || kmStr.startsWith('-') ? -1 : 1;
+      const startM = sign * (Math.abs(km) * 1000 + Math.abs(m));
+      const totalM = startM + len;
+      if (totalM >= 0) {
+        const endKm = Math.floor(totalM / 1000);
+        const remM = totalM - endKm * 1000;
+        return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
+      } else {
+        const absM = Math.abs(totalM);
+        const endKmMag = Math.floor(absM / 1000);
+        const remM = absM - endKmMag * 1000;
+        return `-${endKmMag}+${remM.toFixed(2).padStart(6, '0')}`;
+      }
     }
   }
 
@@ -605,16 +648,28 @@ export function calculateEndChainageFromKmM(km, m, lengthMeters) {
   }
   const kmNum = Number(km) || 0;
   const mNum = Number(m) || 0;
-  const startM = kmNum * 1000 + mNum;
+  const sign = kmNum < 0 || String(km).trim().startsWith('-') ? -1 : 1;
+  const startM = sign * (Math.abs(kmNum) * 1000 + Math.abs(mNum));
   const endM = startM + Number(lengthMeters);
 
-  const endKm = Math.floor(endM / 1000);
-  const remM = endM - (endKm * 1000);
+  if (endM >= 0) {
+    const endKm = Math.floor(endM / 1000);
+    const remM = endM - (endKm * 1000);
 
-  if (hasKm && !hasM && remM === 0) {
-    return String(endKm);
+    if (hasKm && !hasM && Math.abs(remM) < 0.005) {
+      return String(endKm);
+    }
+    return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
+  } else {
+    const absEndM = Math.abs(endM);
+    const endKmMag = Math.floor(absEndM / 1000);
+    const remM = absEndM - (endKmMag * 1000);
+
+    if (hasKm && !hasM && Math.abs(remM) < 0.005) {
+      return `-${endKmMag}`;
+    }
+    return `-${endKmMag}+${remM.toFixed(2).padStart(6, '0')}`;
   }
-  return `${endKm}+${remM.toFixed(2).padStart(6, '0')}`;
 }
 
 /** Build full inputconfig-schema JSON from form state. */
@@ -676,11 +731,11 @@ export function buildConfig(form) {
       f.crossoverMode === 'default'
         ? 'DEFAULT'
         : (f.crossovers || []).map(buildCrossover),
-    stations: (f.stations || []).map(buildStation),
+    stations: (f.stations || []).map((s, i) => buildStation(s, i, f)),
     fobs: (f.fobs || []).map(buildFob),
     robs: (f.robs || []).map(buildRob),
     sidings: (f.sidings || []).map(buildSiding),
-    gradients: (f.gradients || []).map(buildGradient),
+    gradients: (f.gradients || []).map((g, i) => buildGradient(g, i, f)),
     main_directions: mainLines.length > 0
       ? {
           MAIN_LINE: strOr(f.mainLineDirection, 'UP').toUpperCase(),

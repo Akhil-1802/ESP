@@ -134,6 +134,25 @@ describe('defaults', () => {
     });
   });
 
+  it('FOB arms with blank platform automatically infer unassigned connected platform', () => {
+    const cfg = buildConfig({
+      ...base(),
+      fobs: [{
+        refTrack: 'MAIN_LINE',
+        chainage: '650',
+        platforms: ['PLATFORM_1', 'PLATFORM_2'],
+        arms: [
+          { platform: '', length: '17', side: 'LEFT' },
+          { platform: 'PLATFORM_2', length: '17', side: 'RIGHT' },
+        ],
+      }],
+    });
+    assert.deepEqual(cfg.fobs[0].arms, {
+      PLATFORM_1: { length: 17, side: 'LEFT' },
+      PLATFORM_2: { length: 17, side: 'RIGHT' },
+    });
+  });
+
   it('blank C1 previews as null instead of a misleading 0', () => {
     const cfg = buildConfig({ ...base(), loops: [{ name: '', c1: '', c2: '' }] });
     assert.equal(cfg.loops[0].first_crossover_chainage, null);
@@ -497,6 +516,7 @@ describe('gradients', () => {
   it('serializes stationIndex on gradients when attached to a station', () => {
     const form = {
       ...base(),
+      stationMarkers: [{ name: 'KALESH', km: '', m: '800' }, { name: 'DELHI', km: '125', m: '400' }],
       gradients: [
         {
           chainage: '125.400',
@@ -504,10 +524,29 @@ describe('gradients', () => {
           rightValue: '260',
           stationIndex: 1,
         },
+        {
+          chainage: '',
+          leftValue: '20',
+          rightValue: '40',
+          stationIndex: 0,
+        },
+      ],
+      stations: [
+        {
+          platform: 'PLATFORM_1',
+          chainage: '',
+          stationIndex: 0,
+        },
       ],
     };
     const cfg = buildConfig(form);
     assert.equal(cfg.gradients[0].station_index, 1);
+    assert.equal(cfg.gradients[0].chainage, '125.400');
+    // Blank gradient chainage auto-filled from station 0 (0+800)
+    assert.equal(cfg.gradients[1].station_index, 0);
+    assert.equal(cfg.gradients[1].chainage, '0+800');
+    // Blank station building chainage auto-filled from station 0 (0+800)
+    assert.equal(cfg.stations[0].station_chainage, '0+800');
   });
 
   it('validates gradient required fields', () => {
@@ -601,6 +640,12 @@ describe('formatStartChainage & calculateEndChainageFromKmM', () => {
     assert.equal(calculateEndChainageFromKmM(4, '', 1250.45), '5+250.45');
     // 1 KM, 900 M, 500m track length -> 2+400.00
     assert.equal(calculateEndChainageFromKmM(1, 900, 500), '2+400.00');
+
+    // Negative start chainages moving towards positive
+    assert.equal(calculateEndChainageFromKmM(-4, '', 1663.42), '-2+336.58');
+    assert.equal(calculateEndChainageFromKmM(-4, '', 100), '-3+900.00');
+    assert.equal(calculateEndChainageFromKmM(-4, '', 4000), '0');
+    assert.equal(calculateEndChainageFromKmM(-4, '', 4100), '0+100.00');
   });
 });
 
@@ -653,6 +698,14 @@ describe('station markers', () => {
     // Plus notation station: 10+200, start at 10+000 -> 200m along track
     const stn3 = { chainage: '10+200' };
     assert.equal(getStationTrackDistance(stn3, '10', '0'), 200);
+
+    // Negative start chainage: Start at KM -4 (-4000m), Station at KM -3 M 900 (-3900m) -> 100m along track
+    const stn4 = { km: '-3', m: '900' };
+    assert.equal(getStationTrackDistance(stn4, '-4', ''), 100);
+
+    // Optional KM: blank KM and 800 M -> 800m along track
+    const stn5 = { km: '', m: '800' };
+    assert.equal(getStationTrackDistance(stn5, '', ''), 800);
   });
 
   it('serializes stationIndex on platforms and centers platform bounds on station point', () => {

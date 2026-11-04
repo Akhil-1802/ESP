@@ -543,5 +543,57 @@ def test_alignment_interval_chainages_positive_slope_rotation_and_gap(tmp_path):
     assert bot_t.dxf.insert[1] < 0.0, f"Bottom text {bot_t.dxf.text} insert y={bot_t.dxf.insert[1]} above track"
 
 
+def test_alignment_interval_chainages_negative_start_chainage_progression(tmp_path):
+    """When start chainage is negative (e.g. KM -4), interval ticks progress towards positive:
+    - d = 0m: CH--4 (or CH--4+000) and Ch. -4000 M
+    - d = 100m: CH--3+900 and Ch. -3900 M
+    - d = 1000m: CH--3 and Ch. -3000 M
+    - d = 1500m: CH--2+500 and Ch. -2500 M
+    """
+    tracks = {"MAIN_LINE": [(0.0, 0.0), (1500.0, 0.0)]}
+    doc = ezdxf.new()
+    doc.layers.new("MAIN_TRACK")
+    doc.modelspace().add_lwpolyline(tracks["MAIN_LINE"], dxfattribs={"layer": "MAIN_TRACK"})
+    dxf_path = tmp_path / "interval_negative.dxf"
+    doc.saveas(dxf_path)
+
+    class Gen(ChainageMixin):
+        def __init__(self, p):
+            self.config = SimpleNamespace(
+                output_dxf=str(p),
+                start_km=-4,
+                start_m="",
+                start_chainage="-4",
+                station_markers=[
+                    {"name": "STN_NEG", "km": -3, "m": 900},
+                ],
+            )
+
+    gen = Gen(dxf_path)
+    # Test station marker parsing
+    parsed = gen._parse_alignment_station_markers(tracks["MAIN_LINE"], -4000.0, 1500.0)
+    assert len(parsed) == 1
+    assert parsed[0]["d"] == pytest.approx(100.0)
+    assert parsed[0]["ch_disp"] == "-3+900"
+
+    gen._generate_alignment_interval_chainages(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    texts = [e.dxf.text for e in res.modelspace() if e.dxftype() == "TEXT"]
+
+    # Verify start tick at d=0
+    assert "CH--4" in texts
+    assert "Ch. -4000 M" in texts
+
+    # Verify tick at d=200 (-3800m)
+    assert "CH--3+800" in texts
+    assert "Ch. -3800 M" in texts
+
+    # Verify tick at d=1000 (-3000m)
+    assert "CH--3" in texts
+    assert "Ch. -3000 M" in texts
+
+
+
 
 

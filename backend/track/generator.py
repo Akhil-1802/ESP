@@ -290,19 +290,29 @@ class TrackGenerator:
                     stn = stn_markers[stn_idx]
                     km_val = stn.get("km") if isinstance(stn, dict) else getattr(stn, "km", None)
                     m_val = stn.get("m") if isinstance(stn, dict) else getattr(stn, "m", None)
+                    km_has = km_val is not None and str(km_val).strip() != ""
+                    m_has = m_val is not None and str(m_val).strip() != ""
                     try:
-                        stn_ch = float(km_val) * 1000.0 + (float(m_val) if m_val is not None else 0.0)
+                        km_f = float(km_val) if km_has else 0.0
+                        m_f = float(m_val) if m_has else 0.0
+                        sign_stn = -1.0 if (km_f < 0 or (km_has and str(km_val).strip().startswith("-"))) else 1.0
+                        stn_ch = sign_stn * (abs(km_f) * 1000.0 + abs(m_f))
                     except Exception:
                         stn_ch = 0.0
                     start_m = 0.0
                     sk = getattr(self.config, "start_km", None)
                     sm = getattr(self.config, "start_m", None)
-                    if sk is not None:
+                    sk_has = sk is not None and str(sk).strip() != ""
+                    sm_has = sm is not None and str(sm).strip() != ""
+                    if sk_has or sm_has:
                         try:
-                            start_m = float(sk) * 1000.0 + (float(sm) if sm is not None else 0.0)
+                            sk_f = float(sk) if sk_has else 0.0
+                            sm_f = float(sm) if sm_has else 0.0
+                            sign_start = -1.0 if (sk_f < 0 or (sk_has and str(sk).strip().startswith("-"))) else 1.0
+                            start_m = sign_start * (abs(sk_f) * 1000.0 + abs(sm_f))
                         except (ValueError, TypeError):
                             start_m = 0.0
-                    stn_d = stn_ch - start_m if (start_m > 0 and stn_ch >= start_m) else stn_ch
+                    stn_d = (stn_ch - start_m) if (stn_ch >= start_m) else stn_ch
                     dist_m = getattr(loop, "crossover_distance_m", LOOP_CROSSOVER_DISTANCE_M) or LOOP_CROSSOVER_DISTANCE_M
                     loop.first_crossover_chainage = max(0.0, stn_d - dist_m / 2.0)
                     loop.second_crossover_chainage = loop.first_crossover_chainage + dist_m

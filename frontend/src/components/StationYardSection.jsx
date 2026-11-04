@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmt } from '../lib/formUtils.js';
+import { fmt, isBlank } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import {
   FOB_MAX_SPAN_M,
@@ -34,7 +34,12 @@ export function StationYardSection({
   const [open, setOpen] = useState(true);
 
   const stnName = station?.name?.trim() || `STATION ${stationIndex + 1}`;
-  const stnDisp = formatStartChainage(station?.km, station?.m) || station?.chainage || '0.000';
+  const parsedStn = parseKmM(station?.chainage);
+  const hasKmStn = !isBlank(station?.km);
+  const hasMStn = !isBlank(station?.m);
+  const stnKmVal = hasKmStn ? String(station.km) : (hasMStn ? '0' : (parsedStn.km || '0'));
+  const stnMVal = hasMStn ? String(station.m) : (parsedStn.m || '');
+  const stnDisp = formatStartChainage(stnKmVal, stnMVal) || station?.chainage || '0.000';
   const stnDist = getStationTrackDistance(station, form.startKm, form.startM);
 
   const allTracks = tracks || ['MAIN_LINE'];
@@ -241,6 +246,12 @@ export function StationYardSection({
 
   const addStationBuilding = () => {
     const defaultPlatform = safeLayers[0] || 'PLATFORM_1';
+    const parsedStn = parseKmM(station?.chainage);
+    const hasKm = !isBlank(station?.km);
+    const hasM = !isBlank(station?.m);
+    const stnKm = hasKm ? String(station.km) : (hasM ? '0' : (parsedStn.km || '0'));
+    const stnM = hasM ? String(station.m) : (parsedStn.m || '');
+    const defaultCh = formatStartChainage(stnKm, stnM);
     const newBuilding = {
       ...blankStation(),
       platform: defaultPlatform,
@@ -248,7 +259,7 @@ export function StationYardSection({
       width: '',
       side: 'RIGHT',
       name: '',
-      chainage: station?.km ? String(station.km) : '',
+      chainage: defaultCh,
       stationIndex,
     };
     setTop({ stations: [...(form.stations || []), newBuilding] });
@@ -274,6 +285,7 @@ export function StationYardSection({
   );
 
   const addFob = () => {
+    const defaultPlats = safeLayers.slice(0, 2);
     const newFob = {
       ...blankFob(),
       refTrack: 'MAIN_LINE',
@@ -281,8 +293,8 @@ export function StationYardSection({
       offset: '',
       direction: 'INCREASING',
       width: '',
-      platforms: safeLayers.slice(0, 2),
-      arms: [],
+      platforms: defaultPlats,
+      arms: defaultPlats.map((p) => ({ platform: p, length: '', side: 'LEFT' })),
       stationIndex,
     };
     setTop({ fobs: [...(form.fobs || []), newFob] });
@@ -302,17 +314,28 @@ export function StationYardSection({
 
   const toggleFobPlatform = (fobObj, layer) => {
     const has = (fobObj.platforms || []).includes(layer);
+    const nextPlats = has
+      ? (fobObj.platforms || []).filter((p) => p !== layer)
+      : [...(fobObj.platforms || []), layer];
+    const nextArms = has
+      ? (fobObj.arms || []).filter((a) => a.platform !== layer)
+      : [...(fobObj.arms || []), { platform: layer, length: '', side: 'LEFT' }];
     updateFobAt(fobObj, {
-      platforms: has
-        ? (fobObj.platforms || []).filter((p) => p !== layer)
-        : [...(fobObj.platforms || []), layer],
-      arms: has ? (fobObj.arms || []).filter((a) => a.platform !== layer) : fobObj.arms || [],
+      platforms: nextPlats,
+      arms: nextArms,
     });
   };
 
   const addArmToFob = (fobObj) => {
+    const currentArms = fobObj.arms || [];
+    const usedPlats = new Set(currentArms.map((a) => a.platform).filter(Boolean));
+    const availablePlat =
+      (fobObj.platforms || []).find((p) => !usedPlats.has(p)) ||
+      (fobObj.platforms || [])[0] ||
+      safeLayers[0] ||
+      '';
     updateFobAt(fobObj, {
-      arms: [...(fobObj.arms || []), blankArm()],
+      arms: [...currentArms, { platform: availablePlat, length: '', side: 'LEFT' }],
     });
   };
 
@@ -432,13 +455,17 @@ export function StationYardSection({
   );
 
   const addGradient = () => {
-    const stnKm = station?.km ? String(station.km) : '125';
-    const stnM = station?.m ? String(station.m) : '';
+    const parsedStn = parseKmM(station?.chainage);
+    const hasKm = !isBlank(station?.km);
+    const hasM = !isBlank(station?.m);
+    const stnKm = hasKm ? String(station.km) : (hasM ? '0' : (parsedStn.km || '0'));
+    const stnM = hasM ? String(station.m) : (parsedStn.m || '');
+    const defaultCh = formatStartChainage(stnKm, stnM);
     const newGradient = {
       ...blankGradient(),
       km: stnKm,
       m: stnM,
-      chainage: formatStartChainage(stnKm, stnM),
+      chainage: defaultCh,
       direction: 'UP',
       rl: '',
       leftValue: '',
@@ -550,28 +577,28 @@ export function StationYardSection({
                     </div>
 
                     <Grid>
-                      <Field label="Name">
+                      <Field label="Name" hint="Unique track name">
                         <Text
                           value={l.name}
                           placeholder={`LOOP_${globalLoopIdx + 1}`}
                           onChange={(e) => updateLoopAt(l, { name: e.target.value })}
                         />
                       </Field>
-                      <Field label="Side of reference track">
+                      <Field label="Side of Referenced Track">
                         <Sel
                           value={l.side}
                           onChange={(e) => updateLoopAt(l, { side: e.target.value })}
                           options={['LEFT', 'RIGHT']}
                         />
                       </Field>
-                      <Field label="Reference track">
+                      <Field label="Reference track" hint="This loop offsets from the selected track">
                         <Sel
                           value={l.referenceTrack || 'MAIN_LINE'}
                           onChange={(e) => updateLoopAt(l, { referenceTrack: e.target.value })}
                           options={loopReferenceTracks(globalLoopIdx)}
                         />
                       </Field>
-                      <Field label="Spacing (m)" hint="≥ 5.3 m (blank = 5.3)">
+                      <Field label="Spacing from Referenced Track (m) *" hint="Centre-to-centre, ≥ 5.3 (blank = 5.3)">
                         <Num
                           value={l.spacing}
                           placeholder="5.3"
@@ -579,7 +606,7 @@ export function StationYardSection({
                           onChange={(e) => updateLoopAt(l, { spacing: e.target.value })}
                         />
                       </Field>
-                      <Field label="C1 chainage (m) *" hint={`Default = ${defaultC1} m`}>
+                      <Field label="C1 chainage (MAIN m) *" hint={`First crossover point (blank C1+C2 = auto-centre, default ${defaultC1})`}>
                         <Num
                           value={l.c1}
                           placeholder={String(defaultC1)}
@@ -587,7 +614,7 @@ export function StationYardSection({
                           onChange={(e) => updateLoopAt(l, { c1: e.target.value })}
                         />
                       </Field>
-                      <Field label="C2 chainage (m) *" hint={`Default = ${defaultC2} m`}>
+                      <Field label="C2 chainage (MAIN m)" hint={`Second point (blank = C1 + distance, default ${defaultC2})`}>
                         <Num
                           value={l.c2}
                           placeholder={String(defaultC2)}
@@ -595,19 +622,28 @@ export function StationYardSection({
                           onChange={(e) => updateLoopAt(l, { c2: e.target.value })}
                         />
                       </Field>
-                      <Field label="Turnout designation">
-                        <Sel
-                          value={l.turnout || '1:12'}
-                          onChange={(e) => updateLoopAt(l, { turnout: e.target.value })}
-                          options={['1:12', '1:8.5', '1:16', '1:20']}
+                      <Field label="Crossover distance (m)" hint="Used when C2 is blank (default 750)">
+                        <Num
+                          value={l.crossoverDistance}
+                          placeholder="750.0"
+                          min="0"
+                          onChange={(e) => updateLoopAt(l, { crossoverDistance: e.target.value })}
                         />
                       </Field>
-                      <Field label="Overrun (m)">
+                      <Field label="Overrun before C1 (m)" hint="OVER RUN LINE past the turnout (blank = 120)">
                         <Num
-                          value={l.extStart !== undefined && l.extStart !== '' ? l.extStart : (l.overrun !== undefined ? l.overrun : '')}
-                          placeholder="0"
+                          value={l.extStart}
+                          placeholder="120.0"
                           min="0"
-                          onChange={(e) => updateLoopAt(l, { extStart: e.target.value, extEnd: e.target.value, overrun: e.target.value })}
+                          onChange={(e) => updateLoopAt(l, { extStart: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Overrun past C2 (m)" hint="OVER RUN LINE past the turnout (blank = 120)">
+                        <Num
+                          value={l.extEnd}
+                          placeholder="120.0"
+                          min="0"
+                          onChange={(e) => updateLoopAt(l, { extEnd: e.target.value })}
                         />
                       </Field>
                     </Grid>
@@ -967,12 +1003,22 @@ export function StationYardSection({
                           onChange={(e) => updateBuildingAt(s, { name: e.target.value })}
                         />
                       </Field>
-                      <Field label="Station chainage (KM)" hint="e.g. 125 (shown as KM: 125.000 below CH:0.00 KM)">
-                        <Text
-                          value={s.chainage ?? ''}
-                          placeholder={station?.km ? String(station.km) : '125'}
-                          onChange={(e) => updateBuildingAt(s, { chainage: e.target.value })}
-                        />
+                      <Field label="Station chainage (KM)" hint={`Referenced to ${stnName} (${stnDisp})`}>
+                        <div className="flex gap-1.5 items-center">
+                          <Text
+                            value={s.chainage ?? ''}
+                            placeholder={stnDisp}
+                            onChange={(e) => updateBuildingAt(s, { chainage: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateBuildingAt(s, { chainage: stnDisp })}
+                            className="shrink-0 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 border border-emerald-300 bg-emerald-50 rounded px-2 py-1 cursor-pointer"
+                            title="Reset to station reference chainage"
+                          >
+                            Use {stnDisp}
+                          </button>
+                        </div>
                       </Field>
                     </Grid>
                   </ItemCard>
@@ -1122,7 +1168,10 @@ export function StationYardSection({
                               <Sel
                                 value={arm.platform}
                                 onChange={(e) => updateArmAt(fb, aIdx, { platform: e.target.value })}
-                                options={safeLayers.filter((l) => (fb.platforms || []).includes(l))}
+                                options={[
+                                  ...(isBlank(arm.platform) ? [{ value: '', label: 'Select platform…' }] : []),
+                                  ...safeLayers.filter((l) => (fb.platforms || []).includes(l)),
+                                ]}
                               />
                             </Field>
                             <Field label="Arm length (m)" hint="Blank = 17.0">
@@ -1442,15 +1491,29 @@ export function StationYardSection({
                 const mVal = g.m !== undefined && g.m !== null ? String(g.m) : parsed.m;
                 const displayCh = formatStartChainage(kmVal, mVal);
                 const gradCh = g.chainage ?? (kmVal ? displayCh : '');
+                const parseToMeters = (chStr) => {
+                  if (chStr == null || String(chStr).trim() === '') return null;
+                  const s = String(chStr).trim();
+                  if (s.includes('+')) {
+                    const parts = s.split('+');
+                    const k = parseFloat(parts[0]) || 0;
+                    const m = parseFloat(parts[1]) || 0;
+                    const sign = (k < 0 || parts[0].trim().startsWith('-')) ? -1 : 1;
+                    return sign * (Math.abs(k) * 1000 + Math.abs(m));
+                  }
+                  const num = parseFloat(s);
+                  if (!isNaN(num)) {
+                    return Math.abs(num) <= 50 && !s.includes('.') ? num * 1000 : num;
+                  }
+                  return null;
+                };
+
                 let offsetDisplay = null;
                 if (gradCh !== '') {
-                  const gVal = parseFloat(String(gradCh).replace(/[^\d.-]/g, ''));
-                  const sVal = parseFloat(String(stnDisp).replace(/[^\d.-]/g, ''));
-                  if (!isNaN(gVal) && !isNaN(sVal)) {
-                    const hasKm = String(gradCh).toUpperCase().includes('KM') || String(stnDisp).toUpperCase().includes('KM');
-                    const diff = gVal - sVal;
-                    const isRouteKmDiff = !hasKm && Math.abs(diff) <= 4.0 && gVal >= 10 && sVal >= 10 && (String(gradCh).includes('.') || String(stnDisp).includes('.'));
-                    const diffM = hasKm || isRouteKmDiff ? diff * 1000 : diff;
+                  const gMeters = parseToMeters(gradCh);
+                  const sMeters = parseToMeters(stnDisp);
+                  if (gMeters !== null && sMeters !== null) {
+                    const diffM = gMeters - sMeters;
                     offsetDisplay = `${diffM >= 0 ? '+' : ''}${diffM.toFixed(1)} m`;
                   }
                 }
@@ -1477,41 +1540,52 @@ export function StationYardSection({
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                       {/* KM and M Option */}
-                      <div className="sm:col-span-5 grid grid-cols-2 gap-2">
-                        <div>
-                          <span className="mb-1 block text-xs font-medium text-slate-700">
-                            Gradient KM *
-                          </span>
-                          <Text
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={kmVal}
-                            placeholder={station?.km ? String(station.km) : 'e.g. 70'}
-                            onChange={(e) => {
-                              const newKm = e.target.value;
-                              const newCh = formatStartChainage(newKm, mVal);
-                              updateGradientAt(g, { km: newKm, m: mVal, chainage: newCh });
-                            }}
-                          />
+                      <div className="sm:col-span-5 space-y-1">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="mb-1 block text-xs font-medium text-slate-700">
+                              Gradient KM *
+                            </span>
+                            <Text
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={kmVal}
+                              placeholder={stnKmVal || '0'}
+                              onChange={(e) => {
+                                const newKm = e.target.value;
+                                const newCh = formatStartChainage(newKm, mVal);
+                                updateGradientAt(g, { km: newKm, m: mVal, chainage: newCh });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <span className="mb-1 block text-xs font-medium text-slate-700">
+                              M (optional)
+                            </span>
+                            <Text
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={mVal}
+                              placeholder={stnMVal || '0'}
+                              onChange={(e) => {
+                                const newM = e.target.value;
+                                const newCh = formatStartChainage(kmVal, newM);
+                                updateGradientAt(g, { km: kmVal, m: newM, chainage: newCh });
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <span className="mb-1 block text-xs font-medium text-slate-700">
-                            M (optional)
-                          </span>
-                          <Text
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={mVal}
-                            placeholder="e.g. 400"
-                            onChange={(e) => {
-                              const newM = e.target.value;
-                              const newCh = formatStartChainage(kmVal, newM);
-                              updateGradientAt(g, { km: kmVal, m: newM, chainage: newCh });
-                            }}
-                          />
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateGradientAt(g, { km: stnKmVal, m: stnMVal, chainage: stnDisp });
+                          }}
+                          className="text-[11px] font-medium text-emerald-700 hover:text-emerald-900 border border-emerald-300 bg-emerald-50 rounded px-2 py-0.5 cursor-pointer"
+                        >
+                          Fill with {stnName} reference ({stnDisp})
+                        </button>
                       </div>
 
                       <div className="sm:col-span-3">

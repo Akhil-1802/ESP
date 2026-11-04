@@ -570,7 +570,8 @@ class ChainageStep(PipelineStep):
             else:
                 has_explicit_m = False
                 start_m = 0.0
-            start_ch_m = start_km * 1000.0 + start_m
+            sign = -1.0 if (start_km < 0 or str(start_km_raw).strip().startswith("-")) else 1.0
+            start_ch_m = sign * (abs(start_km) * 1000.0 + abs(start_m))
         elif getattr(self.config, "start_chainage", None) is not None:
             s = str(self.config.start_chainage).strip()
             if "+" in s:
@@ -579,18 +580,19 @@ class ChainageStep(PipelineStep):
                     sk = float(parts[0].strip() or 0)
                     sm = float(parts[1].strip() or 0)
                     has_explicit_m = True
-                    start_ch_m = sk * 1000.0 + sm
+                    sign = -1.0 if (sk < 0 or parts[0].strip().startswith("-")) else 1.0
+                    start_ch_m = sign * (abs(sk) * 1000.0 + abs(sm))
                 except ValueError:
                     start_ch_m = 0.0
             else:
                 try:
                     num = float(s)
-                    if num <= 50.0 and "." not in s:
+                    if abs(num) <= 50.0 and "." not in s:
                         start_ch_m = num * 1000.0
                         has_explicit_m = False
                     else:
                         start_ch_m = num
-                        has_explicit_m = (num % 1000 > 0)
+                        has_explicit_m = (abs(num) % 1000 > 0)
                 except ValueError:
                     start_ch_m = 0.0
 
@@ -627,18 +629,30 @@ class ChainageStep(PipelineStep):
 
         for d in distances_to_mark:
             ch_m = start_ch_m + d
-            km_val = int(ch_m // 1000)
-            m_val = ch_m - (km_val * 1000.0)
-
-            # Top label text:
-            # If user filled 4 for KM, and nothing in M, use only 4 when m_val is 0
-            if abs(m_val) < 0.01:
-                if not has_explicit_m:
-                    top_text = f"CH-{km_val}"
+            if ch_m < -0.005:
+                abs_ch = abs(ch_m)
+                km_mag = int(abs_ch // 1000)
+                m_rem = abs_ch - (km_mag * 1000.0)
+                if abs(m_rem) < 0.01:
+                    if not has_explicit_m:
+                        top_text = f"CH--{km_mag}"
+                    else:
+                        top_text = f"CH--{km_mag}+000"
                 else:
-                    top_text = f"CH-{km_val}+000"
+                    top_text = f"CH--{km_mag}+{int(round(m_rem))}"
             else:
-                top_text = f"CH-{km_val}+{int(round(m_val))}"
+                km_val = int(ch_m // 1000)
+                m_val = ch_m - (km_val * 1000.0)
+
+                # Top label text:
+                # If user filled 4 for KM, and nothing in M, use only 4 when m_val is 0
+                if abs(m_val) < 0.01:
+                    if not has_explicit_m:
+                        top_text = f"CH-{km_val}"
+                    else:
+                        top_text = f"CH-{km_val}+000"
+                else:
+                    top_text = f"CH-{km_val}+{int(round(m_val))}"
 
             # Bottom label text:
             bot_text = f"Ch. {int(round(ch_m))} M"
@@ -748,11 +762,14 @@ class ChainageStep(PipelineStep):
 
             # Determine absolute chainage in meters
             stn_ch_m = None
-            if km_val is not None and str(km_val).strip() != "":
+            km_has = km_val is not None and str(km_val).strip() != ""
+            m_has = m_val is not None and str(m_val).strip() != ""
+            if km_has or m_has:
                 try:
-                    km_f = float(km_val)
-                    m_f = float(m_val) if m_val is not None and str(m_val).strip() != "" else 0.0
-                    stn_ch_m = km_f * 1000.0 + m_f
+                    km_f = float(km_val) if km_has else 0.0
+                    m_f = float(m_val) if m_has else 0.0
+                    sign = -1.0 if (km_f < 0 or (km_has and str(km_val).strip().startswith("-"))) else 1.0
+                    stn_ch_m = sign * (abs(km_f) * 1000.0 + abs(m_f))
                 except ValueError:
                     stn_ch_m = None
 
@@ -761,13 +778,16 @@ class ChainageStep(PipelineStep):
                 if "+" in s_ch:
                     parts = s_ch.split("+")
                     try:
-                        stn_ch_m = float(parts[0].strip() or 0) * 1000.0 + float(parts[1].strip() or 0)
+                        sk = float(parts[0].strip() or 0)
+                        sm = float(parts[1].strip() or 0)
+                        sign = -1.0 if (sk < 0 or parts[0].strip().startswith("-")) else 1.0
+                        stn_ch_m = sign * (abs(sk) * 1000.0 + abs(sm))
                     except ValueError:
                         stn_ch_m = None
                 else:
                     try:
                         num = float(s_ch)
-                        stn_ch_m = num * 1000.0 if num <= 50.0 and "." not in s_ch else num
+                        stn_ch_m = num * 1000.0 if abs(num) <= 50.0 and "." not in s_ch else num
                     except ValueError:
                         stn_ch_m = None
 
@@ -775,10 +795,10 @@ class ChainageStep(PipelineStep):
                 continue
 
             # Calculate distance d along track alignment and display chainage
-            if start_ch_m > 0 and stn_ch_m >= start_ch_m:
+            if stn_ch_m >= start_ch_m:
                 d = stn_ch_m - start_ch_m
                 display_ch_m = stn_ch_m
-            elif start_ch_m > 0 and stn_ch_m <= total_len:
+            elif 0.0 <= stn_ch_m <= total_len:
                 d = stn_ch_m
                 display_ch_m = start_ch_m + d
             else:
@@ -787,12 +807,21 @@ class ChainageStep(PipelineStep):
 
             d = max(0.0, min(d, total_len))
 
-            ch_km = int(display_ch_m // 1000)
-            ch_rem_m = display_ch_m - (ch_km * 1000)
-            if abs(ch_rem_m) < 0.01:
-                ch_disp = f"{ch_km}+000" if (m_val is not None and str(m_val).strip() != "") else f"{ch_km}"
+            if display_ch_m < -0.005:
+                abs_ch = abs(display_ch_m)
+                ch_km_mag = int(abs_ch // 1000)
+                ch_rem_m = abs_ch - (ch_km_mag * 1000.0)
+                if abs(ch_rem_m) < 0.01:
+                    ch_disp = f"-{ch_km_mag}+000" if (m_val is not None and str(m_val).strip() != "") else f"-{ch_km_mag}"
+                else:
+                    ch_disp = f"-{ch_km_mag}+{int(round(ch_rem_m))}"
             else:
-                ch_disp = f"{ch_km}+{int(round(ch_rem_m))}"
+                ch_km = int(display_ch_m // 1000)
+                ch_rem_m = display_ch_m - (ch_km * 1000.0)
+                if abs(ch_rem_m) < 0.01:
+                    ch_disp = f"{ch_km}+000" if (m_val is not None and str(m_val).strip() != "") else f"{ch_km}"
+                else:
+                    ch_disp = f"{ch_km}+{int(round(ch_rem_m))}"
 
             parsed.append({
                 "idx": idx,

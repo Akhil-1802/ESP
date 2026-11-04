@@ -127,10 +127,9 @@ export function SourceSection({ form, set, onPreviewKml }) {
                   </span>
                   <Text
                     type="number"
-                    min="0"
                     step="any"
                     value={form.startKm ?? ''}
-                    placeholder="e.g. 2 or 4"
+                    placeholder="e.g. -4 or 4"
                     onChange={(e) => setTop({ startKm: e.target.value })}
                   />
                 </div>

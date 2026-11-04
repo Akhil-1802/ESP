@@ -58,10 +58,14 @@ export function FobsSection({ form, set, tracks, layers }) {
   const togglePlatform = (i, layer) => {
     const fb = form.fobs[i];
     const has = fb.platforms.includes(layer);
+    const nextPlats = has ? fb.platforms.filter((p) => p !== layer) : [...fb.platforms, layer];
+    const nextArms = has
+      ? (fb.arms || []).filter((a) => a.platform !== layer)
+      : [...(fb.arms || []), { platform: layer, length: '', side: 'LEFT' }];
     setTop({
       fobs: patchAt(form.fobs, i, {
-        platforms: has ? fb.platforms.filter((p) => p !== layer) : [...fb.platforms, layer],
-        arms: has ? (fb.arms || []).filter((a) => a.platform !== layer) : fb.arms || [],
+        platforms: nextPlats,
+        arms: nextArms,
       }),
     });
   };
@@ -72,7 +76,19 @@ export function FobsSection({ form, set, tracks, layers }) {
       title="6 · Foot over bridges"
       hint="Basic deck only: span is auto-derived from the platform boundaries (no coordinates asked). Validated at 6.25 m clearance and 30 m maximum span — keep the connected platforms within it."
       count={form.fobs.length}
-      onAdd={() => setTop({ fobs: [...form.fobs, blankFob()] })}
+      onAdd={() => {
+        const plats = layers.slice(0, 2);
+        setTop({
+          fobs: [
+            ...form.fobs,
+            {
+              ...blankFob(),
+              platforms: plats,
+              arms: plats.map((p) => ({ platform: p, length: '', side: 'LEFT' })),
+            },
+          ],
+        });
+      }}
       addLabel="+ Add FOB"
     >
       {form.fobs.length === 0 && <Empty>No foot over bridges.</Empty>}
@@ -173,7 +189,20 @@ export function FobsSection({ form, set, tracks, layers }) {
               <span className="text-xs font-medium text-slate-600">Landing arms (optional, parallel to track)</span>
               <button
                 type="button"
-                onClick={() => setTop({ fobs: patchAt(form.fobs, i, { arms: [...(fb.arms || []), blankArm()] }) })}
+                onClick={() => {
+                  const currentArms = fb.arms || [];
+                  const usedPlats = new Set(currentArms.map((a) => a.platform).filter(Boolean));
+                  const availablePlat =
+                    (fb.platforms || []).find((p) => !usedPlats.has(p)) ||
+                    fb.platforms[0] ||
+                    layers[0] ||
+                    '';
+                  setTop({
+                    fobs: patchAt(form.fobs, i, {
+                      arms: [...currentArms, { platform: availablePlat, length: '', side: 'LEFT' }],
+                    }),
+                  });
+                }}
                 className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
               >
                 + Add arm

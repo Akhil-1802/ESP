@@ -198,9 +198,12 @@ class PlatformStep(PipelineStep):
             start_m = 0.0
             sk = getattr(self.config, "start_km", None)
             sm = getattr(self.config, "start_m", None)
-            if sk is not None:
+            if sk is not None and str(sk).strip() != "":
                 try:
-                    start_m = float(sk) * 1000.0 + (float(sm) if sm is not None else 0.0)
+                    sk_f = float(sk)
+                    sm_f = float(sm) if sm is not None and str(sm).strip() != "" else 0.0
+                    sign = -1.0 if (sk_f < 0 or str(sk).strip().startswith("-")) else 1.0
+                    start_m = sign * (abs(sk_f) * 1000.0 + abs(sm_f))
                 except (ValueError, TypeError):
                     start_m = 0.0
 
@@ -214,11 +217,16 @@ class PlatformStep(PipelineStep):
             stn = station_markers[stn_idx]
             km_val = stn.get("km") if isinstance(stn, dict) else getattr(stn, "km", None)
             m_val = stn.get("m") if isinstance(stn, dict) else getattr(stn, "m", None)
+            km_has = km_val is not None and str(km_val).strip() != ""
+            m_has = m_val is not None and str(m_val).strip() != ""
             try:
-                stn_ch = float(km_val) * 1000.0 + (float(m_val) if m_val is not None else 0.0)
+                km_f = float(km_val) if km_has else 0.0
+                m_f = float(m_val) if m_has else 0.0
+                sign = -1.0 if (km_f < 0 or (km_has and str(km_val).strip().startswith("-"))) else 1.0
+                stn_ch = sign * (abs(km_f) * 1000.0 + abs(m_f))
             except Exception:
                 stn_ch = 0.0
-            d = stn_ch - start_m if (start_m > 0 and stn_ch >= start_m) else stn_ch
+            d = stn_ch - start_m if (stn_ch >= start_m) else stn_ch
             stn_d = max(0.0, min(d, total_len))
         else:
             stn_d = parsed[stn_idx]["d"]
