@@ -56,68 +56,79 @@ export const LAYER_CONFIG = {
   // Signals
   SRJ: { color: '#ef4444', width: '2.0', category: 'signal', label: 'SRJ Points' },
   FM: { color: '#f43f5e', width: '4.0', category: 'signal', label: 'Fouling Marks' },
-  CHAINAGE: { color: '#ef4444', width: '1.2', dash: '4 3', category: 'reference', label: 'Station Chainage' },
-  GRADIENT: { color: '#ef4444', width: '1.6', category: 'reference', label: 'Gradient Annotation' },
+  // Reference & Chainage
+  CHAINAGE: { color: '#94a3b8', width: '1.2', dash: '4 3', category: 'reference', label: 'Station Chainage' },
+  GRADIENT: { color: '#94a3b8', width: '1.6', category: 'reference', label: 'Gradient Annotation' },
 
   // Boundary / Fencing
-  FENCING: { color: '#475569', width: '0.9', opacity: '0.6', category: 'fencing', label: 'Fencing' },
+  FENCING: { color: '#94a3b8', width: '0.9', opacity: '0.6', category: 'fencing', label: 'Fencing' },
+
+  // Text & Annotations
+  TRACK_LABELS: { color: '#34d399', width: '1.0', category: 'text', label: 'Track Labels' },
+  TRACK_CAL: { color: '#34d399', width: '1.0', category: 'text', label: 'CAL Labels' },
+  ESP_TEXT: { color: '#34d399', width: '1.0', category: 'text', label: 'ESP Text' },
+  LABELS: { color: '#34d399', width: '1.0', category: 'text', label: 'Labels' },
+  TEXT: { color: '#34d399', width: '1.0', category: 'text', label: 'Text' },
 };
 
 const PALETTE = ['#38bdf8', '#fbbf24', '#34d399', '#f43f5e', '#a78bfa', '#22d3ee', '#fb923c'];
-export const FORCE_STROKE_COLOR = '#ff0000';
+export const FORCE_STROKE_COLOR = null;
 
 export function getLayerStyle(layer) {
   const name = String(layer ?? '').trim();
-  const red = (style) =>
+  const applyOverride = (style) =>
     FORCE_STROKE_COLOR ? { ...style, color: FORCE_STROKE_COLOR } : style;
   if (LAYER_CONFIG[name]) {
-    return red(LAYER_CONFIG[name]);
+    return applyOverride(LAYER_CONFIG[name]);
   }
 
   const u = name.toUpperCase();
+  if (u.includes('LABEL') || u.includes('TEXT') || u.includes('CAL')) {
+    return applyOverride({ color: '#34d399', width: '1.0', category: 'text', label: name });
+  }
   if (u.includes('MAIN') || (u.includes('TRACK') && !u.includes('CENTER'))) {
-    return red({ color: '#38bdf8', width: '2.4', category: 'track', label: name });
+    return applyOverride({ color: '#38bdf8', width: '2.4', category: 'track', label: name });
   }
   if (u.includes('LOOP')) {
-    return red({ color: '#fbbf24', width: '2.2', category: 'track', label: name });
+    return applyOverride({ color: '#fbbf24', width: '2.2', category: 'track', label: name });
   }
   if (u.includes('SIDING')) {
-    return red({ color: '#fb923c', width: '2.2', category: 'track', label: name });
+    return applyOverride({ color: '#fb923c', width: '2.2', category: 'track', label: name });
   }
   if (u.includes('CROSS') || u.includes('TURNOUT')) {
-    return red({ color: '#fb923c', width: '2.2', category: 'crossover', label: name });
+    return applyOverride({ color: '#fb923c', width: '2.2', category: 'crossover', label: name });
   }
   if (u.includes('DIM')) {
-    return red({ color: '#64748b', width: '0.9', category: 'reference', label: name });
+    return applyOverride({ color: '#64748b', width: '0.9', category: 'reference', label: name });
   }
   if (u.includes('PLATFORM')) {
-    return red({ color: '#c084fc', width: '2.0', category: 'platform', label: name });
+    return applyOverride({ color: '#c084fc', width: '2.0', category: 'platform', label: name });
   }
   if (u.includes('STATION')) {
-    return red({ color: '#818cf8', width: '2.0', category: 'station', label: name });
+    return applyOverride({ color: '#818cf8', width: '2.0', category: 'station', label: name });
   }
   if (u.includes('FOB')) {
-    return red({ color: '#2dd4bf', width: '2.0', category: 'fob', label: name });
+    return applyOverride({ color: '#2dd4bf', width: '2.0', category: 'fob', label: name });
   }
   if (u.includes('ROB') || u.includes('SGFD')) {
-    return red({ color: '#ef4444', width: '2.5', category: 'rob', label: name });
+    return applyOverride({ color: '#ef4444', width: '2.5', category: 'rob', label: name });
   }
   if (u.includes('FENCE')) {
-    return red({ color: '#475569', width: '0.9', opacity: '0.6', category: 'fencing', label: name });
+    return applyOverride({ color: '#94a3b8', width: '0.9', opacity: '0.6', category: 'fencing', label: name });
   }
   if (u.includes('FM')) {
-    return red({ color: '#f43f5e', width: '4.0', category: 'signal', label: name });
+    return applyOverride({ color: '#f43f5e', width: '4.0', category: 'signal', label: name });
   }
   if (u.includes('SRJ') || u.includes('SIGNAL')) {
-    return red({ color: '#ef4444', width: '2.0', category: 'signal', label: name });
+    return applyOverride({ color: '#ef4444', width: '2.0', category: 'signal', label: name });
   }
   if (u.includes('CHAINAGE') || u.includes('F/CSB')) {
-    return red({ color: '#ef4444', width: '1.2', category: 'reference', label: name });
+    return applyOverride({ color: '#94a3b8', width: '1.2', category: 'reference', label: name });
   }
 
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return { color: PALETTE[h % PALETTE.length], width: '1.5', category: 'other', label: name };
+  return applyOverride({ color: PALETTE[h % PALETTE.length], width: '1.5', category: 'other', label: name });
 }
 
 /** Render a DXF to SVG structure and layer metadata. */

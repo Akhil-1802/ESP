@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dxfToSvg } from './dxfPreview.js';
+import { dxfToSvg, getLayerStyle, FORCE_STROKE_COLOR } from './dxfPreview.js';
 
 const DXF = [
   '0', 'SECTION', '2', 'ENTITIES',
@@ -29,6 +29,13 @@ describe('dxfToSvg', () => {
     assert.ok(out.svg.includes('viewBox'));
     assert.ok(out.w > 0 && out.h > 0);
     assert.equal(out.entities, 4);
+  });
+
+  it('preserves distinct layer styles and null force stroke color', () => {
+    assert.equal(FORCE_STROKE_COLOR, null);
+    assert.equal(getLayerStyle('MAIN_LINE').color, '#38bdf8');
+    assert.equal(getLayerStyle('PLATFORM_1').color, '#c084fc');
+    assert.equal(getLayerStyle('TURNOUT').color, '#fb923c');
   });
 
   it('rejects input with no drawable entities', () => {

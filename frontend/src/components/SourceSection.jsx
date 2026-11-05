@@ -138,10 +138,10 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
             type="file"
             accept=".kml"
             onChange={(e) => onFile(e.target.files[0] || null)}
-            className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
+            className="w-full text-xs text-[var(--text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--accent)] hover:file:bg-[var(--accent-strong)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white file:transition-colors file:cursor-pointer"
           />
           {(centreBusy || centreMsg) && (
-            <span className="mt-0.5 block text-[11px] leading-snug text-sky-700">
+            <span className="mt-0.5 block text-[11px] leading-snug text-[var(--accent)]">
               {centreBusy ? 'Reading track geometry from KML…' : centreMsg}
             </span>
           )}
@@ -151,7 +151,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
                 <button
                   type="button"
                   onClick={onPreviewKml}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] hover:from-[var(--accent-strong)] hover:to-[var(--accent-strong)] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
                 >
                   <span>👁️ View Alignment with Chainages</span>
                 </button>
@@ -160,7 +160,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
                 <button
                   type="button"
                   onClick={onPreviewDirectKml}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] text-[var(--accent)] hover:bg-[rgba(50,95,244,0.08)] px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                 >
                   <span>🗺️ View Exact KML (1:1 Multi-Line)</span>
                 </button>
@@ -182,11 +182,11 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
         )}
 
         {/* Alignment Reference Chainages Card */}
-        <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+        <div className="col-span-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3 space-y-2.5 shadow-2xs">
           <div className="flex flex-wrap items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-slate-700">Track Reference Chainages</span>
+            <span className="text-xs font-semibold text-[var(--text-primary)]">Track Reference Chainages</span>
             {form.mainLength != null && (
-              <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded px-2 py-0.5">
+              <span className="text-[11px] font-semibold text-[var(--accent)] bg-[rgba(50,95,244,0.08)] border border-[var(--border)] rounded px-2 py-0.5">
                 KML Track Length: {form.mainLength.toFixed(2)} m
               </span>
             )}

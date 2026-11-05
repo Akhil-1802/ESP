@@ -27,7 +27,7 @@ export function DxfControls({
         className={`z-10 flex h-10 shrink-0 items-center justify-between border-b px-3 backdrop-blur-md transition-colors ${
           isDark
             ? 'border-slate-800 bg-slate-900/90 text-slate-100'
-            : 'border-slate-200 bg-white/90 text-slate-800 shadow-xs'
+            : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] shadow-xs'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -248,7 +248,7 @@ export function DxfControls({
               <button
                 type="button"
                 onClick={onDownloadDxf}
-                className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors cursor-pointer"
+                className="flex items-center gap-1 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-strong)] px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer"
                 title="Download DXF drawing"
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,7 +263,7 @@ export function DxfControls({
                 className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 ${
                   isDark
                     ? 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
-                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)]'
                 }`}
                 title="Export as PNG image"
               >
@@ -275,7 +275,7 @@ export function DxfControls({
                 className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors cursor-pointer ${
                   isDark
                     ? 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
-                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)]'
                 }`}
                 title="Download config JSON"
               >
@@ -292,7 +292,7 @@ export function DxfControls({
           className={`z-10 flex h-7 shrink-0 items-center gap-1.5 overflow-x-auto border-b px-3 text-[10.5px] transition-colors ${
             isDark
               ? 'border-slate-800/80 bg-slate-950/70 text-slate-400'
-              : 'border-slate-200 bg-slate-50/90 text-slate-600'
+              : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)]'
           }`}
         >
           <span className="font-semibold text-[10px] uppercase tracking-wider mr-1 text-slate-500">

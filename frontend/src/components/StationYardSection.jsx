@@ -490,15 +490,15 @@ export function StationYardSection({
   };
 
   return (
-    <section className="rounded-xl border border-emerald-300/80 bg-white shadow-sm overflow-hidden transition-all">
+    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_12px_rgba(25,49,104,0.04)] overflow-hidden transition-all">
       {/* Station Section Accordion Header */}
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 px-3.5 py-2.5 bg-emerald-50/60 cursor-pointer select-none hover:bg-emerald-100/70 transition-colors"
+        className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2.5 bg-[var(--surface-soft)] cursor-pointer select-none hover:bg-[rgba(50,95,244,0.04)] transition-colors"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span
-            className="text-emerald-600 transition-transform duration-200 inline-flex items-center justify-center w-4 h-4"
+            className="text-[var(--accent)] transition-transform duration-200 inline-flex items-center justify-center w-4 h-4"
             style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
           >
             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
@@ -506,19 +506,19 @@ export function StationYardSection({
             </svg>
           </span>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="rounded-md bg-emerald-700 text-white font-bold text-[11px] px-2 py-0.5 shadow-2xs">
+            <span className="rounded-md bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] text-white font-bold text-[11px] px-2 py-0.5 shadow-2xs">
               Station {stationIndex + 1}
             </span>
-            <h2 className="text-sm font-bold text-slate-800 truncate">
+            <h2 className="text-sm font-bold text-[var(--text-primary)] truncate">
               {stnName}
             </h2>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-800">
+            <span className="rounded-full bg-[rgba(50,95,244,0.08)] border border-[var(--border)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--accent)]">
               Datum: {stnDisp} (at {stnDist.toFixed(1)} m)
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-slate-500">
+        <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
           <span>{stationLoops.length} loops · {stationPlatforms.length} platforms · {stationCrossovers.length} crossovers · {stationRobs.length} ROBs</span>
         </div>
       </div>

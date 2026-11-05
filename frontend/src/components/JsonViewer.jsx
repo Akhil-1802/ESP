@@ -26,17 +26,17 @@ export function JsonViewer({
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-slate-900 text-slate-200 border-l border-slate-800 text-xs">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--surface)] text-[var(--text-primary)] border-l border-[var(--border)] text-xs">
       {/* Panel Header - Compact */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800 px-2.5 bg-slate-950">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border)] px-2.5 bg-[var(--surface)]">
         <div className="flex items-center gap-1.5 min-w-0">
-          <svg className="h-3.5 w-3.5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-3.5 w-3.5 text-[var(--accent)] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 truncate">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)] truncate">
             JSON
           </span>
-          <span className="rounded bg-slate-800 px-1 py-0.2 font-mono text-[9px] text-slate-400">
+          <span className="rounded bg-[rgba(50,95,244,0.08)] border border-[var(--border)] px-1.5 py-0.2 font-mono text-[9px] font-semibold text-[var(--accent)]">
             {lineCount}L
           </span>
         </div>
@@ -47,8 +47,8 @@ export function JsonViewer({
             onClick={handleCopy}
             className={`flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
               copied
-                ? 'bg-emerald-600 text-white'
-                : 'border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-[var(--accent)] text-white'
+                : 'border border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]'
             }`}
             title="Copy JSON to clipboard"
           >
@@ -58,7 +58,7 @@ export function JsonViewer({
           <button
             type="button"
             onClick={onDownload}
-            className="flex items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
+            className="flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors cursor-pointer"
             title="Download inputconfig.json"
           >
             .json
@@ -68,7 +68,7 @@ export function JsonViewer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded p-0.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="rounded p-0.5 text-[var(--text-muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
               title="Close JSON panel"
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,14 +81,14 @@ export function JsonViewer({
 
       {/* Tabs */}
       {resultConfigText && (
-        <div className="flex border-b border-slate-800 bg-slate-950/40 px-2 pt-1 text-[11px]">
+        <div className="flex border-b border-[var(--border)] bg-[var(--surface-soft)] px-2 pt-1 text-[11px]">
           <button
             type="button"
             onClick={() => setActiveTab('live')}
             className={`border-b-2 px-2 py-1 font-medium transition-colors cursor-pointer ${
               activeTab === 'live'
-                ? 'border-emerald-500 text-emerald-400 font-semibold'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[var(--accent)] text-[var(--accent)] font-semibold'
+                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             Live Input
@@ -98,8 +98,8 @@ export function JsonViewer({
             onClick={() => setActiveTab('result')}
             className={`border-b-2 px-2 py-1 font-medium transition-colors cursor-pointer ${
               activeTab === 'result'
-                ? 'border-emerald-500 text-emerald-400 font-semibold'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[var(--accent)] text-[var(--accent)] font-semibold'
+                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             Result DXF
@@ -108,8 +108,8 @@ export function JsonViewer({
       )}
 
       {/* Code Area - Compact spacing */}
-      <div className="flex-1 overflow-auto p-2.5 font-mono text-[10px] leading-snug selection:bg-emerald-900 selection:text-emerald-100">
-        <pre className="text-emerald-300/90 whitespace-pre-wrap break-all font-mono">
+      <div className="flex-1 overflow-auto p-2.5 font-mono text-[10px] leading-snug bg-[#0f172a] text-sky-200/90 selection:bg-[var(--accent)] selection:text-white">
+        <pre className="text-sky-300 whitespace-pre-wrap break-all font-mono">
           {displayedText}
         </pre>
       </div>
