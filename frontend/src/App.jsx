@@ -513,7 +513,7 @@ export default function App() {
         {/* ============================================================ */}
         {/* PANEL 2: CENTER VIEWPORT (Big DXF Viewer)                   */}
         {/* ============================================================ */}
-        <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-[#0a0e17]">
+        <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-white">
           <DxfViewer
             key={result ? result.filename : 'empty'}
             result={result}

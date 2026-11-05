@@ -27,7 +27,7 @@ export function DxfControls({
         className={`z-10 flex h-10 shrink-0 items-center justify-between border-b px-3 backdrop-blur-md transition-colors ${
           isDark
             ? 'border-slate-800 bg-slate-900/90 text-slate-100'
-            : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] shadow-xs'
+            : 'border-slate-200 bg-white text-slate-800 shadow-xs'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -54,7 +54,9 @@ export function DxfControls({
               )}
             </div>
           ) : (
-            <span className="text-xs text-slate-400">Ready — awaiting generation</span>
+            <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Ready — awaiting generation
+            </span>
           )}
         </div>
 
@@ -203,44 +205,43 @@ export function DxfControls({
                   </button>
                 </>
               )}
-
-              {/* Theme toggle */}
-              <button
-                type="button"
-                onClick={() => setIsDark(!isDark)}
-                className={`rounded-lg border p-1 text-xs cursor-pointer transition-colors ${
-                  isDark
-                    ? 'border-slate-700 bg-slate-800/90 text-amber-300 hover:bg-slate-700'
-                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-                title={isDark ? 'Switch to Light Paper mode' : 'Switch to Dark CAD mode'}
-              >
-                {isDark ? '☼' : '☾'}
-              </button>
-
-              {/* Fullscreen toggle */}
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className={`rounded-lg border p-1 text-xs cursor-pointer transition-colors ${
-                  isDark
-                    ? 'border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white'
-                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Canvas'}
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {isFullscreen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 9L4 4m0 0l5 0m-5 0l0 5m11 11l5 5m0 0l-5 0m5 0l0-5m-11 0l-5 5m0 0l5 0m-5 0l0-5m11-11l5-5m0 0l-5 0m5 0l0 5" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
-                  )}
-                </svg>
-              </button>
-
-              <div className="mx-0.5 h-4 w-[1px] bg-slate-700/50" />
+              <div className={`mx-0.5 h-4 w-[1px] ${isDark ? 'bg-slate-700/50' : 'bg-slate-300'}`} />
             </>
           )}
+
+          {/* Theme toggle */}
+          <button
+            type="button"
+            onClick={() => setIsDark(!isDark)}
+            className={`rounded-lg border p-1 text-xs cursor-pointer transition-colors ${
+              isDark
+                ? 'border-slate-700 bg-slate-800/90 text-amber-300 hover:bg-slate-700'
+                : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+            title={isDark ? 'Switch to Light Paper mode' : 'Switch to Dark CAD mode'}
+          >
+            {isDark ? '☼' : '☾'}
+          </button>
+
+          {/* Fullscreen toggle */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className={`rounded-lg border p-1 text-xs cursor-pointer transition-colors ${
+              isDark
+                ? 'border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white'
+                : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Canvas'}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {isFullscreen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 9L4 4m0 0l5 0m-5 0l0 5m11 11l5 5m0 0l-5 0m5 0l0-5m-11 0l-5 5m0 0l5 0m-5 0l0-5m11-11l5-5m0 0l-5 0m5 0l0 5" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
+              )}
+            </svg>
+          </button>
 
           {/* Export Buttons */}
           {result && (

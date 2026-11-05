@@ -15,7 +15,7 @@ export function DxfViewer({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, vbX: 0, vbY: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [mouseCoord, setMouseCoord] = useState(null);
 
   // Layer category toggles (true = visible)
@@ -291,7 +291,7 @@ export function DxfViewer({
       s = s.replace(/height="[^"]*"/, 'height="100%"');
     }
 
-    const bgFill = isDark ? '#0a0e17' : '#f8fafc';
+    const bgFill = isDark ? '#0a0e17' : '#ffffff';
     const textColor = isDark ? '#f8fafc' : '#0f172a';
     const textHalo = isDark ? '#0a0e17' : '#ffffff';
 
@@ -321,11 +321,34 @@ export function DxfViewer({
     return s;
   }, [result, viewBox, isDark, layersVisible]);
 
+  // Custom high-contrast CAD reticle cursor visible on any canvas background
+  const cursorStyle = useMemo(() => {
+    // In light mode (paper canvas): Dark navy core (#0f172a), crisp white halo (#ffffff), bold red center dot (#ef4444)
+    // In dark mode: Sky cyan core (#38bdf8), black halo (#020617), bright red center dot (#ef4444)
+    const fg = isDark ? '%2338bdf8' : '%230f172a';
+    const halo = isDark ? '%23020617' : '%23ffffff';
+    const accent = '%23ef4444';
+
+    if (isDragging) {
+      // 4-directional navigation / pan reticle with red center dot
+      const panSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g stroke='${halo}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'><line x1='16' y1='3' x2='16' y2='29'/><polyline points='12,7 16,3 20,7'/><polyline points='12,25 16,29 20,25'/><line x1='3' y1='16' x2='29' y2='16'/><polyline points='7,12 3,16 7,20'/><polyline points='25,12 29,16 25,20'/></g><g stroke='${fg}' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round' fill='none'><line x1='16' y1='3' x2='16' y2='29'/><polyline points='12,7 16,3 20,7'/><polyline points='12,25 16,29 20,25'/><line x1='3' y1='16' x2='29' y2='16'/><polyline points='7,12 3,16 7,20'/><polyline points='25,12 29,16 25,20'/></g><circle cx='16' cy='16' r='3' fill='${accent}' stroke='${halo}' stroke-width='1'/></svg>`;
+      return {
+        cursor: `url("data:image/svg+xml,${panSvg}") 16 16, move`,
+      };
+    }
+
+    // High-visibility CAD crosshair with central aperture / pickbox & center red target dot
+    const crossSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g stroke='${halo}' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round' fill='none'><line x1='16' y1='1' x2='16' y2='10'/><line x1='16' y1='22' x2='16' y2='31'/><line x1='1' y1='16' x2='10' y2='16'/><line x1='22' y1='16' x2='31' y2='16'/><rect x='11' y='11' width='10' height='10'/></g><g stroke='${fg}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'><line x1='16' y1='1' x2='16' y2='10'/><line x1='16' y1='22' x2='16' y2='31'/><line x1='1' y1='16' x2='10' y2='16'/><line x1='22' y1='16' x2='31' y2='16'/><rect x='11' y='11' width='10' height='10'/></g><circle cx='16' cy='16' r='2' fill='${accent}' stroke='${halo}' stroke-width='0.75'/></svg>`;
+    return {
+      cursor: `url("data:image/svg+xml,${crossSvg}") 16 16, crosshair`,
+    };
+  }, [isDark, isDragging]);
+
   return (
     <div
       ref={containerRef}
       className={`relative flex h-full w-full flex-col overflow-hidden select-none transition-colors duration-200 ${
-        isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-800'
+        isDark ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-800'
       }`}
     >
       <DxfControls
@@ -349,7 +372,8 @@ export function DxfViewer({
 
       {/* Main Canvas Viewport Area */}
       <div
-        className="relative flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+        style={cursorStyle}
+        className="relative flex-1 overflow-hidden"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -363,7 +387,7 @@ export function DxfViewer({
             dangerouslySetInnerHTML={{ __html: activeSvg }}
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center p-6 sm:p-10 text-center overflow-y-auto">
+          <div className="flex h-full w-full flex-col items-center justify-center p-6 sm:p-10 text-center overflow-y-auto cursor-default">
             <div
               className={`w-full max-w-2xl rounded-2xl border p-6 sm:p-8 shadow-xl transition-all ${
                 isDark
