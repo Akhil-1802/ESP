@@ -1,10 +1,12 @@
 /** Minimal client for the ESP backend (POST /generate -> DXF download). */
 
-export const API_BASE =
+const rawApiBase =
   (typeof import.meta !== 'undefined' &&
     import.meta.env &&
-    import.meta.env.VITE_API_BASE) ||
+    (import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL)) ||
   'http://127.0.0.1:8000';
+
+export const API_BASE = String(rawApiBase).trim().replace(/\/+$/, '');
 
 function downloadName(res, fallback) {
   const header = res.headers.get('content-disposition') || '';
