@@ -11,7 +11,7 @@ export function SidingsSection({ form, set, tracks }) {
   return (
     <Section
       id="sidings"
-      title="8 · Sidings"
+      title="9 · Sidings"
       hint="Dead-end sidings leaving a source track through a turnout, running out to a parallel spacing, holding the clear standing length (CSL), and terminating in a dead end (DE)."
       count={sidings.length}
       onAdd={() => {

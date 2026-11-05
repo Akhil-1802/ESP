@@ -363,25 +363,101 @@ export function DxfViewer({
             dangerouslySetInnerHTML={{ __html: activeSvg }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
-            <div className="rounded-2xl border border-dashed border-slate-700 p-6">
-              <svg className="mx-auto h-12 w-12 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium">No drawing loaded yet</p>
-            <p className="max-w-xs text-xs text-slate-500">
-              Configure parameters on the left and click &quot;Generate DXF&quot;, or load the standard railway station sample.
-            </p>
-            {onLoadDemo && (
-              <button
-                type="button"
-                onClick={onLoadDemo}
-                className="mt-2 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 transition-colors cursor-pointer"
+          <div className="flex h-full w-full flex-col items-center justify-center p-6 sm:p-10 text-center overflow-y-auto">
+            <div
+              className={`w-full max-w-2xl rounded-2xl border p-6 sm:p-8 shadow-xl transition-all ${
+                isDark
+                  ? 'border-slate-800 bg-slate-900/80 backdrop-blur-md text-slate-200'
+                  : 'border-slate-200 bg-white/95 backdrop-blur-md text-slate-800 shadow-[var(--shadow)]'
+              }`}
+            >
+              {/* Header Badge & Title */}
+              <div className="flex flex-col items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold bg-[rgba(50,95,244,0.12)] text-[var(--accent)] border border-[var(--border)]">
+                  <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" />
+                  Engineering Scale Plan (ESP) Studio
+                </span>
+                <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
+                  Welcome to Railway ESP Generator
+                </h2>
+                <p className={`max-w-lg text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Convert real-world KML railway alignment surveys into CAD-accurate DXF Engineering Scale Plans with automatic turnouts, loops, platforms, and chainages.
+                </p>
+              </div>
+
+              {/* 3 Step Onboarding Cards */}
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">
+                <div
+                  className={`rounded-xl border p-3.5 transition-all ${
+                    isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-100 bg-[var(--surface-soft)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--accent)] text-white text-xs font-bold">1</span>
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">Upload KML</span>
+                  </div>
+                  <p className={`text-[11.5px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Upload your raw track survey in Section 1 on the left sidebar.
+                  </p>
+                </div>
+
+                <div
+                  className={`rounded-xl border p-3.5 transition-all ${
+                    isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-100 bg-[var(--surface-soft)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--accent-start)] text-white text-xs font-bold">2</span>
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">Confirm Main Line</span>
+                  </div>
+                  <p className={`text-[11.5px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Inspect candidate paths and confirm the continuous Main Line alignment.
+                  </p>
+                </div>
+
+                <div
+                  className={`rounded-xl border p-3.5 transition-all ${
+                    isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-100 bg-[var(--surface-soft)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--accent-end)] text-white text-xs font-bold">3</span>
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">Generate DXF</span>
+                  </div>
+                  <p className={`text-[11.5px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Configure loops & platforms, then click &quot;Generate DXF Drawing&quot;.
+                  </p>
+                </div>
+              </div>
+
+              {/* Sample Station CTA */}
+              {onLoadDemo && (
+                <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 border-t border-[var(--border)]">
+                  <button
+                    type="button"
+                    onClick={onLoadDemo}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[var(--accent-start)] via-[var(--accent)] to-[var(--accent-strong)] hover:opacity-95 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-[rgba(50,95,244,0.3)] transition-all cursor-pointer transform hover:-translate-y-0.5"
+                  >
+                    <span>⚡ Try Sample Station Demo</span>
+                  </button>
+                  <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    No KML ready? Click above to preview a working station immediately.
+                  </span>
+                </div>
+              )}
+
+              {/* Canvas Controls Summary */}
+              <div
+                className={`mt-5 flex flex-wrap items-center justify-center gap-4 text-[11px] font-mono pt-3 border-t ${
+                  isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-100 text-slate-500'
+                }`}
               >
-                Load Sample Station
-              </button>
-            )}
+                <span>🖱️ <b>Pan:</b> Drag left-click</span>
+                <span>🔍 <b>Zoom:</b> Scroll wheel or +/-</span>
+                <span>🎯 <b>Reset:</b> Double-click / Fit</span>
+                <span>🎨 <b>Layers:</b> Toggle in toolbar</span>
+              </div>
+            </div>
           </div>
         )}
 

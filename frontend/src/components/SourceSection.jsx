@@ -146,25 +146,30 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
             </span>
           )}
           {file && (
-            <div className="mt-2.5 flex flex-wrap gap-2">
-              {onPreviewKml && (
-                <button
-                  type="button"
-                  onClick={onPreviewKml}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] hover:from-[var(--accent-strong)] hover:to-[var(--accent-strong)] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
-                >
-                  <span>👁️ View Alignment with Chainages</span>
-                </button>
-              )}
-              {onPreviewDirectKml && (
-                <button
-                  type="button"
-                  onClick={onPreviewDirectKml}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] text-[var(--accent)] hover:bg-[rgba(50,95,244,0.08)] px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  <span>🗺️ View Exact KML (1:1 Multi-Line)</span>
-                </button>
-              )}
+            <div className="mt-2.5 flex flex-col gap-1.5">
+              <div className="flex flex-wrap gap-2">
+                {onPreviewKml && (
+                  <button
+                    type="button"
+                    onClick={onPreviewKml}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] hover:from-[var(--accent-strong)] hover:to-[var(--accent-strong)] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
+                  >
+                    <span>👁️ View Alignment with Chainages</span>
+                  </button>
+                )}
+                {onPreviewDirectKml && (
+                  <button
+                    type="button"
+                    onClick={onPreviewDirectKml}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] text-[var(--accent)] hover:bg-[rgba(50,95,244,0.08)] px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <span>🗺️ View Exact KML (1:1 Multi-Line)</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[10.5px] text-[var(--text-muted)] leading-tight">
+                💡 <b>Alignment Check:</b> <i>View Alignment</i> shows mainline chainages &amp; station flag. <i>View Exact KML</i> previews the raw multi-line survey.
+              </p>
             </div>
           )}
         </Field>

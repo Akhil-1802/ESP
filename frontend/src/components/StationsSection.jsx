@@ -9,7 +9,7 @@ export function StationsSection({ form, set, layers }) {
   return (
     <Section
       id="stations"
-      title="5 · Station buildings"
+      title="6 · Station buildings"
       hint="Rectangular footprints placed against a platform edge. Blank length/width = 40 × 10 m."
       count={form.stations.length}
       onAdd={() => setTop({ stations: [...form.stations, blankStation()] })}

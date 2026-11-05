@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+from contextlib import asynccontextmanager
 import json
 from pathlib import Path
 import shutil
 import sys
 import tempfile
+import time
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +27,57 @@ BACKEND_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 BACKEND_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DXF_MEDIA_TYPE = "image/vnd.dxf"
 
+# Retention TTL for generated files in output directory (10 minutes)
+OUTPUT_FILE_TTL_SECONDS: float = 600.0
+CLEANUP_INTERVAL_SECONDS: float = 60.0
+
+
+def cleanup_expired_outputs(
+    output_dir: Path = BACKEND_OUTPUT_DIR,
+    ttl_seconds: float = OUTPUT_FILE_TTL_SECONDS,
+) -> int:
+    """Delete files in output_dir that are older than ttl_seconds, preserving .gitkeep."""
+    if not output_dir.is_dir():
+        return 0
+    now = time.time()
+    deleted = 0
+    for item in output_dir.iterdir():
+        if item.is_file() and item.name != ".gitkeep":
+            try:
+                mtime = item.stat().st_mtime
+                if (now - mtime) >= ttl_seconds:
+                    item.unlink(missing_ok=True)
+                    deleted += 1
+            except OSError:
+                pass
+    return deleted
+
+
+async def _janitor_sweeper():
+    """Background periodic loop to clean up expired output DXF files."""
+    while True:
+        try:
+            await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+            cleanup_expired_outputs()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run once at startup to sweep any files left from previous downtime
+    cleanup_expired_outputs()
+    task = asyncio.create_task(_janitor_sweeper())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -32,17 +87,19 @@ except Exception:
 app = FastAPI(
     title="ESP Generation API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173","https://railway-esp.netlify.app/"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 def _persist_output(dxf_path: Path, download_name: str) -> Path:
-    """Copy the finished DXF into output directory (never overwritten)."""
+    """Copy the finished DXF into output directory (never overwritten) and prune expired files."""
+    cleanup_expired_outputs()
     stem, suffix = Path(download_name).stem, Path(download_name).suffix or ".dxf"
     candidate = BACKEND_OUTPUT_DIR / f"{stem}{suffix}"
     if candidate.exists():

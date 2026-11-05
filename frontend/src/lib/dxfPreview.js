@@ -72,7 +72,7 @@ export const LAYER_CONFIG = {
 };
 
 const PALETTE = ['#38bdf8', '#fbbf24', '#34d399', '#f43f5e', '#a78bfa', '#22d3ee', '#fb923c'];
-export const FORCE_STROKE_COLOR = null;
+export const FORCE_STROKE_COLOR = '#ff0000';
 
 export function getLayerStyle(layer) {
   const name = String(layer ?? '').trim();

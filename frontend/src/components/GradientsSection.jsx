@@ -14,7 +14,7 @@ export function GradientsSection({ form, set }) {
   return (
     <Section
       id="gradients"
-      title="9 · Gradient Annotations"
+      title="10 · Gradient Annotations"
       hint="Draws straight horizontal gradient annotation symbols on the railway alignment, using station center chainage as reference."
       count={gradients.length}
       onAdd={() => setTop({ gradients: [...gradients, blankGradient()] })}

@@ -31,11 +31,12 @@ describe('dxfToSvg', () => {
     assert.equal(out.entities, 4);
   });
 
-  it('preserves distinct layer styles and null force stroke color', () => {
-    assert.equal(FORCE_STROKE_COLOR, null);
-    assert.equal(getLayerStyle('MAIN_LINE').color, '#38bdf8');
-    assert.equal(getLayerStyle('PLATFORM_1').color, '#c084fc');
-    assert.equal(getLayerStyle('TURNOUT').color, '#fb923c');
+  it('applies red stroke color preview matching engineering CAD standard', () => {
+    assert.equal(FORCE_STROKE_COLOR, '#ff0000');
+    assert.equal(getLayerStyle('MAIN_LINE').color, '#ff0000');
+    assert.equal(getLayerStyle('MAIN_LINE').category, 'track');
+    assert.equal(getLayerStyle('PLATFORM_1').color, '#ff0000');
+    assert.equal(getLayerStyle('TURNOUT').color, '#ff0000');
   });
 
   it('rejects input with no drawable entities', () => {

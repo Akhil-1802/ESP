@@ -19,7 +19,7 @@ export function CrossoversSection({ form, set, tracks }) {
   return (
     <Section
       id="crossovers"
-      title="4 · Crossovers"
+      title="5 · Crossovers"
       hint="Only the START chainage is input — the second SRJ is derived (OL = TC·N + 2·A). Type AUTO to let the engine place it, or use the DEFAULT preset for the standard 4-crossover station layout."
       count={isDefault ? 0 : form.crossovers.length}
       onAdd={isDefault ? null : () => setTop({ crossovers: [...form.crossovers, blankCrossover()] })}

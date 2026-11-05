@@ -21,7 +21,7 @@ export function PlatformsSection({ form, set, tracks }) {
   return (
     <Section
       id="platforms"
-      title="3 · Platforms"
+      title="4 · Platforms"
       hint="SIDE sits next to one track; ISLAND sits between two. Blank width/length/clearance/height = 7.0 m / 550 m / 1.68 m / 0.84 m."
       count={form.platforms.length}
       onAdd={() => setTop({ platforms: [...form.platforms, blank()] })}

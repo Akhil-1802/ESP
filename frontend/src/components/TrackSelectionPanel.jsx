@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 
 export function TrackSelectionPanel({
   candidateTracks = [],
@@ -7,8 +7,6 @@ export function TrackSelectionPanel({
   onSelectTrack,
   onConfirmMainLine,
 }) {
-  const [classifications, setClassifications] = useState({});
-
   const topTracks = useMemo(() => {
     return (candidateTracks || []).slice(0, 4);
   }, [candidateTracks]);
@@ -20,10 +18,6 @@ export function TrackSelectionPanel({
       null
     );
   }, [topTracks, selectedTrackId]);
-
-  const updateClassification = (candId, value) => {
-    setClassifications((prev) => ({ ...prev, [candId]: value }));
-  };
 
   if (!topTracks || topTracks.length === 0) {
     return null;
@@ -45,24 +39,21 @@ export function TrackSelectionPanel({
           </div>
         </div>
         <span className="text-[11px] text-[var(--text-secondary)]">
-          Select and confirm the continuous Main Line alignment for ESP generation.
+          Select which alignment track serves as the continuous Main Line.
         </span>
       </div>
 
-      {/* Candidate List - Full Width */}
+      {/* Candidate List */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted)] px-1">
-          <span>Candidate Track & CAD Entity</span>
-          <span>Length · Segments · Classification</span>
+          <span>Candidate Track &amp; CAD Entity</span>
+          <span>Length · Alignment Option</span>
         </div>
 
-        <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1">
+        <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
           {topTracks.map((cand) => {
             const isSelected = activeTrack?.candidate_id === cand.candidate_id;
             const isConfirmed = confirmedTrackId === cand.candidate_id;
-            const currentClass =
-              classifications[cand.candidate_id] ||
-              (isConfirmed ? 'Main Line' : cand.classification);
 
             return (
               <div
@@ -110,41 +101,26 @@ export function TrackSelectionPanel({
                   </div>
                 </div>
 
-                {/* Classification Controls */}
+                {/* Main Line Option Control */}
                 <div className="mt-2 flex items-center justify-between gap-2 pt-1.5 border-t border-[var(--border)]">
-                  <span className="text-[11px] font-medium text-[var(--text-muted)]">
-                    Role in Layout:
+                  <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                    Main Line Alignment:
                   </span>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={currentClass}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => updateClassification(cand.candidate_id, e.target.value)}
-                      className="rounded border border-[var(--border)] bg-white px-2 py-1 text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] focus:outline-none"
-                    >
-                      <option value="Main Line">Main Line</option>
-                      <option value="Loop Line">Loop Line</option>
-                      <option value="Siding">Siding</option>
-                      <option value="Other">Other / Unclassified</option>
-                      <option value="Ignore">Ignore</option>
-                    </select>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectTrack && onSelectTrack(cand);
-                        onConfirmMainLine && onConfirmMainLine(cand);
-                      }}
-                      className={`rounded px-2.5 py-1 text-xs font-semibold shadow-xs transition-colors cursor-pointer ${
-                        isConfirmed
-                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-                          : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
-                      }`}
-                    >
-                      {isConfirmed ? '✓ Main Line' : 'Select as Main'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectTrack && onSelectTrack(cand);
+                      onConfirmMainLine && onConfirmMainLine(cand);
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer ${
+                      isConfirmed
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-500 ring-1 ring-emerald-400'
+                        : 'border border-[var(--border)] bg-white text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[rgba(50,95,244,0.06)] hover:text-[var(--accent)]'
+                    }`}
+                  >
+                    {isConfirmed ? '✓ Main Line' : 'Select as Main Line'}
+                  </button>
                 </div>
               </div>
             );
@@ -167,7 +143,7 @@ export function TrackSelectionPanel({
             <span>
               {confirmedTrackId === activeTrack.candidate_id
                 ? '✓ Confirmed as Main Line'
-                : '✓ Confirm Selected Track as Main Line'}
+                : '✓ Select this Track as Main Line'}
             </span>
             <span className="font-normal opacity-90">
               ({activeTrack.name}

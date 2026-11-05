@@ -73,7 +73,7 @@ export function FobsSection({ form, set, tracks, layers }) {
   return (
     <Section
       id="fobs"
-      title="6 · Foot over bridges"
+      title="7 · Foot over bridges"
       hint="Basic deck only: span is auto-derived from the platform boundaries (no coordinates asked). Validated at 6.25 m clearance and 30 m maximum span — keep the connected platforms within it."
       count={form.fobs.length}
       onAdd={() => {

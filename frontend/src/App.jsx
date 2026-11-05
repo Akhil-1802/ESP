@@ -26,6 +26,7 @@ import {
 import { DxfViewer } from './components/DxfViewer.jsx';
 import { JsonViewer } from './components/JsonViewer.jsx';
 import { StatusBanner } from './components/StatusBanner.jsx';
+import { QuickGuideModal } from './components/QuickGuideModal.jsx';
 import {
   buildConfig,
   fillCentredChainages,
@@ -72,6 +73,7 @@ export default function App() {
   // Panel visibility toggles
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const sidebarRef = useRef(null);
   // ---- Resizable inputs sidebar -------------------------------------
@@ -314,6 +316,17 @@ export default function App() {
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Quick Start Guide Button */}
+          <button
+            type="button"
+            onClick={() => setShowGuide(true)}
+            className="flex h-7.5 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-soft)] hover:border-[var(--accent)] px-2.5 text-xs font-semibold text-[var(--accent)] transition-all cursor-pointer shadow-2xs"
+            title="Open Beginner & Workflow Guide"
+          >
+            <span className="text-xs">📖</span>
+            <span className="hidden sm:inline">Guide</span>
+          </button>
+
           {/* Toggle JSON Panel Button */}
           <button
             type="button"
@@ -547,6 +560,13 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Beginner Quick Guide Modal */}
+      <QuickGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        onLoadDemo={onLoadDemo}
+      />
     </div>
   );
 }

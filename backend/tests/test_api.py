@@ -189,3 +189,31 @@ def test_generate_wizard_rejects_bad_spec():
     spec = {"loops": {"count": 1, "spacings": [4.0]}}
     response = client.post("/generate-wizard", files=_wizard_files(spec))
     assert response.status_code == 422
+
+
+def test_cleanup_expired_outputs_deletes_old_files_and_preserves_gitkeep(tmp_path):
+    import os
+    import time
+    from server import cleanup_expired_outputs
+
+    # Create dummy files in a temporary output directory
+    gitkeep = tmp_path / ".gitkeep"
+    gitkeep.write_text("")
+
+    fresh_file = tmp_path / "fresh.dxf"
+    fresh_file.write_text("fresh")
+
+    old_file = tmp_path / "old.dxf"
+    old_file.write_text("old")
+
+    # Set old_file's mtime to 15 minutes ago (900 seconds)
+    fifteen_mins_ago = time.time() - 900
+    os.utime(old_file, (fifteen_mins_ago, fifteen_mins_ago))
+
+    # Run cleanup with 600s (10 min) TTL
+    deleted_count = cleanup_expired_outputs(output_dir=tmp_path, ttl_seconds=600.0)
+
+    assert deleted_count == 1
+    assert not old_file.exists()
+    assert fresh_file.exists()
+    assert gitkeep.exists()
