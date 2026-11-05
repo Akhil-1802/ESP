@@ -91,10 +91,21 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","https://railway-esp.netlify.app/"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://railway-esp.netlify.app",
+        "https://railway-esp.netlify.app/",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+@app.head("/health")
+def health_check() -> dict[str, str]:
+    """Health check endpoint supporting GET and HEAD requests."""
+    return {"status": "ok"}
 
 
 def _persist_output(dxf_path: Path, download_name: str) -> Path:

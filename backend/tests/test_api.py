@@ -217,3 +217,15 @@ def test_cleanup_expired_outputs_deletes_old_files_and_preserves_gitkeep(tmp_pat
     assert not old_file.exists()
     assert fresh_file.exists()
     assert gitkeep.exists()
+
+
+def test_health_check_get_and_head():
+    # Test GET request
+    response_get = client.get("/health")
+    assert response_get.status_code == 200
+    assert response_get.json() == {"status": "ok"}
+
+    # Test HEAD request
+    response_head = client.head("/health")
+    assert response_head.status_code == 200
+    assert response_head.text == ""
