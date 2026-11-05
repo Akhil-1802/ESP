@@ -27,7 +27,7 @@ export function MainTracksSection({ form, set }) {
       id="main-tracks"
       title="2 · Continuous Main Track Alignments"
       hint="Continuous lines running across the entire track corridor. Station loops are configured per station below."
-      count={(form.mainLines || []).length + (form.additionalLines || []).length}
+      count={(form.mainLines || []).length}
     >
       <div className="space-y-3">
         {/* Primary MAIN_LINE Direction */}
@@ -114,56 +114,6 @@ export function MainTracksSection({ form, set }) {
                 </ItemCard>
               );
             })
-          )}
-        </div>
-
-        {/* Additional Continuous Lines */}
-        <div className="border-t border-slate-200/80 pt-2.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-700">Additional Continuous Lines</h3>
-            <button
-              type="button"
-              onClick={addAdditionalLine}
-              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer shadow-sm"
-            >
-              + Add proposed line
-            </button>
-          </div>
-          {(form.additionalLines || []).length === 0 ? (
-            <p className="text-[11px] text-slate-500">No additional continuous corridor lines.</p>
-          ) : (
-            (form.additionalLines || []).map((line, i) => (
-              <ItemCard
-                key={i}
-                title={line.name?.trim() || `PROPOSED_LINE_${i + 1}`}
-                onRemove={() => setTop({ additionalLines: form.additionalLines.filter((_, k) => k !== i) })}
-              >
-                <Grid>
-                  <Field label="Name">
-                    <Text
-                      value={line.name}
-                      placeholder={`PROPOSED_LINE_${i + 1}`}
-                      onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { name: e.target.value }) })}
-                    />
-                  </Field>
-                  <Field label="Spacing (m)">
-                    <Num
-                      value={line.spacing}
-                      placeholder="5.3"
-                      min="5.3"
-                      onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { spacing: e.target.value }) })}
-                    />
-                  </Field>
-                  <Field label="Side">
-                    <Sel
-                      value={line.side}
-                      onChange={(e) => setTop({ additionalLines: patchAt(form.additionalLines, i, { side: e.target.value }) })}
-                      options={['LEFT', 'RIGHT']}
-                    />
-                  </Field>
-                </Grid>
-              </ItemCard>
-            ))
           )}
         </div>
       </div>

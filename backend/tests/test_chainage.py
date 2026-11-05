@@ -653,6 +653,66 @@ def test_chainage_leaders_capped_at_station_flag_axis(tmp_path):
         assert leader_len <= 45.0, f"Leader length too long: {leader_len:.1f} m"
 
 
+def test_down_station_chainage_symmetric_distance_opposite_direction(tmp_path):
+    class FakeGenerator(ChainageMixin):
+        def __init__(self, out_dxf):
+            self.config = SimpleNamespace(
+                output_dxf=str(out_dxf),
+                loops=[
+                    SimpleNamespace(name="LOOP_1", side="LEFT", first_crossover_chainage=375.0, second_crossover_chainage=472.0, extend_start_m=0.0, extend_end_m=0.0),
+                    SimpleNamespace(name="LOOP_2", side="RIGHT", first_crossover_chainage=321.0, second_crossover_chainage=418.0, extend_start_m=0.0, extend_end_m=0.0),
+                ],
+                additional_lines=[],
+                platforms=[],
+                sidings=[],
+                fobs=[],
+            )
+            self._crossover_results = [
+                SimpleNamespace(from_track="MAIN_LINE", to_track="LOOP_1", chainage=375.0, start_chainage=375.0, end_chainage=472.0, placement="AHEAD"),
+                SimpleNamespace(from_track="MAIN_LINE", to_track="LOOP_2", chainage=321.0, start_chainage=321.0, end_chainage=418.0, placement="AHEAD"),
+            ]
+            self._siding_results = []
+            self._fouling_marks = [
+                SimpleNamespace(point=(391.0, 2.5), other_point=(391.0, 2.5), tangent=(1.0, 0.0), display_tangent=(1.0, 0.0), chainage_main=391.0),
+                SimpleNamespace(point=(337.0, -2.5), other_point=(337.0, -2.5), tangent=(1.0, 0.0), display_tangent=(1.0, 0.0), chainage_main=337.0),
+            ]
+
+    tracks = {
+        "MAIN_LINE": [(0.0, 0.0), (1000.0, 0.0)],
+        "LOOP_1": [(0.0, 5.3), (1000.0, 5.3)],
+        "LOOP_2": [(0.0, -5.3), (1000.0, -5.3)],
+    }
+
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.new("STATION-BUILDING")
+    msp.add_lwpolyline([(490.0, 10.0), (510.0, 10.0), (510.0, 20.0), (490.0, 20.0)], close=True, dxfattribs={"layer": "STATION-BUILDING"})
+    dxf_path = tmp_path / "test_down_chainage.dxf"
+    doc.saveas(dxf_path)
+
+    gen = FakeGenerator(dxf_path)
+    gen._generate_station_chainage_labels(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    lines_up = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == CHAINAGE_LAYER and e.dxf.end.y > 0]
+    lines_down = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == CHAINAGE_LAYER and e.dxf.end.y < 0]
+    texts_down = [e for e in res.modelspace() if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER and e.dxf.insert.y < 0]
+
+    assert len(lines_up) > 0, "Should have UP chainage lines"
+    assert len(lines_down) > 0, "Should have DOWN chainage lines"
+    assert len(texts_down) > 0, "Should have DOWN chainage texts"
+
+    for line in lines_up:
+        assert line.dxf.end.y == pytest.approx(40.0, abs=0.5)
+
+    for line in lines_down:
+        assert line.dxf.end.y == pytest.approx(-40.0, abs=0.5)
+
+    for text in texts_down:
+        assert text.dxf.insert.y == pytest.approx(-40.0, abs=0.5)
+
+
+
 
 
 

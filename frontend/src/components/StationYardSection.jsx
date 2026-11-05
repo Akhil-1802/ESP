@@ -1489,8 +1489,12 @@ export function StationYardSection({
                 const parsed = parseKmM(g.chainage);
                 const kmVal = g.km !== undefined && g.km !== null ? String(g.km) : parsed.km;
                 const mVal = g.m !== undefined && g.m !== null ? String(g.m) : parsed.m;
-                const displayCh = formatStartChainage(kmVal, mVal);
-                const gradCh = g.chainage ?? (kmVal ? displayCh : '');
+                const hasKm = kmVal !== undefined && kmVal !== null && String(kmVal).trim() !== '';
+                const hasM = mVal !== undefined && mVal !== null && String(mVal).trim() !== '';
+                const displayCh = (hasKm || hasM) ? formatStartChainage(kmVal, mVal) : '';
+                const gradCh = (g.chainage !== undefined && g.chainage !== null && String(g.chainage).trim() !== '')
+                  ? String(g.chainage).trim()
+                  : displayCh;
                 const parseToMeters = (chStr) => {
                   if (chStr == null || String(chStr).trim() === '') return null;
                   const s = String(chStr).trim();
@@ -1501,9 +1505,21 @@ export function StationYardSection({
                     const sign = (k < 0 || parts[0].trim().startsWith('-')) ? -1 : 1;
                     return sign * (Math.abs(k) * 1000 + Math.abs(m));
                   }
-                  const num = parseFloat(s);
+                  const clean = s.toUpperCase().replace(/^[A-Z\s:]+/, '').trim();
+                  if (clean.endsWith('KM')) {
+                    const num = parseFloat(clean.replace('KM', '').trim());
+                    return isNaN(num) ? null : num * 1000;
+                  }
+                  if (clean.endsWith('M')) {
+                    const num = parseFloat(clean.replace('M', '').trim());
+                    return isNaN(num) ? null : num;
+                  }
+                  const num = parseFloat(clean);
                   if (!isNaN(num)) {
-                    return Math.abs(num) <= 50 && !s.includes('.') ? num * 1000 : num;
+                    if (clean.includes('.') && Math.abs(num) < 500) {
+                      return num * 1000;
+                    }
+                    return num;
                   }
                   return null;
                 };
@@ -1513,7 +1529,14 @@ export function StationYardSection({
                   const gMeters = parseToMeters(gradCh);
                   const sMeters = parseToMeters(stnDisp);
                   if (gMeters !== null && sMeters !== null) {
-                    const diffM = gMeters - sMeters;
+                    let diffM = gMeters - sMeters;
+                    if (gMeters < 10000 && sMeters >= 10000) {
+                      const sKmInM = Math.floor(sMeters / 1000) * 1000;
+                      diffM = (gMeters + sKmInM) - sMeters;
+                    } else if (sMeters < 10000 && gMeters >= 10000) {
+                      const gKmInM = Math.floor(gMeters / 1000) * 1000;
+                      diffM = gMeters - (sMeters + gKmInM);
+                    }
                     offsetDisplay = `${diffM >= 0 ? '+' : ''}${diffM.toFixed(1)} m`;
                   }
                 }
@@ -1528,8 +1551,8 @@ export function StationYardSection({
                   const lPart = leftVal ? `Left: ${leftVal} (${leftDir})` : null;
                   const rPart = rightVal ? `Right: ${rightVal} (${rightDir})` : null;
                   cardTitle = [lPart, rPart].filter(Boolean).join(' | ');
-                } else if (g.chainage || kmVal) {
-                  cardTitle = `Gradient at ${g.chainage || displayCh}`;
+                } else if (gradCh || displayCh) {
+                  cardTitle = `Gradient at ${displayCh || gradCh}`;
                 }
 
                 return (
@@ -1544,7 +1567,7 @@ export function StationYardSection({
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <span className="mb-1 block text-xs font-medium text-slate-700">
-                              Gradient KM *
+                              KM (optional)
                             </span>
                             <Text
                               type="number"
@@ -1561,7 +1584,7 @@ export function StationYardSection({
                           </div>
                           <div>
                             <span className="mb-1 block text-xs font-medium text-slate-700">
-                              M (optional)
+                              Meters (M)
                             </span>
                             <Text
                               type="number"

@@ -81,6 +81,10 @@ def compute_gradient_offset(grad_ch: str | float, stn_ch: str | float | None) ->
     if grad_unit == "KM" and stn_unit == "KM":
         return (grad_val - stn_val) * 1000.0
     if grad_unit == "M" and stn_unit == "M":
+        # If station is in route chainage meters (e.g. 70831 M) and gradient is given as local meter (e.g. 831 M)
+        if stn_val >= 10000.0 and grad_val < 10000.0:
+            stn_km_m = math.floor(stn_val / 1000.0) * 1000.0
+            return (grad_val + stn_km_m) - stn_val
         return grad_val - stn_val
     if grad_unit == "M" and (stn_unit == "KM" or (stn_unit is None and stn_val < 1000.0 and grad_val >= 1000.0)):
         return grad_val - (stn_val * 1000.0)
@@ -331,13 +335,21 @@ class GradientStep(PipelineStep):
             stn_proj = nearest_point_on_alignment(cleaned_track, stn_center_pt)
             stn_track_ch = float(stn_proj.chainage)
 
+            # If no station reference chainage string was explicitly input, use the station's actual track route chainage
+            effective_stn_ch = stn_ch_input
+            if effective_stn_ch is None:
+                start_m_total = (float(getattr(self.config, "start_km", 0) or 0) * 1000.0) + float(getattr(self.config, "start_m", 0) or 0)
+                effective_stn_ch = f"{start_m_total + stn_track_ch:.3f} M"
+
             # Compute relative offset along alignment using chainage
             if grad.chainage is not None and str(grad.chainage).strip() != "":
-                offset_m = compute_gradient_offset(grad.chainage, stn_ch_input)
+                offset_m = compute_gradient_offset(grad.chainage, effective_stn_ch)
             elif getattr(grad, "km", None) is not None and str(grad.km).strip() != "":
                 m_val = getattr(grad, "m", None)
                 km_m_str = f"{grad.km}+{m_val}" if m_val is not None and str(m_val).strip() != "" else str(grad.km)
-                offset_m = compute_gradient_offset(km_m_str, stn_ch_input)
+                offset_m = compute_gradient_offset(km_m_str, effective_stn_ch)
+            elif getattr(grad, "m", None) is not None and str(grad.m).strip() != "":
+                offset_m = compute_gradient_offset(f"0+{grad.m}", effective_stn_ch)
             else:
                 offset_m = 0.0
 

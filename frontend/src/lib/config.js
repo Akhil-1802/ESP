@@ -625,7 +625,11 @@ export function parseKmM(chainageStr) {
     const parts = s.split('+');
     return { km: parts[0].trim(), m: parts[1].trim() };
   }
-  const clean = s.replace(/^[A-Za-z\s:]+/, '').replace(/[A-Za-z\s]+$/, '');
+  const isMeters = /\bM\b/i.test(s) || /^\d+(\.\d+)?\s*m$/i.test(s);
+  const clean = s.replace(/^[A-Za-z\s:]+/, '').replace(/[A-Za-z\s]+$/, '').trim();
+  if (isMeters) {
+    return { km: '', m: clean };
+  }
   if (clean.includes('.')) {
     const parts = clean.split('.');
     const km = parts[0].trim();

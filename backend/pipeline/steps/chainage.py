@@ -363,9 +363,24 @@ class ChainageStep(PipelineStep):
         center_along = float(center[0]) * pseudo_tan[0] + float(center[1]) * pseudo_tan[1]
         center_proj = float(center[0]) * ref_n[0] + float(center[1]) * ref_n[1]
 
-        # Station flag axis is at ~25.0m from the track datum
+        # Determine reference projection of the MAIN track datum
+        main_datum_proj = center_proj
+        try:
+            main_pts = self._main_line_points
+            main_datum_ch = datum.station_chainage_on("MAIN_LINE")
+            if main_pts is not None and len(main_pts) >= 2:
+                total_len = polyline_length(main_pts)
+                ch = float(main_datum_ch) if main_datum_ch is not None else 0.0
+                st = point_at_chainage(main_pts, min(max(ch, 0.0), total_len))
+                main_datum_proj = float(st.point[0]) * ref_n[0] + float(st.point[1]) * ref_n[1]
+        except Exception:
+            main_datum_proj = center_proj
+
+        # Station flag axis is at ~25.0m from the station reference on UP (LEFT)
         flag_axis_left = center_proj + 25.0
-        flag_axis_right = center_proj - 25.0
+        # Symmetrical axis on DOWN (RIGHT) uses the same distance from MAIN track datum in opposite direction
+        flag_dist_from_main = flag_axis_left - main_datum_proj
+        flag_axis_right = main_datum_proj - flag_dist_from_main
 
         try:
             projs: list = []
@@ -405,8 +420,14 @@ class ChainageStep(PipelineStep):
         # Cap leader extension at the axis of the station flag so labels max. reach the flag
         if _common_end_left > flag_axis_left:
             _common_end_left = flag_axis_left
-        if _common_end_right < flag_axis_right:
-            _common_end_right = flag_axis_right
+
+        # Symmetrically align DOWN labels to match the same distance logic in the opposite direction
+        up_dist_from_main = abs(_common_end_left - main_datum_proj)
+        sym_down_axis = main_datum_proj - up_dist_from_main
+
+        # Ensure DOWN labels reach the symmetrical distance in the opposite direction,
+        # while clearing all lower tracks/elements
+        _common_end_right = min(sym_down_axis, _common_end_right)
         drawn = 0
 
         if left_markers and _common_end_left is not None:

@@ -572,6 +572,8 @@ describe('gradients', () => {
     assert.deepEqual(parseKmM('125+400'), { km: '125', m: '400' });
     assert.deepEqual(parseKmM('125.400'), { km: '125', m: '400' });
     assert.deepEqual(parseKmM('125.050'), { km: '125', m: '50' });
+    assert.deepEqual(parseKmM('831 M'), { km: '', m: '831' });
+    assert.deepEqual(parseKmM('831m'), { km: '', m: '831' });
 
     // Test buildConfig with km and m
     const form = {

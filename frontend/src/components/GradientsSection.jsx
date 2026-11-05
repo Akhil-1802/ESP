@@ -8,8 +8,47 @@ export function GradientsSection({ form, set }) {
   const setTop = useFormSetter(set);
   const gradients = form.gradients || [];
 
-  // Station chainage from Station section if available
-  const stationCenterCh = form.stations?.[0]?.chainage || form.stations?.[0]?.station_chainage || '125';
+  // Derive station center reference chainage dynamically from stationMarkers, stations, or mainCenter
+  const firstMarker = form.stationMarkers?.[0];
+  const firstStn = form.stations?.[0];
+  const activeStation = firstMarker || firstStn;
+  const parsedStn = parseKmM(activeStation?.chainage || activeStation?.station_chainage);
+  const hasKmStn = activeStation?.km != null && String(activeStation.km).trim() !== '';
+  const hasMStn = activeStation?.m != null && String(activeStation.m).trim() !== '';
+  const stnKmVal = hasKmStn ? String(activeStation.km) : (hasMStn ? '' : (parsedStn.km || ''));
+  const stnMVal = hasMStn ? String(activeStation.m) : (parsedStn.m || '');
+  const stationCenterCh = (hasKmStn || hasMStn)
+    ? formatStartChainage(stnKmVal, stnMVal)
+    : (activeStation?.chainage || activeStation?.station_chainage || (form.mainCenter != null && form.mainCenter !== '' ? String(form.mainCenter) : '0.000'));
+
+  const parseChToMeters = (chStr) => {
+    if (chStr == null || String(chStr).trim() === '') return null;
+    const s = String(chStr).trim();
+    if (s.includes('+')) {
+      const parts = s.split('+');
+      const k = parseFloat(parts[0]) || 0;
+      const m = parseFloat(parts[1]) || 0;
+      const sign = (k < 0 || parts[0].trim().startsWith('-')) ? -1 : 1;
+      return sign * (Math.abs(k) * 1000 + Math.abs(m));
+    }
+    const clean = s.toUpperCase().replace(/^[A-Z\s:]+/, '').trim();
+    if (clean.endsWith('KM')) {
+      const num = parseFloat(clean.replace('KM', '').trim());
+      return isNaN(num) ? null : num * 1000;
+    }
+    if (clean.endsWith('M')) {
+      const num = parseFloat(clean.replace('M', '').trim());
+      return isNaN(num) ? null : num;
+    }
+    const num = parseFloat(clean);
+    if (!isNaN(num)) {
+      if (clean.includes('.') && Math.abs(num) < 500) {
+        return num * 1000;
+      }
+      return num;
+    }
+    return null;
+  };
 
   return (
     <Section
@@ -26,17 +65,26 @@ export function GradientsSection({ form, set }) {
         const parsed = parseKmM(g.chainage);
         const kmVal = g.km !== undefined && g.km !== null ? String(g.km) : parsed.km;
         const mVal = g.m !== undefined && g.m !== null ? String(g.m) : parsed.m;
-        const displayCh = formatStartChainage(kmVal, mVal);
-        const gradCh = g.chainage ?? (kmVal ? displayCh : '');
+        const hasKm = kmVal !== undefined && kmVal !== null && String(kmVal).trim() !== '';
+        const hasM = mVal !== undefined && mVal !== null && String(mVal).trim() !== '';
+        const displayCh = (hasKm || hasM) ? formatStartChainage(kmVal, mVal) : '';
+        const gradCh = (g.chainage !== undefined && g.chainage !== null && String(g.chainage).trim() !== '')
+          ? String(g.chainage).trim()
+          : displayCh;
+
         let offsetDisplay = null;
         if (gradCh !== '') {
-          const gVal = parseFloat(String(gradCh).replace(/[^\d.-]/g, ''));
-          const sVal = parseFloat(String(stationCenterCh).replace(/[^\d.-]/g, ''));
-          if (!isNaN(gVal) && !isNaN(sVal)) {
-            const hasKm = String(gradCh).toUpperCase().includes('KM') || String(stationCenterCh).toUpperCase().includes('KM');
-            const diff = gVal - sVal;
-            const isRouteKmDiff = !hasKm && Math.abs(diff) <= 4.0 && gVal >= 10 && sVal >= 10 && (String(gradCh).includes('.') || String(stationCenterCh).includes('.'));
-            const diffM = hasKm || isRouteKmDiff ? diff * 1000 : diff;
+          const gMeters = parseChToMeters(gradCh);
+          const sMeters = parseChToMeters(stationCenterCh);
+          if (gMeters !== null && sMeters !== null) {
+            let diffM = gMeters - sMeters;
+            if (gMeters < 10000 && sMeters >= 10000) {
+              const sKmInM = Math.floor(sMeters / 1000) * 1000;
+              diffM = (gMeters + sKmInM) - sMeters;
+            } else if (sMeters < 10000 && gMeters >= 10000) {
+              const gKmInM = Math.floor(gMeters / 1000) * 1000;
+              diffM = gMeters - (sMeters + gKmInM);
+            }
             offsetDisplay = `${diffM >= 0 ? '+' : ''}${diffM.toFixed(1)} m`;
           }
         }
@@ -51,8 +99,8 @@ export function GradientsSection({ form, set }) {
           const lPart = leftVal ? `Left: ${leftVal} (${leftDir})` : null;
           const rPart = rightVal ? `Right: ${rightVal} (${rightDir})` : null;
           cardTitle = [lPart, rPart].filter(Boolean).join(' | ');
-        } else if (g.chainage || kmVal) {
-          cardTitle = `Gradient at ${g.chainage || displayCh}`;
+        } else if (gradCh || displayCh) {
+          cardTitle = `Gradient at ${displayCh || gradCh}`;
         }
 
         return (
@@ -66,14 +114,14 @@ export function GradientsSection({ form, set }) {
               <div className="sm:col-span-5 grid grid-cols-2 gap-2">
                 <div>
                   <span className="mb-1 block text-xs font-medium text-slate-700">
-                    Gradient KM *
+                    KM (optional)
                   </span>
                   <Text
                     type="number"
                     min="0"
                     step="any"
                     value={kmVal}
-                    placeholder="e.g. 70"
+                    placeholder={stnKmVal || 'e.g. 70'}
                     onChange={(e) => {
                       const newKm = e.target.value;
                       const newCh = formatStartChainage(newKm, mVal);
@@ -83,14 +131,14 @@ export function GradientsSection({ form, set }) {
                 </div>
                 <div>
                   <span className="mb-1 block text-xs font-medium text-slate-700">
-                    M (optional)
+                    Meters (M)
                   </span>
                   <Text
                     type="number"
                     min="0"
                     step="any"
                     value={mVal}
-                    placeholder="e.g. 400"
+                    placeholder={stnMVal || 'e.g. 831'}
                     onChange={(e) => {
                       const newM = e.target.value;
                       const newCh = formatStartChainage(kmVal, newM);
@@ -125,9 +173,20 @@ export function GradientsSection({ form, set }) {
               <span>
                 Chainage:{' '}
                 <strong className="text-slate-700 font-semibold">
-                  {displayCh !== '0.000' || kmVal ? `CH-${displayCh}` : 'e.g. 70 or 125+400'}
+                  {displayCh || gradCh ? `CH-${displayCh || gradCh}` : (stationCenterCh !== '0.000' ? `e.g. ${stationCenterCh}` : 'e.g. 831 M or 70+831')}
                 </strong>
               </span>
+              {stationCenterCh !== '0.000' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTop({ gradients: patchAt(gradients, i, { km: stnKmVal, m: stnMVal, chainage: stationCenterCh }) });
+                  }}
+                  className="text-[11px] font-medium text-emerald-700 hover:text-emerald-900 border border-emerald-300 bg-emerald-50 rounded px-2 py-0.5 cursor-pointer transition-colors"
+                >
+                  Fill with station center ({stationCenterCh})
+                </button>
+              )}
             </div>
 
             {/* Two inputs: Left of Center and Right of Center */}
