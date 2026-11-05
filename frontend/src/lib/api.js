@@ -89,13 +89,44 @@ export function downloadBlob(blob, filename) {
 }
 
 /**
+ * Detect candidate continuous railway tracks from KML using topological grouping.
+ * Returns { candidate_tracks: [...] }
+ */
+export async function detectTracks({ kmlFile, minLength = 30.0, apiBase = API_BASE }) {
+  const body = new FormData();
+  body.append('kml', kmlFile, kmlFile.name);
+  let res;
+  try {
+    res = await fetch(`${apiBase}/detect-tracks?min_length=${minLength}`, { method: 'POST', body });
+  } catch (err) {
+    throw new Error(
+      `Cannot reach the backend at ${apiBase} — is it running (python -m uvicorn backend.app:app --port 8000)? (${err.message})`,
+    );
+  }
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const data = await res.json();
+      detail = data.detail || JSON.stringify(data);
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(`Track detection failed (${res.status}): ${detail}`);
+  }
+  return res.json();
+}
+
+/**
  * Ask the backend for the MAIN midpoint from a KML file.
  * Returns { main_center_m, main_length_m, default_c1_m, default_c2_m }
  * (default extent = centre ± 375 m, the 750 m loop convention).
  */
-export async function fetchMainCenter({ kmlFile, apiBase = API_BASE }) {
+export async function fetchMainCenter({ kmlFile, selectedTrackId = null, apiBase = API_BASE }) {
   const body = new FormData();
   body.append('kml', kmlFile, kmlFile.name);
+  if (selectedTrackId !== null && selectedTrackId !== undefined) {
+    body.append('selected_track_id', String(selectedTrackId));
+  }
   let res;
   try {
     res = await fetch(`${apiBase}/main-center`, { method: 'POST', body });

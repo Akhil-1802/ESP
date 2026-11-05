@@ -15,6 +15,8 @@ try:
 except ImportError:
     Transformer = None
 
+from platform_gen.track_detector import detect_kml_tracks
+
 JOIN_TOLERANCE_M = 0.01
 
 
@@ -72,13 +74,66 @@ def _align_to_x_axis(points_list):
     return rotated_list, rotation_angle, origin
 
 
-def convert_kml_to_dxf(kml_path: str, dxf_path: str, layer_name: str = "MAIN_TRACK", align_horizontal: bool = True) -> str:
+def convert_kml_to_dxf(
+    kml_path: str,
+    dxf_path: str,
+    layer_name: str = "MAIN_TRACK",
+    align_horizontal: bool = True,
+    selected_track_id: int | str | None = None,
+) -> str:
     """Convert KML file containing LineString(s) to a DXF file with LWPOLYLINE.
-    
-    Coordinates are transformed from WGS84 (lat/lon) to a local UTM projection
-    (metres). If multiple connected LineStrings exist, they are merged.
+
+    If selected_track_id is specified (e.g. 0, 1 or 'path_0'), the exact candidate
+    path is extracted from track detection without destructive unions or snapping.
+    Otherwise, if multiple connected LineStrings exist, they are merged.
     By default, the track is rotated so it lies parallel to the horizontal (X) axis.
     """
+    if Transformer is None:
+        raise ImportError("pyproj and shapely are required for KML conversion")
+
+    # If an explicit track candidate is selected, extract it directly
+    if selected_track_id is not None:
+        candidates = detect_kml_tracks(kml_path, min_track_length_m=5.0, include_coords=True)
+        if not candidates:
+            raise ValueError(f"No railway tracks detected in {kml_path}")
+        
+        track_idx = 0
+        if isinstance(selected_track_id, str):
+            if selected_track_id.startswith("path_"):
+                try:
+                    track_idx = int(selected_track_id.split("_")[1])
+                except ValueError:
+                    track_idx = 0
+            else:
+                try:
+                    track_idx = int(selected_track_id)
+                except ValueError:
+                    track_idx = 0
+        else:
+            track_idx = int(selected_track_id)
+
+        if track_idx < 0 or track_idx >= len(candidates):
+            raise ValueError(f"Selected track index {track_idx} is out of range [0, {len(candidates)-1}]")
+
+        chosen = candidates[track_idx]
+        pts_utm = chosen["pts_utm"]
+
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        doc.layers.add(layer_name, color=1)
+
+        points_to_write = [pts_utm]
+        if align_horizontal:
+            points_to_write, rot_angle, rot_origin = _align_to_x_axis(points_to_write)
+            print(f"   Selected track '{chosen['name']}' ({chosen['length_m']:.1f} m) aligned to horizontal (rotated by {math.degrees(rot_angle):.1f} deg)")
+
+        for pts in points_to_write:
+            msp.add_lwpolyline(pts, dxfattribs={"layer": layer_name, "color": 1})
+
+        out = Path(dxf_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        doc.saveas(str(out))
+        return str(out)
     if Transformer is None:
         raise ImportError("pyproj and shapely are required for KML conversion")
 

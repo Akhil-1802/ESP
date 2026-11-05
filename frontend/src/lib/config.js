@@ -689,6 +689,7 @@ export function buildConfig(form) {
   return {
     source_path: (f.kmlFile && f.kmlFile.name) || 'upload.kml',
     direct_kml: Boolean(f.directKml),
+    selected_track_id: f.selectedTrackId != null ? f.selectedTrackId : null,
     start_chainage: startChStr,
     start_km: startKmVal,
     start_m: startMVal,

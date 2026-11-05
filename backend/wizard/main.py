@@ -44,12 +44,17 @@ def wizard_needs_center(spec: dict) -> bool:
     return False
 
 
-def wizard_main_center(kml_path: Path, workdir: Path, layer: str = "MAIN_TRACK") -> float:
+def wizard_main_center(
+    kml_path: Path,
+    workdir: Path,
+    layer: str = "MAIN_TRACK",
+    selected_track_id: int | str | None = None,
+) -> float:
     """MAIN midpoint chainage of the uploaded KML."""
     from cli.main import _main_center
 
     converted = workdir / f"{kml_path.stem}_converted.dxf"
-    convert_kml_to_dxf(str(kml_path), str(converted))
+    convert_kml_to_dxf(str(kml_path), str(converted), selected_track_id=selected_track_id)
     return _main_center(str(converted), layer)
 
 

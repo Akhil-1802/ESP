@@ -58,7 +58,8 @@ class ESPGenerator(
         """Convert KML to DXF if needed."""
         if self.source_dxf.lower().endswith(".kml"):
             converted = f"{Path(self.source_dxf).with_suffix('')}_converted.dxf"
-            convert_kml_to_dxf(self.source_dxf, converted)
+            track_id = getattr(self.config, "selected_track_id", None)
+            convert_kml_to_dxf(self.source_dxf, converted, selected_track_id=track_id)
             self.source_dxf = str(converted)
 
     def run(self) -> str:

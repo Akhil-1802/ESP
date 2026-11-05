@@ -8,7 +8,7 @@ import shutil
 import sys
 import tempfile
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -16,6 +16,7 @@ from common.constants import LOOP_HALF_LENGTH_M
 from config.loader import load_config_from_json
 from pipeline.orchestrator import ESPGenerator
 from platform_gen.kml_io import convert_kml_direct
+from platform_gen.track_detector import detect_kml_tracks
 from wizard import wizard_main_center, wizard_needs_center, wizard_to_config_dict
 
 BACKEND_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
@@ -113,14 +114,40 @@ def _execute_config_dict(payload: dict, workdir: Path, download_name: str) -> Fi
     )
 
 
+@app.post("/detect-tracks")
+def detect_tracks_endpoint(
+    kml: UploadFile = File(...),
+    min_length: float = 30.0,
+    max_candidates: int = 4,
+) -> dict:
+    """Detect and topologically group candidate railway tracks from KML."""
+    workdir = Path(tempfile.mkdtemp(prefix="esp_detect_"))
+    try:
+        local_source = _save_kml_upload(kml, workdir)
+        tracks = detect_kml_tracks(
+            str(local_source),
+            min_track_length_m=min_length,
+            include_coords=True,
+            max_candidates=max_candidates,
+        )
+        return {"candidate_tracks": tracks}
+    except Exception as exc:
+        raise HTTPException(422, f"Track detection failed: {exc}") from exc
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 @app.post("/main-center")
-def main_center(kml: UploadFile = File(...)) -> dict:
+def main_center(
+    kml: UploadFile = File(...),
+    selected_track_id: str | None = Form(None),
+) -> dict:
     """MAIN midpoint + default 750 m loop extent from an uploaded KML."""
     workdir = Path(tempfile.mkdtemp(prefix="esp_center_"))
     try:
         local_source = _save_kml_upload(kml, workdir)
         try:
-            center = wizard_main_center(local_source, workdir)
+            center = wizard_main_center(local_source, workdir, selected_track_id=selected_track_id)
         except ValueError as exc:
             raise HTTPException(422, f"cannot determine MAIN centre: {exc}") from exc
         half = float(LOOP_HALF_LENGTH_M)

@@ -46,6 +46,7 @@ const initialForm = () => ({
   startM: '',
   startChainage: '0.000',
   mainLength: null,
+  selectedTrackId: null,
   outputDxf: '',
   trackSourceLayer: '',
   stationMarkers: [],
@@ -168,7 +169,7 @@ export default function App() {
       }
       setStatus({ kind: 'busy' });
       try {
-        const c = await fetchMainCenter({ kmlFile: working.kmlFile });
+        const c = await fetchMainCenter({ kmlFile: working.kmlFile, selectedTrackId: working.selectedTrackId });
         working = fillFobCentres(fillCentredChainages(working, c), c);
         setForm(working);
       } catch (err) {

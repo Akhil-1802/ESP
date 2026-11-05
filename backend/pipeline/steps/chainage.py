@@ -360,14 +360,27 @@ class ChainageStep(PipelineStep):
         except Exception:
             pass
 
+        center_along = float(center[0]) * pseudo_tan[0] + float(center[1]) * pseudo_tan[1]
+        center_proj = float(center[0]) * ref_n[0] + float(center[1]) * ref_n[1]
+
+        # Station flag axis is at ~25.0m from the track datum
+        flag_axis_left = center_proj + 25.0
+        flag_axis_right = center_proj - 25.0
+
         try:
             projs: list = []
             for (a, b) in edges:
-                projs.append(a[0] * ref_n[0] + a[1] * ref_n[1])
-                projs.append(b[0] * ref_n[0] + b[1] * ref_n[1])
+                along_a = a[0] * pseudo_tan[0] + a[1] * pseudo_tan[1]
+                along_b = b[0] * pseudo_tan[0] + b[1] * pseudo_tan[1]
+                # Only consider entities in the station yard vicinity (within ±850m)
+                if abs(along_a - center_along) <= 850.0 or abs(along_b - center_along) <= 850.0:
+                    projs.append(a[0] * ref_n[0] + a[1] * ref_n[1])
+                    projs.append(b[0] * ref_n[0] + b[1] * ref_n[1])
             for (cx, cy, r) in circles:
-                projs.append(cx * ref_n[0] + cy * ref_n[1] + abs(r))
-                projs.append(cx * ref_n[0] + cy * ref_n[1] - abs(r))
+                along_c = cx * pseudo_tan[0] + cy * pseudo_tan[1]
+                if abs(along_c - center_along) <= 850.0:
+                    projs.append(cx * ref_n[0] + cy * ref_n[1] + abs(r))
+                    projs.append(cx * ref_n[0] + cy * ref_n[1] - abs(r))
             for base, _tan, _rel, _tag, _side in norm_markers:
                 projs.append(float(base[0]) * ref_n[0] + float(base[1]) * ref_n[1])
             try:
@@ -388,6 +401,12 @@ class ChainageStep(PipelineStep):
 
         _common_end_left = float(outer_left) + float(gap)
         _common_end_right = float(outer_right) - float(gap)
+
+        # Cap leader extension at the axis of the station flag so labels max. reach the flag
+        if _common_end_left > flag_axis_left:
+            _common_end_left = flag_axis_left
+        if _common_end_right < flag_axis_right:
+            _common_end_right = flag_axis_right
         drawn = 0
 
         if left_markers and _common_end_left is not None:

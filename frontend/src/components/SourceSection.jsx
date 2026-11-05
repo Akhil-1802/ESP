@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { fetchMainCenter } from '../lib/api.js';
+import { fetchMainCenter, detectTracks } from '../lib/api.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
 import { blankStationMarker } from '../lib/formDefaults.js';
 import { isBlank } from '../lib/formUtils.js';
 import { Field, Grid, Section, Text } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
+import { TrackSelectionPanel } from './TrackSelectionPanel.jsx';
 
 export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
   const setTop = useFormSetter(set);
   const [centreBusy, setCentreBusy] = useState(false);
   const [centreMsg, setCentreMsg] = useState('');
+  const [candidateTracks, setCandidateTracks] = useState([]);
+  const [confirmedTrackId, setConfirmedTrackId] = useState(null);
   const file = form.kmlFile;
   const stationMarkers = form.stationMarkers || [];
 
@@ -45,28 +48,79 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
   };
 
   const onFile = async (chosen) => {
-    setTop({ kmlFile: chosen });
+    setTop({ kmlFile: chosen, selectedTrackId: null });
     setCentreMsg('');
+    setCandidateTracks([]);
+    setConfirmedTrackId(null);
+
     if (!chosen) {
-      set((f) => ({ ...f, kmlFile: null, mainLength: null, mainCenter: null }));
+      set((f) => ({ ...f, kmlFile: null, selectedTrackId: null, mainLength: null, mainCenter: null }));
       return;
     }
     setCentreBusy(true);
     try {
-      const c = await fetchMainCenter({ kmlFile: chosen });
+      // 1. Detect candidate continuous paths from KML
+      let tracks = [];
+      try {
+        const detectRes = await detectTracks({ kmlFile: chosen });
+        tracks = detectRes.candidate_tracks || [];
+        setCandidateTracks(tracks);
+      } catch (err) {
+        console.warn('Track detection failed, falling back to legacy centre:', err);
+      }
+
+      // Default to track 0 if candidates exist
+      const defaultTrackId = tracks.length > 0 ? tracks[0].candidate_id : null;
+      setTop({ selectedTrackId: defaultTrackId });
+      setConfirmedTrackId(defaultTrackId);
+
+      // 2. Fetch center & length for the selected track
+      const c = await fetchMainCenter({ kmlFile: chosen, selectedTrackId: defaultTrackId });
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
+        selectedTrackId: defaultTrackId,
         mainLength: c.main_length_m,
         mainCenter: c.main_center_m,
       }));
       setCentreMsg(
-        `KML track length: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
+        `Track length: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
       );
     } catch (err) {
       setCentreMsg(err.message);
     } finally {
       setCentreBusy(false);
     }
+  };
+
+  const onSelectCandidateTrack = async (cand) => {
+    if (!file || !cand) return;
+    setTop({ selectedTrackId: cand.candidate_id });
+    setCentreBusy(true);
+    try {
+      const c = await fetchMainCenter({ kmlFile: file, selectedTrackId: cand.candidate_id });
+      set((f) => ({
+        ...fillFobCentres(fillCentredChainages(f, c), c),
+        selectedTrackId: cand.candidate_id,
+        mainLength: c.main_length_m,
+        mainCenter: c.main_center_m,
+      }));
+      setCentreMsg(
+        `Previewing track ${cand.name}: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
+      );
+    } catch (err) {
+      setCentreMsg(err.message);
+    } finally {
+      setCentreBusy(false);
+    }
+  };
+
+  const onConfirmCandidateMainLine = (cand) => {
+    if (!cand) return;
+    setConfirmedTrackId(cand.candidate_id);
+    setTop({ selectedTrackId: cand.candidate_id });
+    setCentreMsg(
+      `✓ Confirmed Main Line: ${cand.name} (${cand.length_m.toFixed(2)} m). Ready for ESP generation.`,
+    );
   };
 
   const calculatedEnd = calculateEndChainageFromKmM(form.startKm, form.startM, form.mainLength);
@@ -114,6 +168,19 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
             </div>
           )}
         </Field>
+
+        {/* Visual Track Selection Panel */}
+        {candidateTracks.length > 0 && (
+          <TrackSelectionPanel
+            candidateTracks={candidateTracks}
+            selectedTrackId={form.selectedTrackId}
+            confirmedTrackId={confirmedTrackId}
+            onSelectTrack={onSelectCandidateTrack}
+            onConfirmMainLine={onConfirmCandidateMainLine}
+            stationMarkers={stationMarkers}
+          />
+        )}
+
         {/* Alignment Reference Chainages Card */}
         <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-1">

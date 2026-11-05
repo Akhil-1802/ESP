@@ -596,6 +596,64 @@ def test_alignment_interval_chainages_negative_start_chainage_progression(tmp_pa
     assert "Ch. -3000 M" in texts
 
 
+def test_chainage_leaders_capped_at_station_flag_axis(tmp_path):
+    """Verify that chainage leader lines and labels do not extend beyond the station flag axis."""
+    class FakeGenerator(ChainageMixin):
+        def __init__(self, out_dxf):
+            self.config = SimpleNamespace(
+                output_dxf=str(out_dxf),
+                loops=[
+                    SimpleNamespace(name="LOOP_1", side="LEFT", first_crossover_chainage=200.0, second_crossover_chainage=800.0, extend_start_m=0.0, extend_end_m=0.0),
+                ],
+                additional_lines=[],
+                platforms=[
+                    SimpleNamespace(track_layer="LOOP_1", side="LEFT", config=SimpleNamespace(output_layer="PLATFORM_1", stair_layer="STAIRS_1")),
+                ],
+                sidings=[],
+                fobs=[],
+            )
+            self._crossover_results = []
+            self._siding_results = []
+            self._fouling_marks = []
+
+    # Track with far-extending geometry 5km away
+    tracks = {
+        "MAIN_LINE": [(0.0, 0.0), (500.0, 0.0), (5000.0, 1000.0)],
+        "LOOP_1": [(0.0, 5.3), (1000.0, 5.3)],
+    }
+
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.new("STATION-BUILDING")
+    # Station at (500, 10), so station datum center is (500, 10), center_proj = 10.0
+    msp.add_lwpolyline([(490.0, 10.0), (510.0, 10.0), (510.0, 20.0), (490.0, 20.0)], close=True, dxfattribs={"layer": "STATION-BUILDING"})
+    doc.layers.new("PLATFORM_1")
+    msp.add_lwpolyline([(300.0, 6.0), (700.0, 6.0), (700.0, 10.0), (300.0, 10.0)], close=True, dxfattribs={"layer": "PLATFORM_1"})
+
+    # Even if far away entities exist at Y=500m
+    doc.layers.new("FAR_TRACK")
+    msp.add_line((4000.0, 500.0), (5000.0, 1000.0), dxfattribs={"layer": "FAR_TRACK"})
+
+    dxf_path = tmp_path / "test_flag_cap.dxf"
+    doc.saveas(dxf_path)
+
+    gen = FakeGenerator(dxf_path)
+    gen._generate_station_chainage_labels(tracks)
+
+    res = ezdxf.readfile(dxf_path)
+    chainage_lines = [e for e in res.modelspace() if e.dxftype() == "LINE" and e.dxf.layer == CHAINAGE_LAYER]
+    assert len(chainage_lines) > 0
+
+    # Flag axis is at center_proj + 25.0, leader tip projection along normal must not exceed it
+    import math
+    for line in chainage_lines:
+        # Distance of leader tip from track center along normal direction
+        leader_len = math.hypot(line.dxf.end.x - line.dxf.start.x, line.dxf.end.y - line.dxf.start.y)
+        # Leader line must not be an absurd 500m ray into the sky
+        assert leader_len <= 45.0, f"Leader length too long: {leader_len:.1f} m"
+
+
+
 
 
 
