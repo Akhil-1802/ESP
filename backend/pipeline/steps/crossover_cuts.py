@@ -21,7 +21,34 @@ from track.overrun import (
     split_loop_for_overrun as _split_loop,
 )
 
-__all__ = ["apply_loop_overrun_cuts"]
+__all__ = ["apply_loop_overrun_cuts", "resolve_net_offset_and_side"]
+
+
+def resolve_net_offset_and_side(
+    name: str, specs_by_name: dict[str, object]
+) -> tuple[float, str]:
+    """Calculate the total perpendicular distance and net side from MAIN_LINE.
+
+    Walks up the reference_track chain, accumulating lateral offsets.
+    Convention: LEFT is positive (+), RIGHT is negative (-).
+    """
+    total_signed = 0.0
+    curr = name
+    visited = set()
+    while curr and curr != "MAIN_LINE" and curr not in visited:
+        visited.add(curr)
+        spec = specs_by_name.get(curr)
+        if spec is None:
+            break
+        spacing = float(getattr(spec, "spacing", 0.0) or 0.0)
+        side = str(getattr(spec, "side", "LEFT")).upper()
+        sign = 1.0 if side == "LEFT" else -1.0
+        total_signed += sign * spacing
+        curr = getattr(spec, "reference_track", "MAIN_LINE") or "MAIN_LINE"
+
+    net_spacing = abs(total_signed)
+    net_side = "LEFT" if total_signed >= 0 else "RIGHT"
+    return net_spacing, net_side
 
 
 def apply_loop_overrun_cuts(
@@ -67,8 +94,9 @@ def apply_loop_overrun_cuts(
     split_full_extents: dict[str, tuple[float, float]] = {}
     specs_by_name: dict[str, object] = {}
     for loop in list(loops_spec) + list(additional_lines_spec):
-        if getattr(loop, "name", None) in ranges:
-            specs_by_name[loop.name] = loop
+        lname = getattr(loop, "name", None)
+        if lname:
+            specs_by_name[lname] = loop
 
     main_points = tracks.get("MAIN_LINE")
     try:
@@ -79,12 +107,11 @@ def apply_loop_overrun_cuts(
     for name, (cut_start, cut_end) in cuts.items():
         c1, c2, eff_s, eff_e = ranges[name]
         spec = specs_by_name.get(name)
-        spacing = float(getattr(spec, "spacing", 0.0) or 0.0)
-        side = str(getattr(spec, "side", "LEFT"))
-        if not (spacing > 0 and main_points and len(main_points) >= 2):
+        net_spacing, net_side = resolve_net_offset_and_side(name, specs_by_name)
+        if not (net_spacing > 0 and main_points and len(main_points) >= 2):
             continue
-        ov_start_val = getattr(spec, "extend_start_m", None)
-        ov_end_val = getattr(spec, "extend_end_m", None)
+        ov_start_val = getattr(spec, "extend_start_m", None) if spec else None
+        ov_end_val = getattr(spec, "extend_end_m", None) if spec else None
         ov_start = float(ov_start_val) if ov_start_val is not None else float(DEFAULT_OVERRUN_M)
         ov_end = float(ov_end_val) if ov_end_val is not None else float(DEFAULT_OVERRUN_M)
         new_s = float(cut_start) - ov_start if cut_start is not None else float(c1) - ov_start
@@ -102,7 +129,7 @@ def apply_loop_overrun_cuts(
             print(f"   ! Loop {name} overrun cut skipped (empty extent)")
             continue
         try:
-            full = _gen_loop(main_points, new_s, new_e, spacing, side)
+            full = _gen_loop(main_points, new_s, new_e, net_spacing, net_side)
             running, start_stub, end_stub = _split_loop(full, new_s, cut_start, cut_end)
         except Exception as exc:
             print(f"   ! Loop {name} overrun cut skipped ({exc})")
@@ -163,9 +190,10 @@ def apply_loop_overrun_cuts(
             print(f"   ! Loop {name} running redraw skipped ({exc})")
             continue
         spec = specs_by_name.get(name)
-        outward_left = str(getattr(spec, "side", "LEFT")).upper() == "LEFT"
-        ov_s_val = getattr(spec, "extend_start_m", None)
-        ov_e_val = getattr(spec, "extend_end_m", None)
+        _s_spacing, net_side = resolve_net_offset_and_side(name, specs_by_name)
+        outward_left = net_side == "LEFT"
+        ov_s_val = getattr(spec, "extend_start_m", None) if spec else None
+        ov_e_val = getattr(spec, "extend_end_m", None) if spec else None
         ov_s = float(ov_s_val) if ov_s_val is not None else float(DEFAULT_OVERRUN_M)
         ov_e = float(ov_e_val) if ov_e_val is not None else float(DEFAULT_OVERRUN_M)
         if start_stub is not None and ov_s > 0:
@@ -194,6 +222,8 @@ def apply_loop_overrun_cuts(
                         spec,
                         extend_start_m=s_ann,
                         extend_end_m=e_ann,
+                        spacing=_s_spacing,
+                        side=net_side,
                     )
                     _annotate_ext(doc, spec_one_side, running, c1, c2, float(new_s), float(new_e))
             except Exception:

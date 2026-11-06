@@ -49,6 +49,7 @@ def test_main_lines_trimmed_to_50m_past_srjs(tmp_path):
         stations=[],
         crossovers=xspecs,
         main_directions={"MAIN_LINE": "UP", "MAIN_LINE_1": "DN"},
+        enable_main_line_trim=True,
     )
 
     gen = ESPGenerator(cfg)
@@ -101,6 +102,7 @@ def test_user_example_exact_numbers(tmp_path):
         platforms=[],
         stations=[],
         crossovers=xspecs,
+        enable_main_line_trim=True,
     )
 
     gen = ESPGenerator(cfg)
@@ -175,6 +177,7 @@ def test_single_crossover_on_start_side_preserves_far_end(tmp_path):
         platforms=[],
         stations=[],
         crossovers=xspecs,
+        enable_main_line_trim=True,
     )
 
     gen = ESPGenerator(cfg)
@@ -221,6 +224,7 @@ def test_single_crossover_on_end_side_preserves_start(tmp_path):
         platforms=[],
         stations=[],
         crossovers=xspecs,
+        enable_main_line_trim=True,
     )
 
     gen = ESPGenerator(cfg)
@@ -241,3 +245,49 @@ def test_single_crossover_on_end_side_preserves_start(tmp_path):
     pts = list(main_entities[0].get_points())
     assert pts[0][0] == pytest.approx(0.0, abs=1e-2)
     assert pts[-1][0] == pytest.approx(end_dist, abs=1e-2)
+
+
+def test_default_leaves_main_lines_full_length_without_50m_srj_trim(tmp_path):
+    """By default, 50m SRJ trimming is disabled and main lines remain full surveyed length."""
+    src = tmp_path / "source.dxf"
+    out = tmp_path / "result.dxf"
+    _create_source_dxf(src, length=2000.0)
+
+    loops = [
+        LoopSpec("LOOP_1", 5.3, "LEFT", 500.0, 1250.0, extend_start_m=120.0, extend_end_m=120.0),
+    ]
+    xspecs = [
+        CrossoverSpec("LOOP_1", "MAIN_LINE", 500.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C1",
+                      direction="FORWARD", position_mode="FIXED"),
+        CrossoverSpec("MAIN_LINE", "LOOP_1", 1200.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C2",
+                      direction="FORWARD", position_mode="FIXED"),
+    ]
+
+    # Default ESPConfig: enable_main_line_trim is False by default
+    cfg = ESPConfig(
+        source_path=str(src),
+        output_dxf=str(out),
+        track_source_layer="MAIN_TRACK",
+        loops=loops,
+        additional_lines=[],
+        platforms=[],
+        stations=[],
+        crossovers=xspecs,
+    )
+
+    gen = ESPGenerator(cfg)
+    gen.run()
+
+    # Main line trim range must not be set
+    assert getattr(gen, "_main_line_trim_range", None) is None
+
+    # Main line in the output DXF spans the entire 2000m length
+    doc = ezdxf.readfile(str(out))
+    main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
+    assert len(main_entities) == 1
+    pts = list(main_entities[0].get_points())
+    assert pts[0][0] == pytest.approx(0.0, abs=1e-2)
+    assert pts[-1][0] == pytest.approx(2000.0, abs=1e-2)
+

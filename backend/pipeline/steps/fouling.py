@@ -29,11 +29,14 @@ class FoulingStep(PipelineStep):
             fm_tracks = dict(tracks)
             fm_extents = dict(extents)
             try:
+                from .crossover_cuts import resolve_net_offset_and_side
+
                 ranges = (getattr(self, "_bounded_loop_defined_ranges", None) or (lambda: {}))()
                 main_points = tracks.get("MAIN_LINE")
                 specs_by_name = {
                     getattr(loop, "name", None): loop
                     for loop in list(self.config.loops) + list(self.config.additional_lines)
+                    if getattr(loop, "name", None)
                 }
                 for _name, (_c1, _c2, _eff_s, _eff_e) in (ranges or {}).items():
                     if _name not in tracks or main_points is None:
@@ -42,12 +45,13 @@ class FoulingStep(PipelineStep):
                     if _spec is None:
                         continue
                     try:
+                        net_spacing, net_side = resolve_net_offset_and_side(_name, specs_by_name)
                         fm_tracks[_name] = _gen_loop(
                             main_points,
                             float(_eff_s),
                             float(_eff_e),
-                            float(getattr(_spec, "spacing", 0.0) or 0.0),
-                            str(getattr(_spec, "side", "LEFT")),
+                            net_spacing,
+                            net_side,
                         )
                         fm_extents[_name] = (float(_eff_s), float(_eff_e))
                     except Exception:

@@ -102,8 +102,12 @@ class TrackStep(PipelineStep):
         return sorted(chainages)
 
     def _trim_main_lines_to_srj(self, tracks: dict) -> tuple[float, float] | None:
-        """Trim main lines past outermost SRJs at both ends (Greenfield only by default)."""
+        """Trim main lines past outermost SRJs at both ends (Greenfield only by default, disabled by default)."""
         cfg = getattr(self, "config", None)
+        if not getattr(cfg, "enable_main_line_trim", False):
+            print("   ℹ️ Main line 50m SRJ trim disabled: main lines remain full surveyed length.")
+            return None
+
         if cfg is not None and (getattr(cfg, "workflow", "greenfield") == "brownfield" or getattr(cfg, "is_brownfield", False)):
             target_track = getattr(cfg, "trim_target_track", None)
             if not target_track:

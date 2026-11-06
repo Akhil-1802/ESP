@@ -139,12 +139,13 @@ class ESPGenerator(
         except Exception as exc:
             print(f"   ! Chainage labels skipped ({exc})")
 
-        # Step 10: Trim main lines past outermost SRJs (50m margin)
-        print("✂️  Trimming main lines past outermost SRJs...")
-        try:
-            self._trim_main_lines_to_srj(tracks)
-        except Exception as exc:
-            print(f"   ! Main line trim skipped ({exc})")
+        # Step 10: Trim main lines past outermost SRJs (50m margin - disabled by default)
+        if getattr(self.config, "enable_main_line_trim", False):
+            print("✂️  Trimming main lines past outermost SRJs...")
+            try:
+                self._trim_main_lines_to_srj(tracks)
+            except Exception as exc:
+                print(f"   ! Main line trim skipped ({exc})")
 
         # Step 11: LOOP end-to-end + MAIN FM-to-FM CAL callouts
         print("🏷️  Generating CAL labels...")
