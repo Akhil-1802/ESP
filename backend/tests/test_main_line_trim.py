@@ -21,7 +21,7 @@ def _create_source_dxf(path, length=2000.0, layer="MAIN_TRACK"):
 
 
 def test_main_lines_trimmed_to_50m_past_srjs(tmp_path):
-    """Verify that main lines are trimmed to 50m past outermost SRJs."""
+    """Verify that main lines are trimmed to 50m past outermost SRJs on the main line."""
     src = tmp_path / "source.dxf"
     out = tmp_path / "result.dxf"
     _create_source_dxf(src, length=2000.0)
@@ -30,11 +30,13 @@ def test_main_lines_trimmed_to_50m_past_srjs(tmp_path):
         LoopSpec("LOOP_1", 5.3, "LEFT", 500.0, 1250.0, extend_start_m=120.0, extend_end_m=120.0),
         LoopSpec("LOOP_2", 5.3, "RIGHT", 500.0, 1250.0, extend_start_m=120.0, extend_end_m=120.0),
     ]
+    # C1 starts on MAIN_LINE at 500m (SRJ on MAIN_LINE is at 500m)
+    # C2 ends on MAIN_LINE at 700m + OL (SRJ on MAIN_LINE is at ~797.578m)
     xspecs = [
-        CrossoverSpec("LOOP_1", "MAIN_LINE", 500.0, None,
+        CrossoverSpec("MAIN_LINE", "LOOP_1", 500.0, None,
                       select_turnout("1:12"), "AHEAD", id="C1",
                       direction="FORWARD", position_mode="FIXED"),
-        CrossoverSpec("MAIN_LINE", "LOOP_2", 700.0, None,
+        CrossoverSpec("LOOP_2", "MAIN_LINE", 700.0, None,
                       select_turnout("1:12"), "AHEAD", id="C2",
                       direction="FORWARD", position_mode="FIXED"),
     ]
@@ -76,7 +78,11 @@ def test_main_lines_trimmed_to_50m_past_srjs(tmp_path):
 
 
 def test_user_example_exact_numbers(tmp_path):
-    """Verify user's explicit example: left SRJ at 55m, right SRJ at 1050m on 2000m line."""
+    """Verify user's explicit example:
+    C1 from LOOP_1 to MAIN_LINE at 55m (SRJ on MAIN_LINE is at 152.578m).
+    C2 from MAIN_LINE to LOOP_1 at 1050m (SRJ on MAIN_LINE is at 1050.0m).
+    Trim bounds on MAIN_LINE must strictly be [152.578 - 50, 1050 + 50] = [102.578, 1100.0].
+    """
     src = tmp_path / "source.dxf"
     out = tmp_path / "result.dxf"
     _create_source_dxf(src, length=2000.0)
@@ -111,14 +117,14 @@ def test_user_example_exact_numbers(tmp_path):
     assert gen._main_line_trim_range is not None
     start_dist, end_dist = gen._main_line_trim_range
 
-    assert start_dist == pytest.approx(5.0, abs=1e-2)
+    assert start_dist == pytest.approx(152.578 - 50.0, abs=0.1)
     assert end_dist == pytest.approx(1100.0, abs=1e-2)
 
     doc = ezdxf.readfile(str(out))
     main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
     assert len(main_entities) == 1
     pts = list(main_entities[0].get_points())
-    assert pts[0][0] == pytest.approx(5.0, abs=1e-2)
+    assert pts[0][0] == pytest.approx(start_dist, abs=1e-2)
     assert pts[-1][0] == pytest.approx(1100.0, abs=1e-2)
 
 
@@ -152,8 +158,8 @@ def test_no_srj_leaves_main_lines_full_length(tmp_path):
     assert pts[-1][0] == pytest.approx(2000.0, abs=1e-2)
 
 
-def test_single_crossover_on_start_side_preserves_far_end(tmp_path):
-    """Guard rule: when only one crossover exists on start side, far end is not truncated."""
+def test_single_crossover_trimmed_50m_both_sides(tmp_path):
+    """When a single crossover exists, main line is trimmed 50m on both sides of the main-line SRJ."""
     src = tmp_path / "source.dxf"
     out = tmp_path / "result.dxf"
     _create_source_dxf(src, length=1663.0)
@@ -161,7 +167,7 @@ def test_single_crossover_on_start_side_preserves_far_end(tmp_path):
     loops = [
         LoopSpec("LOOP_1", 5.3, "LEFT", 200.0, 950.0, extend_start_m=0.0, extend_end_m=0.0),
     ]
-    # Single crossover at chainage 200m (on start side of 1663m line)
+    # Single crossover at chainage 200m (LOOP_1 -> MAIN_LINE, SRJ on MAIN_LINE is at ~297.578m)
     xspecs = [
         CrossoverSpec("LOOP_1", "MAIN_LINE", 200.0, None,
                       select_turnout("1:12"), "AHEAD", id="C1",
@@ -186,32 +192,44 @@ def test_single_crossover_on_start_side_preserves_far_end(tmp_path):
     assert gen._main_line_trim_range is not None
     start_dist, end_dist = gen._main_line_trim_range
 
-    # Near end is trimmed 50m before SRJ (200 - 50 = 150m)
-    assert start_dist == pytest.approx(150.0, abs=1e-2)
-    # Far end must NOT be truncated; it must extend all the way to 1663.0m!
-    assert end_dist == pytest.approx(1663.0, abs=1e-2)
+    # Both sides trimmed 50m from main line SRJ (297.578m)
+    assert start_dist == pytest.approx(297.578 - 50.0, abs=0.1)
+    assert end_dist == pytest.approx(297.578 + 50.0, abs=0.1)
 
     doc = ezdxf.readfile(str(out))
     main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
     assert len(main_entities) == 1
     pts = list(main_entities[0].get_points())
-    assert pts[0][0] == pytest.approx(150.0, abs=1e-2)
-    assert pts[-1][0] == pytest.approx(1663.0, abs=1e-2)
+    assert pts[0][0] == pytest.approx(start_dist, abs=1e-2)
+    assert pts[-1][0] == pytest.approx(end_dist, abs=1e-2)
 
 
-def test_single_crossover_on_end_side_preserves_start(tmp_path):
-    """Guard rule: when only one crossover exists on end side, near start is not truncated."""
+def test_loop_to_loop_crossover_srjs_ignored_for_main_trim(tmp_path):
+    """SRJs on loop-to-loop crossovers must NOT affect main line 50m trimming."""
     src = tmp_path / "source.dxf"
     out = tmp_path / "result.dxf"
     _create_source_dxf(src, length=2000.0)
 
     loops = [
-        LoopSpec("LOOP_1", 5.3, "LEFT", 1000.0, 1800.0, extend_start_m=0.0, extend_end_m=0.0),
+        LoopSpec("LOOP_1", 5.3, "LEFT", 200.0, 1800.0, extend_start_m=0.0, extend_end_m=0.0),
+        LoopSpec("LOOP_2", 10.6, "LEFT", 200.0, 1800.0, extend_start_m=0.0, extend_end_m=0.0),
     ]
-    # Single crossover at chainage 1500m (on end side of 2000m line)
+    # C1: LOOP_1 -> LOOP_2 at 300m (SRJs on loop lines only!)
+    # C2: MAIN_LINE -> LOOP_1 at 700m (SRJ on MAIN_LINE at 700m)
+    # C3: LOOP_1 -> MAIN_LINE at 1200m (SRJ on MAIN_LINE at 1200 + 97.578 = 1297.578m)
+    # C4: LOOP_2 -> LOOP_1 at 1500m (SRJs on loop lines only!)
     xspecs = [
-        CrossoverSpec("LOOP_1", "MAIN_LINE", 1500.0, None,
+        CrossoverSpec("LOOP_1", "LOOP_2", 300.0, None,
                       select_turnout("1:12"), "AHEAD", id="C1",
+                      direction="FORWARD", position_mode="FIXED"),
+        CrossoverSpec("MAIN_LINE", "LOOP_1", 700.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C2",
+                      direction="FORWARD", position_mode="FIXED"),
+        CrossoverSpec("LOOP_1", "MAIN_LINE", 1200.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C3",
+                      direction="FORWARD", position_mode="FIXED"),
+        CrossoverSpec("LOOP_2", "LOOP_1", 1500.0, None,
+                      select_turnout("1:12"), "AHEAD", id="C4",
                       direction="FORWARD", position_mode="FIXED"),
     ]
 
@@ -233,17 +251,15 @@ def test_single_crossover_on_end_side_preserves_start(tmp_path):
     assert gen._main_line_trim_range is not None
     start_dist, end_dist = gen._main_line_trim_range
 
-    # Start must NOT be truncated (remains 0.0m)
-    assert start_dist == pytest.approx(0.0, abs=1e-2)
-    # End is trimmed 50m past outermost SRJ
-    assert end_dist > 1500.0
-    assert end_dist < 2000.0
+    # Must be based strictly on MAIN_LINE SRJs: min is 700.0m, max is ~1297.578m
+    assert start_dist == pytest.approx(700.0 - 50.0, abs=0.1)
+    assert end_dist == pytest.approx(1297.578 + 50.0, abs=0.1)
 
     doc = ezdxf.readfile(str(out))
     main_entities = [e for e in doc.modelspace() if e.dxf.layer == "MAIN_LINE"]
     assert len(main_entities) == 1
     pts = list(main_entities[0].get_points())
-    assert pts[0][0] == pytest.approx(0.0, abs=1e-2)
+    assert pts[0][0] == pytest.approx(start_dist, abs=1e-2)
     assert pts[-1][0] == pytest.approx(end_dist, abs=1e-2)
 
 

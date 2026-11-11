@@ -52,7 +52,7 @@ CHAINAGE_PARALLEL_TOL_M: float = 1.0
 
 
 def format_relative_chainage(rel_m: float) -> str:
-    """Format a relative chainage in KML-style plus notation: ``+ 0+291`` / ``- 0+120`` / ``+ 0+000``."""
+    """Format a relative chainage in meters only, e.g. ``+250.42 m`` / ``-245.43 m`` / ``+0.00 m``."""
     try:
         value = float(rel_m)
     except (TypeError, ValueError):
@@ -60,15 +60,13 @@ def format_relative_chainage(rel_m: float) -> str:
     if not math.isfinite(value):
         value = 0.0
 
-    sign = "-" if value < -0.0005 else "+"
+    sign = "-" if value < -0.005 else "+"
     abs_m = abs(value)
-    km = int(abs_m // 1000)
-    m = int(abs_m % 1000)
-    return f"{sign} {km}+{m:03d}"
+    return f"{sign}{abs_m:.2f} m"
 
 
 def format_chainage_label(tag: str, rel_m: float) -> str:
-    """Full marker label, e.g. ``RAMP END AT CH + 0+291`` / ``SRJ AT CH - 0+150``."""
+    """Full marker label, e.g. ``RAMP END AT CH +250.42 m`` / ``SRJ AT CH -245.43 m``."""
     clean = str(tag or "").strip() or "CH"
     return f"{clean} AT CH {format_relative_chainage(rel_m)}"
 

@@ -19,6 +19,9 @@ export function DxfControls({
   onDownloadDxf,
   onDownloadPng,
   onDownloadJson,
+  isTrimmed = false,
+  onToggleTrim = null,
+  busy = false,
 }) {
   return (
     <>
@@ -246,6 +249,28 @@ export function DxfControls({
           {/* Export Buttons */}
           {result && (
             <>
+              {onToggleTrim && (
+                <button
+                  type="button"
+                  onClick={onToggleTrim}
+                  disabled={busy}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 ${
+                    isTrimmed
+                      ? 'bg-emerald-700 hover:bg-emerald-800 text-white ring-1 ring-emerald-400'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                  title={
+                    isTrimmed
+                      ? 'ESP trimmed to 50m from outermost SRJs. Click to revert to full surveyed length.'
+                      : 'Done / Finalize: Trim main lines to 50m past outermost SRJs on both sides.'
+                  }
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>{isTrimmed ? 'Done (50m Trimmed)' : 'Done (50m Trim)'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onDownloadDxf}

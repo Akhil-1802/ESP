@@ -30,19 +30,21 @@ def _straight(length=1000.0, y=0.0, step=10.0):
 
 
 def test_format_relative_chainage():
-    assert format_relative_chainage(358.21) == "+ 0+358"
-    assert format_relative_chainage(-120.5) == "- 0+120"
-    assert format_relative_chainage(0.0) == "+ 0+000"
-    assert format_relative_chainage(0.0004) == "+ 0+000"
-    assert format_relative_chainage(-0.0004) == "+ 0+000"
-    assert format_relative_chainage(1250.0) == "+ 1+250"
-    assert format_relative_chainage(-1250.0) == "- 1+250"
+    assert format_relative_chainage(358.21) == "+358.21 m"
+    assert format_relative_chainage(-120.5) == "-120.50 m"
+    assert format_relative_chainage(0.0) == "+0.00 m"
+    assert format_relative_chainage(0.0004) == "+0.00 m"
+    assert format_relative_chainage(-0.0004) == "+0.00 m"
+    assert format_relative_chainage(1250.0) == "+1250.00 m"
+    assert format_relative_chainage(-1250.0) == "-1250.00 m"
+    assert format_relative_chainage(250.42) == "+250.42 m"
+    assert format_relative_chainage(-245.43) == "-245.43 m"
 
 
 def test_format_chainage_label():
-    assert format_chainage_label("SRJ", 356.21) == "SRJ AT CH + 0+356"
-    assert format_chainage_label("FM", -120.5) == "FM AT CH - 0+120"
-    assert format_chainage_label("DE", 0.0) == "DE AT CH + 0+000"
+    assert format_chainage_label("SRJ", 356.21) == "SRJ AT CH +356.21 m"
+    assert format_chainage_label("FM", -120.5) == "FM AT CH -120.50 m"
+    assert format_chainage_label("DE", 0.0) == "DE AT CH +0.00 m"
 
 
 def test_station_datum_is_projection_not_hardcoded():
@@ -81,7 +83,7 @@ def test_draw_chainage_annotation_leader_and_vertical_text():
     assert (float(e.x), float(e.y)) == pytest.approx((100.0, 20.0))
     assert lines[0].dxf.linetype == "DASHED"
     assert doc.layers.get(CHAINAGE_LAYER).dxf.linetype == "DASHED"
-    assert texts[0].dxf.text == "SRJ AT CH + 0+356"
+    assert texts[0].dxf.text == "SRJ AT CH +356.21 m"
     assert float(texts[0].dxf.rotation) == pytest.approx(90.0)
     assert texts[0].dxf.halign == 2
     assert texts[0].dxf.valign == 0
@@ -95,7 +97,7 @@ def test_draw_chainage_annotation_negative_side():
     doc = ezdxf.new()
     draw_chainage_annotation(doc, (100.0, 0.0), (1.0, 0.0), -120.5, "FM")
     texts = [e for e in doc.modelspace() if e.dxftype() == "TEXT"]
-    assert texts[0].dxf.text == "FM AT CH - 0+120"
+    assert texts[0].dxf.text == "FM AT CH -120.50 m"
 
 
 def test_parallel_markers_share_one_chainage():
@@ -104,9 +106,9 @@ def test_parallel_markers_share_one_chainage():
 
 
 def test_ramp_and_fob_end_labels():
-    assert format_chainage_label("RAMP END", 256.0) == "RAMP END AT CH + 0+256"
-    assert format_chainage_label("PF END", 250.0) == "PF END AT CH + 0+250"
-    assert format_chainage_label("FOB END", 99.291) == "FOB END AT CH + 0+099"
+    assert format_chainage_label("RAMP END", 256.0) == "RAMP END AT CH +256.00 m"
+    assert format_chainage_label("PF END", 250.0) == "PF END AT CH +250.00 m"
+    assert format_chainage_label("FOB END", 99.291) == "FOB END AT CH +99.29 m"
 
 
 def test_draw_chainage_annotation_right_side():
@@ -121,7 +123,7 @@ def test_draw_chainage_annotation_right_side():
     s, e = lines[0].dxf.start, lines[0].dxf.end
     assert (float(s.x), float(s.y)) == pytest.approx((100.0, 0.0))
     assert (float(e.x), float(e.y)) == pytest.approx((100.0, -20.0))
-    assert texts[0].dxf.text == "SRJ AT CH + 0+356"
+    assert texts[0].dxf.text == "SRJ AT CH +356.21 m"
     assert float(texts[0].dxf.rotation) == pytest.approx(90.0)
     assert texts[0].dxf.halign == 0
     assert texts[0].dxf.valign == 0
@@ -147,11 +149,11 @@ def test_draw_chainage_annotation_both_sides_srj_fm():
     assert float(lines[0].dxf.end.x) == pytest.approx(100.0)
     # Text 1: SRJ AT CH on the LEFT of the line (< 100.0)
     srj_text = [t for t in texts if "SRJ" in t.dxf.text][0]
-    assert "SRJ AT CH + 0+472" == srj_text.dxf.text
+    assert "SRJ AT CH +472.00 m" == srj_text.dxf.text
     assert float(srj_text.dxf.insert[0]) < 100.0
     # Text 2: FM AT CH on the RIGHT of the line (> 100.0)
     fm_text = [t for t in texts if "FM" in t.dxf.text][0]
-    assert "FM AT CH + 0+472" == fm_text.dxf.text
+    assert "FM AT CH +472.00 m" == fm_text.dxf.text
     assert float(fm_text.dxf.insert[0]) > 100.0
 
 

@@ -9,6 +9,8 @@ export function DxfViewer({
   onDownloadPng,
   onDownloadJson,
   onLoadDemo,
+  isTrimmed = false,
+  onToggleTrim = null,
 }) {
   const containerRef = useRef(null);
 
@@ -373,6 +375,9 @@ export function DxfViewer({
         onDownloadDxf={onDownloadDxf}
         onDownloadPng={onDownloadPng}
         onDownloadJson={onDownloadJson}
+        isTrimmed={isTrimmed}
+        onToggleTrim={onToggleTrim}
+        busy={busy}
       />
 
       {/* Main Canvas Viewport Area */}

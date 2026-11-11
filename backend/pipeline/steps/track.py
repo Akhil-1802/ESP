@@ -42,8 +42,8 @@ class TrackStep(PipelineStep):
         )
         return TrackGenerator(track_config).run()
 
-    def _collect_all_srj_chainages(self, tracks: dict) -> list[float]:
-        """Collect MAIN-datum chainages of every SRJ on the layout."""
+    def _collect_main_line_srj_chainages(self, tracks: dict) -> list[float]:
+        """Collect MAIN-datum chainages of every SRJ located on a MAIN LINE track."""
         chainages: list[float] = []
         main_pts = tracks.get("MAIN_LINE")
         if not main_pts or len(main_pts) < 2:
@@ -51,55 +51,101 @@ class TrackStep(PipelineStep):
 
         cleaned_main = [(float(p[0]), float(p[1])) for p in main_pts]
 
+        main_alignments = [
+            [(float(p[0]), float(p[1])) for p in pts]
+            for name, pts in tracks.items()
+            if _is_main_line(name) and len(pts) >= 2
+        ]
+
+        # 1. From crossover results: only include SRJs on tracks that are MAIN lines
         for res in getattr(self, "_crossover_results", None) or []:
             try:
-                ch1 = getattr(res, "chainage", None)
-                if ch1 is not None:
-                    chainages.append(float(ch1))
-                placement = str(getattr(res, "placement", "AHEAD") or "AHEAD").upper()
-                ch2 = res.end_chainage if placement == "AHEAD" else res.start_chainage
-                if ch2 is not None:
-                    chainages.append(float(ch2))
+                from_trk = getattr(res, "from_track", "")
+                to_trk = getattr(res, "to_track", "")
+
+                # SRJ on from_track
+                if _is_main_line(from_trk):
+                    ch1 = getattr(res, "chainage", None)
+                    if ch1 is not None:
+                        chainages.append(float(ch1))
+
+                # SRJ on to_track
+                if _is_main_line(to_trk):
+                    placement = str(getattr(res, "placement", "AHEAD") or "AHEAD").upper()
+                    ch2 = res.end_chainage if placement == "AHEAD" else res.start_chainage
+                    if ch2 is not None:
+                        chainages.append(float(ch2))
             except (TypeError, ValueError, AttributeError):
                 pass
 
+        # 2. From siding results: only include sidings branching from a MAIN line
         for item in getattr(self, "_siding_results", None) or []:
             try:
                 spec, result = item
-                st = getattr(spec, "start_chainage_m", None)
-                if st is not None:
-                    chainages.append(float(st))
-                if hasattr(result, "ladder_length_m") and hasattr(result, "points"):
-                    heel = _siding_portion(result.points, result.ladder_length_m)[0]
-                    proj = nearest_point_on_alignment(cleaned_main, heel)
-                    chainages.append(float(proj.chainage))
+                source_track = getattr(spec, "source_track", "")
+                if _is_main_line(source_track):
+                    st = getattr(spec, "start_chainage_m", None)
+                    if st is not None:
+                        chainages.append(float(st))
+                    if hasattr(result, "ladder_length_m") and hasattr(result, "points"):
+                        heel = _siding_portion(result.points, result.ladder_length_m)[0]
+                        proj = nearest_point_on_alignment(cleaned_main, heel)
+                        chainages.append(float(proj.chainage))
             except Exception:
                 pass
 
-        try:
-            doc = ezdxf.readfile(self.config.output_dxf)
-            for entity in doc.modelspace():
-                try:
-                    if str(getattr(entity.dxf, "layer", "")).upper() == "SRJ":
-                        kind = entity.dxftype()
-                        if kind == "LINE":
-                            pt = (float(entity.dxf.start.x), float(entity.dxf.start.y))
-                            proj = nearest_point_on_alignment(cleaned_main, pt)
-                            chainages.append(float(proj.chainage))
-                        elif kind in ("LWPOLYLINE", "POLYLINE", "CIRCLE"):
-                            if kind == "CIRCLE":
-                                pt = (float(entity.dxf.center.x), float(entity.dxf.center.y))
-                            else:
-                                raw = [(float(p[0]), float(p[1])) for p in entity.get_points()]
-                                pt = (sum(p[0] for p in raw) / len(raw), sum(p[1] for p in raw) / len(raw))
-                            proj = nearest_point_on_alignment(cleaned_main, pt)
-                            chainages.append(float(proj.chainage))
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        # 3. From output DXF (layer "SRJ"): fallback if in-memory results are not present
+        if not chainages:
+            try:
+                doc = ezdxf.readfile(self.config.output_dxf)
+                for entity in doc.modelspace():
+                    try:
+                        if str(getattr(entity.dxf, "layer", "")).upper() == "SRJ":
+                            kind = entity.dxftype()
+                            pt = None
+                            if kind == "LINE":
+                                # The SRJ post stem starts at the track centerline (tip)
+                                pt_start = (float(entity.dxf.start.x), float(entity.dxf.start.y))
+                                pt_end = (float(entity.dxf.end.x), float(entity.dxf.end.y))
+                                for candidate in (pt_start, pt_end):
+                                    if any(nearest_point_on_alignment(al, candidate).distance <= 0.5 for al in main_alignments):
+                                        pt = candidate
+                                        break
+                            elif kind in ("LWPOLYLINE", "POLYLINE", "CIRCLE"):
+                                if kind == "CIRCLE":
+                                    c = (float(entity.dxf.center.x), float(entity.dxf.center.y))
+                                else:
+                                    raw = [(float(p[0]), float(p[1])) for p in entity.get_points()]
+                                    c = (sum(p[0] for p in raw) / len(raw), sum(p[1] for p in raw) / len(raw))
+                                if any(nearest_point_on_alignment(al, c).distance <= 3.5 for al in main_alignments):
+                                    loop_alignments = [
+                                        [(float(p[0]), float(p[1])) for p in pts]
+                                        for name, pts in tracks.items()
+                                        if not _is_main_line(name) and len(pts) >= 2
+                                    ]
+                                    min_main_d = min(nearest_point_on_alignment(al, c).distance for al in main_alignments)
+                                    min_loop_d = min((nearest_point_on_alignment(al, c).distance for al in loop_alignments), default=999.0)
+                                    if min_main_d < min_loop_d:
+                                        pt = c
+                            if pt is not None:
+                                proj = nearest_point_on_alignment(cleaned_main, pt)
+                                chainages.append(float(proj.chainage))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
-        return sorted(chainages)
+        if not chainages:
+            return []
+        sorted_ch = sorted(chainages)
+        deduped = [sorted_ch[0]]
+        for ch in sorted_ch[1:]:
+            if ch - deduped[-1] > 0.1:
+                deduped.append(ch)
+        return deduped
+
+    # Alias for backwards compatibility
+    _collect_all_srj_chainages = _collect_main_line_srj_chainages
 
     def _trim_main_lines_to_srj(self, tracks: dict) -> tuple[float, float] | None:
         """Trim main lines past outermost SRJs at both ends (Greenfield only by default, disabled by default)."""
@@ -128,9 +174,9 @@ class TrackStep(PipelineStep):
         if len(cleaned_main) < 2:
             return None
 
-        srj_chainages = self._collect_all_srj_chainages(tracks)
+        srj_chainages = self._collect_main_line_srj_chainages(tracks)
         if not srj_chainages:
-            print("   ! No SRJs found on layout; main lines kept full length.")
+            print("   ! No main line SRJs found on layout; main lines kept full length.")
             return None
 
         min_srj = min(srj_chainages)
@@ -139,85 +185,9 @@ class TrackStep(PipelineStep):
         margin = float(getattr(self.config, "main_line_srj_margin_m", None) or MAIN_LINE_SRJ_MARGIN_M)
         main_length = polyline_length(cleaned_main)
 
-        # Determine reference station center if available
-        station_ch = None
-        for sm in getattr(self.config, "station_markers", []) or []:
-            d = getattr(sm, "distance_along_m", None)
-            if d is not None and 0 < float(d) < main_length:
-                station_ch = float(d)
-                break
-
-        if station_ch is None:
-            for st_req in getattr(self.config, "stations", []) or []:
-                pl_name = getattr(st_req, "platform_layer", "")
-                for p_req in getattr(self.config, "platforms", []) or []:
-                    p_cfg = getattr(p_req, "config", None)
-                    if p_cfg and getattr(p_req, "track_layer", "") == pl_name:
-                        st_p = getattr(p_cfg, "start_chainage", None)
-                        lg_p = getattr(p_cfg, "length", 0.0) or 0.0
-                        if st_p is not None:
-                            station_ch = float(st_p) + float(lg_p) / 2.0
-                            break
-                if station_ch is not None:
-                    break
-
-        # Guard Rule: Require Turnouts on Both Sides
-        # If turnouts/crossovers only exist on one side of the layout (e.g. there is no turnout
-        # on the other half of the track), do not truncate the far end; keep track extending
-        # all the way to its original KML endpoint.
-        num_crossovers = len(getattr(self.config, "crossovers", []) or [])
-        mid_track = station_ch if station_ch is not None else (main_length / 2.0)
-
-        has_start_turnouts = any(ch < (mid_track - 25.0) for ch in srj_chainages)
-        has_end_turnouts = any(ch > (mid_track + 25.0) for ch in srj_chainages)
-
-        if num_crossovers <= 1 or (station_ch is not None and not (has_start_turnouts and has_end_turnouts)):
-            if has_start_turnouts and not has_end_turnouts:
-                # Turnouts exist only on the start side; do not truncate the far end!
-                start_dist = max(0.0, min_srj - margin)
-                end_dist = main_length
-                print(
-                    f"   ℹ️ Guard rule: Turnouts only exist on start side (<= {mid_track:.1f} m); "
-                    f"far end kept full length to KML endpoint ({main_length:.1f} m)."
-                )
-            elif has_end_turnouts and not has_start_turnouts:
-                # Turnouts exist only on the end side; do not truncate the near end!
-                start_dist = 0.0
-                end_dist = min(main_length, max_srj + margin)
-                print(
-                    f"   ℹ️ Guard rule: Turnouts only exist on end side (>= {mid_track:.1f} m); "
-                    f"near end kept full length to KML startpoint (0.0 m)."
-                )
-            elif num_crossovers <= 1:
-                # Single crossover: check which half of the track it is on
-                if max_srj <= mid_track:
-                    start_dist = max(0.0, min_srj - margin)
-                    end_dist = main_length
-                    print(
-                        f"   ℹ️ Guard rule: Single crossover on start side; "
-                        f"far end kept full length to KML endpoint ({main_length:.1f} m)."
-                    )
-                elif min_srj >= mid_track:
-                    start_dist = 0.0
-                    end_dist = min(main_length, max_srj + margin)
-                    print(
-                        f"   ℹ️ Guard rule: Single crossover on end side; "
-                        f"near end kept full length to KML startpoint (0.0 m)."
-                    )
-                else:
-                    start_dist = 0.0
-                    end_dist = main_length
-                    print(
-                        f"   ℹ️ Guard rule: Single crossover near center; "
-                        f"main lines kept full length ({main_length:.1f} m)."
-                    )
-            else:
-                start_dist = max(0.0, min_srj - margin)
-                end_dist = min(main_length, max_srj + margin)
-        else:
-            # Turnouts exist on both sides of the layout
-            start_dist = max(0.0, min_srj - margin)
-            end_dist = min(main_length, max_srj + margin)
+        # Both sides trimmed 50m from outermost main line SRJs
+        start_dist = max(0.0, min_srj - margin)
+        end_dist = min(main_length, max_srj + margin)
 
         if end_dist <= start_dist:
             print(f"   ! Main line trim skipped: degenerate range [{start_dist:.2f}, {end_dist:.2f}].")

@@ -69,6 +69,7 @@ export default function App() {
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ kind: 'idle' });
   const [result, setResult] = useState(null);
+  const [isTrimmed, setIsTrimmed] = useState(false);
 
   // Panel visibility toggles
   const [leftOpen, setLeftOpen] = useState(true);
@@ -155,8 +156,11 @@ export default function App() {
     }
   };
 
-  const onGenerate = async () => {
-    let working = form;
+  const onGenerate = async (overrides = {}) => {
+    let working = { ...form, ...overrides };
+    if (overrides.enableMainLineTrim !== undefined) {
+      working.enableMainLineTrim = overrides.enableMainLineTrim;
+    }
     if (working.directKml) {
       await onPreviewDirectKml();
       return;
@@ -202,12 +206,28 @@ export default function App() {
       } catch {
         preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
       }
-      setResult({ blob, filename, json: JSON.stringify(finalConfig, null, 2), ...preview });
-      setStatus({ kind: 'ok', filename });
+      const trimmedApplied = Boolean(finalConfig.enable_main_line_trim);
+      setIsTrimmed(trimmedApplied);
+      setResult({
+        blob,
+        filename,
+        json: JSON.stringify(finalConfig, null, 2),
+        isTrimmed: trimmedApplied,
+        ...preview,
+      });
+      setStatus({
+        kind: 'ok',
+        filename: trimmedApplied ? `${filename} (Trimmed: 50m from outermost SRJ)` : filename,
+      });
     } catch (err) {
       setStatus({ kind: 'error', messages: [err.message] });
       sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const onToggleTrim = async () => {
+    const nextTrim = !isTrimmed;
+    await onGenerate({ enableMainLineTrim: nextTrim });
   };
 
   const onLoadDemo = async () => {
@@ -370,6 +390,30 @@ export default function App() {
               </>
             )}
           </button>
+
+          {/* Finalize Trim Button (appears after generation) */}
+          {result && (
+            <button
+              type="button"
+              onClick={onToggleTrim}
+              disabled={busy}
+              className={`flex h-7.5 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 ${
+                isTrimmed
+                  ? 'bg-emerald-700 text-white hover:bg-emerald-800 ring-2 ring-emerald-400'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/20 shadow-sm'
+              }`}
+              title={
+                isTrimmed
+                  ? '50m SRJ Trim is active. Click to revert to full surveyed track length.'
+                  : 'Done / Finalize: Show ESP till 50m after the last SRJ on both sides.'
+              }
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>{isTrimmed ? 'Done: 50m Trimmed' : 'Done (50m from SRJ)'}</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -473,10 +517,10 @@ export default function App() {
             </div>
 
             {/* Sticky Sidebar Bottom Generate Action */}
-            <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-sm">
+            <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-sm space-y-2">
               <button
                 type="button"
-                onClick={onGenerate}
+                onClick={() => onGenerate({ enableMainLineTrim: false })}
                 disabled={busy}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent-start)] via-[var(--accent)] to-[var(--accent-strong)] py-2 text-xs font-semibold text-white shadow-md shadow-[rgba(50,95,244,0.22)] hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
               >
@@ -495,6 +539,29 @@ export default function App() {
                   </>
                 )}
               </button>
+
+              {result && (
+                <button
+                  type="button"
+                  onClick={onToggleTrim}
+                  disabled={busy}
+                  className={`w-full flex items-center justify-center gap-2 rounded-lg py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 ${
+                    isTrimmed
+                      ? 'border border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 ring-1 ring-emerald-400'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                  title={
+                    isTrimmed
+                      ? 'ESP trimmed to 50m from outermost SRJs. Click to revert to full surveyed track length.'
+                      : 'Done / Finalize: Show ESP till 50m after the last SRJ on both sides.'
+                  }
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>{isTrimmed ? 'Done: 50m Trim Active (Click for Full)' : 'Done / Complete (50m from SRJ)'}</span>
+                </button>
+              )}
             </div>
           </aside>
         ) : (
@@ -521,9 +588,11 @@ export default function App() {
         {/* ============================================================ */}
         <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-white">
           <DxfViewer
-            key={result ? result.filename : 'empty'}
+            key={result ? `${result.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'empty'}
             result={result}
             busy={busy}
+            isTrimmed={isTrimmed}
+            onToggleTrim={onToggleTrim}
             onDownloadDxf={handleDownloadDxf}
             onDownloadPng={downloadResultPng}
             onDownloadJson={downloadJson}
