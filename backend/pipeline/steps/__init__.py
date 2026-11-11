@@ -1,6 +1,7 @@
 """Pipeline execution steps package."""
 
 from .base import PipelineStep
+from .boundary import BoundaryMixin, BoundaryStep
 from .cal_labels import CalLabelMixin, CalLabelStep
 from .chainage import ChainageMixin, ChainageStep
 from .crossover import CrossoverMixin, CrossoverStep
@@ -16,6 +17,8 @@ from .track import TrackMixin, TrackStep
 
 __all__ = [
     "PipelineStep",
+    "BoundaryStep",
+    "BoundaryMixin",
     "TrackStep",
     "TrackMixin",
     "PlatformStep",

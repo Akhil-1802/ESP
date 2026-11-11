@@ -16,6 +16,7 @@ from common.dxf_primitives import (
 )
 from common.dxf_styles import (
     ensure_bold_text_style,
+    ensure_custom_linetype_5,
     ensure_dashed_linetype,
     ensure_dotted_linetype,
     ensure_layer,
@@ -39,6 +40,7 @@ __all__ = [
     "add_text",
     "draw_arrow_dimension",
     "ensure_bold_text_style",
+    "ensure_custom_linetype_5",
     "ensure_dashed_linetype",
     "ensure_dotted_linetype",
     "ensure_layer",

@@ -195,10 +195,17 @@ class StationStep(PipelineStep):
             tx_tangent, ty_tangent = math.cos(ang), math.sin(ang)
             px, py = -math.sin(ang), math.cos(ang)
             cx, cy = building.center
-            half, dash, gap = 50.0, 6.0, 2.5
-            s = -half
-            while s < half:
-                e = min(s + dash, half)
+
+            # Station outer edge along perpendicular outward vector (px, py)
+            s_building_top = float(request.building_width) / 2.0
+
+            # Keep flag, labels, and centerline strictly under the 40m boundary (s_building_top + 40.0)
+            s_top = s_building_top + 32.0
+            s_bottom = -50.0
+            dash, gap = 6.0, 2.5
+            s = s_bottom
+            while s < s_top:
+                e = min(s + dash, s_top)
                 doc.modelspace().add_line(
                     (cx + px * s, cy + py * s),
                     (cx + px * e, cy + py * e),
@@ -208,8 +215,8 @@ class StationStep(PipelineStep):
             km_label = _format_station_chainage(getattr(request, "station_chainage", None))
             line1_text = f"C/L OF {request.building_name} CH:0.00 KM"
 
-            tx = cx + px * (half + 3.0) - tx_tangent * 25.0
-            ty = cy + py * (half + 3.0) - ty_tangent * 25.0
+            tx = cx + px * (s_top + 3.0) - tx_tangent * 25.0
+            ty = cy + py * (s_top + 3.0) - ty_tangent * 25.0
 
             c1_pos = _resolve_text_insert(doc, line1_text, 1.0, math.degrees(ang), (tx, ty, 0))
             doc.modelspace().add_text(
@@ -250,9 +257,10 @@ class StationStep(PipelineStep):
             if dir_layer not in doc.layers:
                 doc.layers.add(dir_layer, color=1)
 
-            s_building_top = float(request.building_width) / 2.0
-            s_flag_bottom = float(half) - 15.5
+            s_flag_bottom = float(s_top) - 12.0
             s_mark = (s_building_top + s_flag_bottom) / 2.0
+            if s_mark < 18.0:
+                s_mark = min(18.0, s_flag_bottom - 4.0)
             mc_x = cx + px * s_mark
             mc_y = cy + py * s_mark
 
@@ -318,7 +326,7 @@ class StationStep(PipelineStep):
 
             flag_right = (math.cos(ang), math.sin(ang))
             flag_up = (px, py)
-            pole_base = (cx + px * half, cy + py * half)
+            pole_base = (cx + px * s_top, cy + py * s_top)
             try:
                 draw_station_flag(doc, pole_base, flag_up, flag_right, color=1)
             except Exception as exc:

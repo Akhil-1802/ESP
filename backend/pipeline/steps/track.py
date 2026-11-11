@@ -315,6 +315,13 @@ class TrackStep(PipelineStep):
             f"SRJ [{min_srj:.2f}, {max_srj:.2f}]m -> visible [{start_dist:.2f}, {end_dist:.2f}]m "
             f"(length {end_dist - start_dist:.2f}m, was {main_length:.2f}m)"
         )
+
+        try:
+            if hasattr(self, "_generate_land_boundary"):
+                self._generate_land_boundary(tracks)
+        except Exception:
+            pass
+
         return (start_dist, end_dist)
 
 

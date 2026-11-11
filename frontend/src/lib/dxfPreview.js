@@ -62,6 +62,7 @@ export const LAYER_CONFIG = {
 
   // Boundary / Fencing
   FENCING: { color: '#94a3b8', width: '0.9', opacity: '0.6', category: 'fencing', label: 'Fencing' },
+  LAND_BOUNDARY: { color: '#22c55e', width: '1.5', dash: '8 5', category: 'fencing', label: 'Land Boundary' },
 
   // Text & Annotations
   TRACK_LABELS: { color: '#34d399', width: '1.0', category: 'text', label: 'Track Labels' },
@@ -76,8 +77,12 @@ export const FORCE_STROKE_COLOR = '#ff0000';
 
 export function getLayerStyle(layer) {
   const name = String(layer ?? '').trim();
-  const applyOverride = (style) =>
-    FORCE_STROKE_COLOR ? { ...style, color: FORCE_STROKE_COLOR } : style;
+  const applyOverride = (style) => {
+    if (name.toUpperCase().includes('BOUNDARY') || name.toUpperCase().includes('LAND')) {
+      return { ...style, color: '#22c55e' };
+    }
+    return FORCE_STROKE_COLOR ? { ...style, color: FORCE_STROKE_COLOR } : style;
+  };
   if (LAYER_CONFIG[name]) {
     return applyOverride(LAYER_CONFIG[name]);
   }
@@ -113,8 +118,8 @@ export function getLayerStyle(layer) {
   if (u.includes('ROB') || u.includes('SGFD')) {
     return applyOverride({ color: '#ef4444', width: '2.5', category: 'rob', label: name });
   }
-  if (u.includes('FENCE')) {
-    return applyOverride({ color: '#94a3b8', width: '0.9', opacity: '0.6', category: 'fencing', label: name });
+  if (u.includes('FENCE') || u.includes('BOUNDARY') || u.includes('LAND')) {
+    return applyOverride({ color: '#22c55e', width: '1.5', dash: '8 5', category: 'fencing', label: name });
   }
   if (u.includes('FM')) {
     return applyOverride({ color: '#f43f5e', width: '4.0', category: 'signal', label: name });
@@ -196,8 +201,8 @@ export function dxfToSvg(input, options = {}) {
     const style = group.style;
     const color = style.color;
     const strokeWidth = style.width || '1.5';
-    const entityDash = e.lineType && (String(e.lineType).toUpperCase().includes('DOT') || String(e.lineType).toUpperCase().includes('DASH'))
-      ? (String(e.lineType).toUpperCase().includes('DOT') ? '1 2' : '4 3')
+    const entityDash = e.lineType && (String(e.lineType).toUpperCase().includes('DOT') || String(e.lineType).toUpperCase().includes('DASH') || String(e.lineType).trim() === '5')
+      ? (String(e.lineType).toUpperCase().includes('DOT') ? '1 2' : (String(e.lineType).trim() === '5' ? '5 5' : '4 3'))
       : (style.dash || '');
     const dashAttr = entityDash ? `stroke-dasharray="${entityDash}" ` : '';
     const opacityAttr = style.opacity ? `opacity="${style.opacity}" ` : '';

@@ -91,3 +91,30 @@ def test_station_flag_end_to_end(tmp_path):
     assert any(e.dxftype() == "LWPOLYLINE" for e in flags)
     assert not any(e.dxftype() == "CIRCLE" for e in flags)
     assert any(e.dxftype() == "LINE" for e in flags)
+
+    # Station roof outer edge:
+    # MAIN_LINE y = 0.0, clearance = 1.68, platform width = 7.0, building clearance ~ 1.0, width = 10.0 -> roof y ~ 19.68
+    bldgs = [e for e in doc_out.modelspace() if e.dxf.layer == "STATION-BUILDING" and e.dxftype() in ("LWPOLYLINE", "POLYLINE")]
+    assert bldgs
+    bldg_pts = [p for b in bldgs for p in b.get_points()]
+    station_roof_y = max(p[1] for p in bldg_pts)
+    land_boundary_y = station_roof_y + 40.0
+
+    # Every flag entity vertex must be strictly UNDER the 40m land boundary
+    for f in flags:
+        if f.dxftype() == "LWPOLYLINE":
+            for p in f.get_points():
+                assert p[1] < land_boundary_y, f"Flag vertex {p} must be below boundary {land_boundary_y}"
+        elif f.dxftype() == "LINE":
+            assert f.dxf.start.y < land_boundary_y
+            assert f.dxf.end.y < land_boundary_y
+
+    # Station centerline text & lines must also be under the 40m land boundary
+    cl_entities = [e for e in doc_out.modelspace() if e.dxf.layer == "STATION-CENTER"]
+    for cl in cl_entities:
+        if cl.dxftype() == "LINE":
+            assert cl.dxf.start.y < land_boundary_y
+            assert cl.dxf.end.y < land_boundary_y
+        elif cl.dxftype() in ("TEXT", "MTEXT"):
+            assert cl.dxf.insert[1] < land_boundary_y
+

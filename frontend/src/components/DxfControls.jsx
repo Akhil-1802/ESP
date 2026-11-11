@@ -332,7 +332,7 @@ export function DxfControls({
             { key: 'station', label: 'Stations', color: 'bg-indigo-400', activeCls: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40' },
             { key: 'fob', label: 'FOBs', color: 'bg-teal-400', activeCls: 'bg-teal-500/20 text-teal-400 border-teal-500/40' },
             { key: 'signal', label: 'SRJ / Fouling', color: 'bg-rose-400', activeCls: 'bg-rose-500/20 text-rose-400 border-rose-500/40' },
-            { key: 'fencing', label: 'Fencing', color: 'bg-slate-400', activeCls: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
+            { key: 'fencing', label: 'Fencing / Boundary', color: 'bg-emerald-400', activeCls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
             { key: 'reference', label: 'Reference / Chainage', color: 'bg-slate-400', activeCls: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
             { key: 'text', label: 'Text Labels', color: 'bg-emerald-400', activeCls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
           ].map(({ key, label, color, activeCls }) => (

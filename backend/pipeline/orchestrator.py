@@ -8,6 +8,7 @@ from config.loader import ESPConfig
 from platform_gen.kml_io import convert_kml_to_dxf
 
 from .steps import (
+    BoundaryMixin,
     CalLabelMixin,
     ChainageMixin,
     CrossoverMixin,
@@ -38,6 +39,7 @@ class ESPGenerator(
     GradientMixin,
     ChainageMixin,
     CalLabelMixin,
+    BoundaryMixin,
 ):
     """Main orchestrator for track, platform, crossover, and station generation."""
 
@@ -153,6 +155,13 @@ class ESPGenerator(
             self._generate_cal_labels(tracks)
         except Exception as exc:
             print(f"   ! CAL labels skipped ({exc})")
+
+        # Step 12: Land boundary (green dashed line, 40m from station / 70m from last entity)
+        print("🗺️  Generating land boundary...")
+        try:
+            self._generate_land_boundary(tracks)
+        except Exception as exc:
+            print(f"   ! Land boundary skipped ({exc})")
 
         print("\n" + "=" * 50)
         print(f"✅ Complete DXF written: {Path(self.config.output_dxf).absolute()}")

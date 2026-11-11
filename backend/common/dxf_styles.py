@@ -46,14 +46,31 @@ def ensure_dashed_linetype(doc) -> str:
     return name
 
 
+def ensure_custom_linetype_5(doc) -> str:
+    """Ensure standard '5' linetype exists in doc."""
+    name = "5"
+    if name not in doc.linetypes:
+        try:
+            doc.linetypes.add(
+                name,
+                pattern=[7.5, 5.0, -2.5],
+                description="5 __ __ __ __ __",
+            )
+        except Exception:
+            pass
+    return name
+
+
 def ensure_layer(doc, name: str, color: int = DEFAULT_COLOR, linetype: str | None = None):
     """Ensure layer exists with given color and linetype."""
     if linetype:
-        u = str(linetype).upper()
+        u = str(linetype).strip().upper()
         if u in ("DOTTED", "DOT"):
             ensure_dotted_linetype(doc)
         elif u == "DASHED":
             ensure_dashed_linetype(doc)
+        elif u == "5":
+            ensure_custom_linetype_5(doc)
     if name not in doc.layers:
         kwargs = {"color": color}
         if linetype:
