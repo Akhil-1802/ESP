@@ -229,22 +229,42 @@ class ChainageStep(PipelineStep):
         except (TypeError, ValueError):
             parallel_tol = 1.0
 
+        # When an FM is coincident with an SRJ (same chainage within parallel_tol),
+        # suppress the standalone FM marker so a redundant second leader line is not drawn,
+        # but keep track of fm_rels so the SRJ line can display FM on the opposite side of the line.
+        srj_rels = [float(m[2]) for m in norm_markers if str(m[3]).upper() == "SRJ"]
+        fm_rels = [float(m[2]) for m in norm_markers if str(m[3]).upper() == "FM"]
+        filtered_markers = []
+        for m in norm_markers:
+            tag = str(m[3]).upper()
+            if tag == "FM":
+                rel = float(m[2])
+                if any(abs(rel - srj_ch) < parallel_tol for srj_ch in srj_rels):
+                    continue
+            filtered_markers.append(m)
+        norm_markers = filtered_markers
+
         def _dedupe_side_group(items):
             kept_group: list = []
             for base, tan, rel, tag, side in items:
                 dup = False
-                for kb, _kt, kr, ktag, _kside in kept_group:
-                    if ktag != tag:
-                        continue
-                    if math.hypot(base[0] - kb[0], base[1] - kb[1]) < _DEDUPE_M:
-                        dup = True
-                        break
-                    try:
-                        if abs(float(rel) - float(kr)) < parallel_tol:
+                for i, (kb, _kt, kr, ktag, _kside) in enumerate(kept_group):
+                    is_close = math.hypot(base[0] - kb[0], base[1] - kb[1]) < _DEDUPE_M
+                    if not is_close:
+                        try:
+                            if abs(float(rel) - float(kr)) < parallel_tol:
+                                is_close = True
+                        except (TypeError, ValueError):
+                            pass
+                    if is_close:
+                        if ktag == tag:
                             dup = True
                             break
-                    except (TypeError, ValueError):
-                        pass
+                        if {ktag, tag} == {"SRJ", "FM"}:
+                            dup = True
+                            if tag == "SRJ":
+                                kept_group[i] = (base, tan, rel, tag, side)
+                            break
                 if not dup:
                     kept_group.append((base, tan, rel, tag, side))
             return kept_group
@@ -474,6 +494,11 @@ class ChainageStep(PipelineStep):
                     leader_len = float(_common_end_left - start_proj)
                     if not math.isfinite(leader_len) or leader_len < 3.0:
                         leader_len = 3.0
+                    other_tag = (
+                        "FM"
+                        if str(tag).upper() == "SRJ" and any(abs(float(rel) - fm_ch) < parallel_tol for fm_ch in fm_rels)
+                        else None
+                    )
                     drawn += draw_chainage_annotation(
                         doc,
                         start,
@@ -483,6 +508,7 @@ class ChainageStep(PipelineStep):
                         leader_len=float(leader_len),
                         lift=float(_TEXT_LIFT.get(str(tag), 0.0)),
                         side="LEFT",
+                        other_side_tag=other_tag,
                     )
                 except Exception:
                     continue
@@ -531,6 +557,11 @@ class ChainageStep(PipelineStep):
                     leader_len = float(start_proj - _common_end_right)
                     if not math.isfinite(leader_len) or leader_len < 3.0:
                         leader_len = 3.0
+                    other_tag = (
+                        "FM"
+                        if str(tag).upper() == "SRJ" and any(abs(float(rel) - fm_ch) < parallel_tol for fm_ch in fm_rels)
+                        else None
+                    )
                     drawn += draw_chainage_annotation(
                         doc,
                         start,
@@ -540,6 +571,7 @@ class ChainageStep(PipelineStep):
                         leader_len=float(leader_len),
                         lift=float(_TEXT_LIFT.get(str(tag), 0.0)),
                         side="RIGHT",
+                        other_side_tag=other_tag,
                     )
                 except Exception:
                     continue

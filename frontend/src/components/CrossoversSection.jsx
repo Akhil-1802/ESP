@@ -51,8 +51,9 @@ export function CrossoversSection({ form, set, tracks }) {
       {!isDefault && form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
       {!isDefault &&
         form.crossovers.map((x, i) => {
-          const targetTrack = loopEnds[x.from] ? x.from : (loopEnds[x.to] ? x.to : null);
-          const ends = targetTrack ? loopEnds[targetTrack] : null;
+          const itemLoopEnds = getExtendedLoopEnds(form, i);
+          const targetTrack = itemLoopEnds[x.from] ? x.from : (itemLoopEnds[x.to] ? x.to : null);
+          const ends = targetTrack ? itemLoopEnds[targetTrack] : null;
           const setChainage = (v) => setTop({ crossovers: patchAt(form.crossovers, i, { chainage: v }) });
           const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
           const chBadge = x.chainage ? `CH ${x.chainage}` : 'AUTO';

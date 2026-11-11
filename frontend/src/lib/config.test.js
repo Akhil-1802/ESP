@@ -519,6 +519,41 @@ describe('sidings', () => {
       assert.equal(ext.LOOP_1.c2, 1250);
       assert.equal(ext.LOOP_1.isExtended, true);
     });
+
+    it('does not extend loop start to 0 when crossover chainage is blank, AUTO, or non-positive', () => {
+      const f = {
+        ...base(),
+        loops: [
+          { name: 'LOOP_1', side: 'LEFT', spacing: '5.3', c1: '456.712', c2: '1206.712' },
+        ],
+        crossovers: [
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '' },
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: 'AUTO' },
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '0' },
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '-10' },
+        ],
+      };
+      const ext = getExtendedLoopEnds(f);
+      assert.equal(ext.LOOP_1.c1, 456.712);
+      assert.equal(ext.LOOP_1.c2, 1206.712);
+      assert.equal(ext.LOOP_1.isExtended, false);
+    });
+
+    it('ignores the crossover being edited when excludeCrossoverIndex is provided', () => {
+      const f = {
+        ...base(),
+        loops: [
+          { name: 'LOOP_1', side: 'LEFT', spacing: '5.3', c1: '500', c2: '1250' },
+        ],
+        crossovers: [
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '350.0' },
+        ],
+      };
+      // When editing C1 (index 0), its own chainage 350.0 is excluded from its helper buttons
+      const extEditing = getExtendedLoopEnds(f, 0);
+      assert.equal(extEditing.LOOP_1.c1, 500);
+      assert.equal(extEditing.LOOP_1.isExtended, false);
+    });
   });
 });
 

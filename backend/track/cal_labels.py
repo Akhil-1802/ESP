@@ -86,16 +86,21 @@ def draw_cal_labels(
         except TypeError:
             mpts = pts
         if kind == "LOOP":
-            try:
-                length = float(
-                    _polyline_length(
-                        [(float(p[0]), float(p[1])) for p in mpts]
+            span = main_fm_span_m(marks or [], name)
+            if span is not None:
+                length = float(span)
+                cal_part = format_loop_cal_value(length, fm_to_fm=True)
+            else:
+                try:
+                    length = float(
+                        _polyline_length(
+                            [(float(p[0]), float(p[1])) for p in mpts]
+                        )
                     )
-                )
-            except Exception:
-                continue
+                except Exception:
+                    continue
+                cal_part = format_loop_cal_value(length, fm_to_fm=False)
             name_part = format_loop_name(number)
-            cal_part = format_loop_cal_value(length)
             label = f"{name_part} {cal_part}"
         else:
             span = main_fm_span_m(marks or [], name)

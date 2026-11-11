@@ -303,9 +303,26 @@ def collect_fouling_marks(
         except (TypeError, ValueError, AttributeError):
             continue
         sign = 1.0 if placement == "AHEAD" else -1.0
+        tc_m = getattr(res, "track_centre_m", None)
+        if tc_m is None:
+            tc_m = getattr(res, "tc_m", None)
+        if tc_m is None and hasattr(res, "track_centre_mm") and res.track_centre_mm is not None:
+            tc_m = float(res.track_centre_mm) / 1000.0
+        if tc_m is None:
+            try:
+                local_s = _main_to_local(from_track, start_main, extents)
+                stn = point_at_chainage(cleaned[from_track], local_s)
+                dist, _, _ = _dist_to_other(cleaned[to_track], stn.point)
+                tc_m = dist
+            except Exception:
+                tc_m = 5.3
+
+        fm_from_main = start_main
+        fm_to_main = second_main
+
         try:
             local_from = _main_to_local(
-                from_track, start_main + sign * a_m, extents
+                from_track, fm_from_main, extents
             )
             marks.append(
                 _make_mark(
@@ -319,7 +336,7 @@ def collect_fouling_marks(
                 )
             )
             local_to = _main_to_local(
-                to_track, second_main - sign * a_m, extents
+                to_track, fm_to_main, extents
             )
             marks.append(
                 _make_mark(

@@ -130,6 +130,32 @@ def test_draw_chainage_annotation_right_side():
     assert float(ins[0]) == pytest.approx(100.0 - CHAINAGE_TEXT_SIDE_M)
 
 
+def test_draw_chainage_annotation_both_sides_srj_fm():
+    doc = ezdxf.new()
+    n = draw_chainage_annotation(
+        doc, (100.0, 0.0), (1.0, 0.0), 472.0, "SRJ",
+        leader_len=20.0, side="LEFT", other_side_tag="FM"
+    )
+    assert n == 1
+    msp = doc.modelspace()
+    lines = [e for e in msp if e.dxftype() == "LINE" and e.dxf.layer == CHAINAGE_LAYER]
+    texts = [e for e in msp if e.dxftype() == "TEXT" and e.dxf.layer == CHAINAGE_LAYER]
+    assert len(lines) == 1
+    assert len(texts) == 2
+    # Verify line is at x = 100.0
+    assert float(lines[0].dxf.start.x) == pytest.approx(100.0)
+    assert float(lines[0].dxf.end.x) == pytest.approx(100.0)
+    # Text 1: SRJ AT CH on the LEFT of the line (< 100.0)
+    srj_text = [t for t in texts if "SRJ" in t.dxf.text][0]
+    assert "SRJ AT CH + 0+472" == srj_text.dxf.text
+    assert float(srj_text.dxf.insert[0]) < 100.0
+    # Text 2: FM AT CH on the RIGHT of the line (> 100.0)
+    fm_text = [t for t in texts if "FM" in t.dxf.text][0]
+    assert "FM AT CH + 0+472" == fm_text.dxf.text
+    assert float(fm_text.dxf.insert[0]) > 100.0
+
+
+
 def test_chainage_mixin_left_and_right_sides(tmp_path):
     class FakeGenerator(ChainageMixin):
         def __init__(self, out_dxf):

@@ -227,7 +227,7 @@ export function fillCentredChainages(form, centre) {
 }
 
 /** Compute dynamic extended start and end chainages for all loops (ladder stepping without overrun). */
-export function getExtendedLoopEnds(form) {
+export function getExtendedLoopEnds(form, excludeCrossoverIndex = -1) {
   const loops = form?.loops || [];
   if (!loops.length) return {};
 
@@ -315,14 +315,18 @@ export function getExtendedLoopEnds(form) {
         runE = prevE !== null ? Math.max(c2 + numOuter * ladderStep, prevE + ladderStep) : c2 + numOuter * ladderStep;
       }
 
-      crossovers.forEach((xo) => {
+      crossovers.forEach((xo, xoIdx) => {
+        if (excludeCrossoverIndex >= 0 && xoIdx === excludeCrossoverIndex) return;
         if (xo.from === name || xo.to === name) {
-          const ch = Number(xo.chainage);
-          if (Number.isFinite(ch)) {
-            const mid = (c1 + c2) / 2.0;
-            if (ch <= mid && ch < runS) runS = ch;
-            if (ch > mid && ch > runE) runE = ch;
-          }
+          const rawCh = xo.chainage !== undefined && xo.chainage !== null ? String(xo.chainage).trim() : '';
+          if (!rawCh || rawCh.toUpperCase() === 'AUTO') return;
+          const ch = Number(rawCh);
+          // Chainages must be positive and finite (empty strings or '0' do not pull loop start to 0)
+          if (!Number.isFinite(ch) || ch <= 0) return;
+
+          const mid = (c1 + c2) / 2.0;
+          if (ch <= mid && ch < runS) runS = ch;
+          if (ch > mid && ch > runE) runE = ch;
         }
       });
 

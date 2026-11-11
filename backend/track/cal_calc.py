@@ -48,9 +48,10 @@ def format_main_name(number: int) -> str:
     return f"MAIN LINE NO-{int(number)}"
 
 
-def format_loop_cal_value(length_m: float) -> str:
-    """``CAL 776.000M (END TO END)`` -- Column 2 CAL part."""
-    return f"CAL {float(length_m):.3f}M (END TO END)"
+def format_loop_cal_value(length_m: float, fm_to_fm: bool = True) -> str:
+    """``CAL 776.000M (FM TO FM)`` or ``CAL 776.000M (END TO END)`` -- Column 2 CAL part."""
+    tag = "FM TO FM" if fm_to_fm else "END TO END"
+    return f"CAL {float(length_m):.3f}M ({tag})"
 
 
 def format_main_cal_value(length_m: float) -> str:
@@ -58,9 +59,9 @@ def format_main_cal_value(length_m: float) -> str:
     return f"CAL {float(length_m):.3f}M (FM TO FM)"
 
 
-def format_loop_cal(number: int, length_m: float) -> str:
-    """``LOOP LINE NO-n CAL 776.000M (END TO END)`` -- end to end."""
-    return f"{format_loop_name(number)} {format_loop_cal_value(length_m)}"
+def format_loop_cal(number: int, length_m: float, fm_to_fm: bool = True) -> str:
+    """``LOOP LINE NO-n CAL 776.000M (FM TO FM)``."""
+    return f"{format_loop_name(number)} {format_loop_cal_value(length_m, fm_to_fm=fm_to_fm)}"
 
 
 def format_main_cal(number: int, length_m: float) -> str:

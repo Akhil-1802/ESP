@@ -308,6 +308,19 @@ def collect_srj_turnout_crossover(
             side_to = determine_track_side(
                 to_track, config, default_to=from_track, pt=(sp_to.point if sp_to else None), main_line_points=main_line_points
             )
+            if sp_from is not None and sp_to is not None:
+                dx = float(sp_to.point[0] - sp_from.point[0])
+                dy = float(sp_to.point[1] - sp_from.point[1])
+                fn = math.hypot(sp_from.tangent[0], sp_from.tangent[1]) or 1.0
+                ftx, fty = sp_from.tangent[0] / fn, sp_from.tangent[1] / fn
+                cross_from = dx * (-fty) + dy * ftx
+                side_from = "LEFT" if cross_from < 0 else "RIGHT"
+
+                tn_to = math.hypot(sp_to.tangent[0], sp_to.tangent[1]) or 1.0
+                ttx, tty = sp_to.tangent[0] / tn_to, sp_to.tangent[1] / tn_to
+                cross_to = (-dx) * (-tty) + (-dy) * ttx
+                side_to = "LEFT" if cross_to < 0 else "RIGHT"
+
             if sp_from is not None:
                 out.append((sp_from.point, sp_from.tangent, datum.relative_for_main(start_main), "SRJ", side_from))
             if sp_to is not None:
@@ -343,8 +356,16 @@ def collect_fm(datum: StationDatum, fouling_marks: list, config, main_line_point
         try:
             px, py = float(mark.point[0]), float(mark.point[1])
             ox, oy = float(mark.other_point[0]), float(mark.other_point[1])
-            base = ((px + ox) / 2.0, (py + oy) / 2.0)
+            spacing = math.hypot(px - ox, py - oy)
+            clr = min(1.8, spacing * 0.35) if spacing > 1e-3 else 1.8
             tan = mark.display_tangent or mark.tangent
+            tn = math.hypot(tan[0], tan[1]) or 1.0
+            tx, ty = tan[0] / tn, tan[1] / tn
+            nx, ny = -ty, tx
+            dot = (ox - px) * nx + (oy - py) * ny
+            inward_nx = nx if dot >= 0.0 else -nx
+            inward_ny = ny if dot >= 0.0 else -ny
+            base = (px + inward_nx * clr, py + inward_ny * clr)
             rel = datum.relative_for_main(float(mark.chainage_main))
             fm_side = determine_side(base, main_line_points=main_line_points, config=config)
             out.append((base, (float(tan[0]), float(tan[1])), float(rel), "FM", fm_side))

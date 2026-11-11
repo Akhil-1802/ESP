@@ -333,8 +333,24 @@ class CrossoverStep(PipelineStep):
             sp_from = _pac(tracks[res.from_track], _local(res.from_track, res.chainage))
             second_main = res.end_chainage if res.placement == "AHEAD" else res.start_chainage
             sp_to = _pac(tracks[res.to_track], _local(res.to_track, second_main))
-            _draw_srj_post(doc, sp_from.point, sp_from.tangent, False)
-            _draw_srj_post(doc, sp_to.point, sp_to.tangent, False)
+
+            dx = float(sp_to.point[0] - sp_from.point[0])
+            dy = float(sp_to.point[1] - sp_from.point[1])
+
+            fn = math.hypot(sp_from.tangent[0], sp_from.tangent[1]) or 1.0
+            ftx, fty = sp_from.tangent[0] / fn, sp_from.tangent[1] / fn
+            # Normal to the left of from_track travel is (-fty, ftx).
+            # If to_track is to the left (cross_from > 0), outward side is to the right (False).
+            cross_from = dx * (-fty) + dy * ftx
+            from_outward_left = bool(cross_from < 0)
+
+            tn_to = math.hypot(sp_to.tangent[0], sp_to.tangent[1]) or 1.0
+            ttx, tty = sp_to.tangent[0] / tn_to, sp_to.tangent[1] / tn_to
+            cross_to = (-dx) * (-tty) + (-dy) * ttx
+            to_outward_left = bool(cross_to < 0)
+
+            _draw_srj_post(doc, sp_from.point, sp_from.tangent, from_outward_left)
+            _draw_srj_post(doc, sp_to.point, sp_to.tangent, to_outward_left)
 
             tlabel = (res.turnout_type or "").replace(":", " in ")
             if tlabel:
@@ -347,9 +363,7 @@ class CrossoverStep(PipelineStep):
                 tn = math.hypot(tan[0], tan[1]) or 1.0
                 tx, ty = tan[0] / tn, tan[1] / tn
                 tang = readable_angle_deg(math.degrees(math.atan2(ty, tx)))
-                ft = sp_from.tangent
-                fn = math.hypot(ft[0], ft[1]) or 1.0
-                ox, oy = ft[1] / fn, -ft[0] / fn
+                ox, oy = (-fty, ftx) if from_outward_left else (fty, -ftx)
                 dcx = sp_from.point[0] + ox * 3.0
                 dcy = sp_from.point[1] + oy * 3.0
                 tdx = math.cos(math.radians(tang))

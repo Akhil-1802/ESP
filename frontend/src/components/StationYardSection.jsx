@@ -847,8 +847,9 @@ export function StationYardSection({
             ) : (
               stationCrossovers.map((x, idx) => {
                 const globalXIdx = (form.crossovers || []).indexOf(x);
-                const targetTrack = loopEnds[x.from] ? x.from : (loopEnds[x.to] ? x.to : null);
-                const ends = targetTrack ? loopEnds[targetTrack] : null;
+                const itemLoopEnds = getExtendedLoopEnds(form, globalXIdx);
+                const targetTrack = itemLoopEnds[x.from] ? x.from : (itemLoopEnds[x.to] ? x.to : null);
+                const ends = targetTrack ? itemLoopEnds[targetTrack] : null;
                 const setChainage = (v) => updateCrossoverAt(x, { chainage: v });
                 const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
                 return (

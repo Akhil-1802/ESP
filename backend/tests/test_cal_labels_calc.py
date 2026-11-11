@@ -30,7 +30,8 @@ from .helpers_cal_labels import (
 
 
 def test_loop_format_matches_reference():
-    assert format_loop_cal(1, 776.0) == "LOOP LINE NO-1 CAL 776.000M (END TO END)"
+    assert format_loop_cal(1, 776.0) == "LOOP LINE NO-1 CAL 776.000M (FM TO FM)"
+    assert format_loop_cal(1, 776.0, fm_to_fm=False) == "LOOP LINE NO-1 CAL 776.000M (END TO END)"
 
 
 def test_main_format_matches_reference():

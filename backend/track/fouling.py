@@ -54,7 +54,6 @@ def draw_fouling_marks(doc, marks: Sequence[FoulingMark]) -> int:
             other = getattr(mark, "other_point", None) or point
             px, py = float(point[0]), float(point[1])
             ox, oy = float(other[0]), float(other[1])
-            mx, my = (px + ox) * 0.5, (py + oy) * 0.5
             spacing = math.hypot(px - ox, py - oy)
             try:
                 sm = float(getattr(mark, "spacing_m", 0.0) or 0.0)
@@ -63,13 +62,16 @@ def draw_fouling_marks(doc, marks: Sequence[FoulingMark]) -> int:
                     spacing = float(sm) if sm > 1e-9 else spacing
             except (TypeError, ValueError):
                 pass
-            max_half = float(FM_TICK_HALF_M) or 1.0
-            if spacing > 1e-9:
-                half = min(max_half, spacing * 0.5 - 0.5)
-                if half < 0.25:
-                    half = max(0.15, spacing * 0.25)
-            else:
-                half = max_half
+            geom_dist = math.hypot(px - ox, py - oy)
+            clr = min(1.8, spacing * 0.35) if spacing > 1e-3 else 1.8
+            # Displace strictly along the track normal toward the conflicting track (zero along-track shift)
+            nx, ny = -ty, tx
+            dot = (ox - px) * nx + (oy - py) * ny
+            inward_nx = nx if dot >= 0.0 else -nx
+            inward_ny = ny if dot >= 0.0 else -ny
+            mx = px + inward_nx * clr
+            my = py + inward_ny * clr
+            half = 0.5
             msp = doc.modelspace()
             qx, qy = -ty, tx
             p1 = (mx + qx * half, my + qy * half)

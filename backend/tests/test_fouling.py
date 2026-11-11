@@ -119,27 +119,35 @@ def test_siding_fm_moves_with_spacing():
     assert abs(src_w.chainage_main - src_n.chainage_main) > 1.0
 
 
-def test_crossover_gives_two_fixed_fms_at_a_offsets():
-    tracks, res, _ol = _crossover_res()
+def test_crossover_gives_two_fixed_fms_at_srj_points():
+    tracks, res, _ol = _crossover_res(tc=5.3)
     marks = collect_fouling_marks(tracks, {}, [res], [])
     assert len(marks) == 2, "exactly two FMs per crossover"
     by_track = {m.track: m for m in marks}
     assert set(by_track) == {"MAIN_LINE", "LOOP_1"}
-    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(
-        res.chainage + A_12_M)
-    assert by_track["LOOP_1"].chainage_main == pytest.approx(
-        res.end_chainage - A_12_M)
+    # FM is directly at SRJ point
+    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(res.chainage)
+    assert by_track["LOOP_1"].chainage_main == pytest.approx(res.end_chainage)
 
 
-def test_crossover_fm_uses_own_turnout_a():
-    tracks, res, _ol = _crossover_res(a_mm=12025.0)
+def test_crossover_gives_two_fixed_fms_at_srj_when_tc_greater():
+    tracks, res, _ol = _crossover_res(tc=6.0)
+    marks = collect_fouling_marks(tracks, {}, [res], [])
+    assert len(marks) == 2, "exactly two FMs per crossover"
+    by_track = {m.track: m for m in marks}
+    assert set(by_track) == {"MAIN_LINE", "LOOP_1"}
+    # For all crossovers, FM is at SRJ point
+    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(res.chainage)
+    assert by_track["LOOP_1"].chainage_main == pytest.approx(res.end_chainage)
+
+
+def test_crossover_fm_uses_own_turnout_srj():
+    tracks, res, _ol = _crossover_res(tc=6.0, a_mm=12025.0)
     marks = collect_fouling_marks(tracks, {}, [res], [])
     assert len(marks) == 2
     by_track = {m.track: m for m in marks}
-    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(
-        res.chainage + A_85_M)
-    assert by_track["LOOP_1"].chainage_main == pytest.approx(
-        res.end_chainage - A_85_M)
+    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(res.chainage)
+    assert by_track["LOOP_1"].chainage_main == pytest.approx(res.end_chainage)
 
 
 def test_crossover_fm_ignores_geometry_shape():
@@ -159,12 +167,12 @@ def test_crossover_fm_ignores_geometry_shape():
     marks = collect_fouling_marks(tracks, {}, [_Res()], [])
     assert len(marks) == 2
     by_track = {m.track: m for m in marks}
-    assert by_track["FROM"].chainage_main == pytest.approx(100.0 + A_12_M)
-    assert by_track["TO"].chainage_main == pytest.approx(160.0 - A_12_M)
+    assert by_track["FROM"].chainage_main == pytest.approx(100.0)
+    assert by_track["TO"].chainage_main == pytest.approx(160.0)
 
 
-def test_reverse_crossover_mirrors_a_offsets():
-    tracks, _res_fwd, ol = _crossover_res(start=100.0)
+def test_reverse_crossover_places_at_srj():
+    tracks, _res_fwd, ol = _crossover_res(start=100.0, tc=6.0)
 
     class _Res:
         id = "C2"
@@ -181,9 +189,8 @@ def test_reverse_crossover_mirrors_a_offsets():
     marks = collect_fouling_marks(tracks, {}, [_Res()], [])
     assert len(marks) == 2
     by_track = {m.track: m for m in marks}
-    assert by_track["LOOP_1"].chainage_main == pytest.approx(400.0 - A_12_M)
-    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(
-        400.0 - ol + A_12_M)
+    assert by_track["LOOP_1"].chainage_main == pytest.approx(400.0)
+    assert by_track["MAIN_LINE"].chainage_main == pytest.approx(400.0 - ol)
 
 
 def test_every_crossover_gets_both_marks():
@@ -260,8 +267,19 @@ def test_draw_fm_layer_and_compact_label():
         length = ((ex - sx) ** 2 + (ey - sy) ** 2) ** 0.5
         assert length <= 2.0 + 1e-6 and length >= 0.3 - 1e-6
         cx, cy = (sx + ex) / 2.0, (sy + ey) / 2.0
-        mx = (float(mark.point[0]) + float(mark.other_point[0])) / 2.0
-        my = (float(mark.point[1]) + float(mark.other_point[1])) / 2.0
+        px, py = float(mark.point[0]), float(mark.point[1])
+        ox, oy = float(mark.other_point[0]), float(mark.other_point[1])
+        sp = math.hypot(px - ox, py - oy)
+        clr = min(1.8, sp * 0.35) if sp > 1e-3 else 1.8
+        tan = mark.display_tangent or mark.tangent
+        tn = math.hypot(tan[0], tan[1]) or 1.0
+        tx, ty = tan[0] / tn, tan[1] / tn
+        nx, ny = -ty, tx
+        dot = (ox - px) * nx + (oy - py) * ny
+        inward_nx = nx if dot >= 0.0 else -nx
+        inward_ny = ny if dot >= 0.0 else -ny
+        mx = px + inward_nx * clr
+        my = py + inward_ny * clr
         assert (cx, cy) == pytest.approx((mx, my))
         _dist = math.hypot(cx - float(mark.point[0]), cy - float(mark.point[1]))
         assert _dist > 0.5
@@ -297,10 +315,20 @@ def test_fm_leader_points_toward_conflicting_track():
             (sx, sy), (ex, ey) = pts[0], pts[1]
             assert float(tick.dxf.get("const_width", 0.25)) == pytest.approx(0.25)
             assert int(tick.dxf.get("lineweight", 80)) == 80
-        mx, my = (0.0 + float(other[0])) / 2.0, (0.0 + float(other[1])) / 2.0
+        px, py = 0.0, 0.0
+        ox, oy = float(other[0]), float(other[1])
+        sp = math.hypot(px - ox, py - oy)
+        clr = min(1.8, sp * 0.35) if sp > 1e-3 else 1.8
+        tx, ty = 1.0, 0.0
+        nx, ny = -ty, tx
+        dot = (ox - px) * nx + (oy - py) * ny
+        inward_nx = nx if dot >= 0.0 else -nx
+        inward_ny = ny if dot >= 0.0 else -ny
+        mx = px + inward_nx * clr
+        my = py + inward_ny * clr
         assert ((sx + ex) / 2.0, (sy + ey) / 2.0) == pytest.approx((mx, my))
         assert float(sx) == pytest.approx(float(ex))
-        assert abs(float(sy) - float(ey)) == pytest.approx(2.0)
+        assert abs(float(sy) - float(ey)) == pytest.approx(1.0)
         assert math.hypot((sx + ex) / 2.0 - 0.0, (sy + ey) / 2.0 - 0.0) > 0.5
         assert not [e for e in doc.modelspace()
                     if e.dxftype() == "HATCH"], "no FM fill expected"

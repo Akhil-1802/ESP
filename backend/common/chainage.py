@@ -156,6 +156,7 @@ def draw_chainage_annotation(
     lift: float = CHAINAGE_TEXT_LIFT_M,
     linetype: str = CHAINAGE_LINETYPE,
     side: str = "LEFT",
+    other_side_tag: str | None = None,
 ) -> int:
     """Draw one station-relative chainage label (dotted leader + vertical text)."""
     try:
@@ -257,6 +258,65 @@ def draw_chainage_annotation(
             _register_box(doc, box)
         except Exception:
             pass
+
+        if other_side_tag:
+            try:
+                other_label = format_chainage_label(other_side_tag, relative_m)
+                other_side_offset = side_m + float(height) + 0.2
+                if is_right:
+                    ins_other = (
+                        tip[0] - nx * lift_m + tx * other_side_offset,
+                        tip[1] - ny * lift_m + ty * other_side_offset,
+                    )
+                    halign_other = 0
+                    anc_other = "left-baseline"
+                else:
+                    ins_other = (
+                        tip[0] + nx * lift_m + tx * other_side_offset,
+                        tip[1] + ny * lift_m + ty * other_side_offset,
+                    )
+                    halign_other = 2
+                    anc_other = "right-baseline"
+                px_o, py_o = float(ins_other[0]), float(ins_other[1])
+                try:
+                    msp.add_text(
+                        other_label,
+                        height=float(height),
+                        dxfattribs={
+                            "layer": layer,
+                            "color": int(color),
+                            "style": style,
+                            "rotation": float(ang),
+                            "insert": (px_o, py_o, 0),
+                            "halign": halign_other,
+                            "valign": 0,
+                            "align_point": (px_o, py_o, 0),
+                        },
+                    )
+                except Exception:
+                    try:
+                        msp.add_text(
+                            other_label,
+                            height=float(height),
+                            dxfattribs={
+                                "layer": layer,
+                                "color": int(color),
+                                "style": style,
+                                "rotation": float(ang),
+                                "insert": (px_o, py_o, 0),
+                            },
+                        )
+                    except Exception:
+                        pass
+                try:
+                    box_o = _inflate(_aabb(other_label, float(height), float(ang), (px_o, py_o),
+                                           anc_other, 0.7), TEXT_CLEARANCE_M)
+                    _register_box(doc, box_o)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
         return 1
     except Exception:
         return 0
