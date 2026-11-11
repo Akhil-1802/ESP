@@ -1,6 +1,7 @@
 import { patchAt } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { blankCrossover } from '../lib/formDefaults.js';
+import { getExtendedLoopEnds } from '../lib/config.js';
 import { Empty, Field, Grid, ItemCard, Section, Sel, Text } from './fields.jsx';
 
 export function CrossoversSection({ form, set, tracks }) {
@@ -8,13 +9,7 @@ export function CrossoversSection({ form, set, tracks }) {
   const trackOpts = [{ value: '', label: 'Select…' }, ...tracks];
   const isDefault = form.crossoverMode === 'default';
 
-  const loopEnds = {};
-  (form.loops || []).forEach((loop, i) => {
-    const n = String(loop.name || '').trim() || `LOOP_${i + 1}`;
-    const c1 = Number(String(loop.c1 ?? '').trim());
-    const c2 = Number(String(loop.c2 ?? '').trim());
-    if (Number.isFinite(c1) && Number.isFinite(c2)) loopEnds[n] = { c1, c2 };
-  });
+  const loopEnds = getExtendedLoopEnds(form);
 
   return (
     <Section
@@ -56,13 +51,18 @@ export function CrossoversSection({ form, set, tracks }) {
       {!isDefault && form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
       {!isDefault &&
         form.crossovers.map((x, i) => {
-          const ends = loopEnds[x.from];
+          const targetTrack = loopEnds[x.from] ? x.from : (loopEnds[x.to] ? x.to : null);
+          const ends = targetTrack ? loopEnds[targetTrack] : null;
           const setChainage = (v) => setTop({ crossovers: patchAt(form.crossovers, i, { chainage: v }) });
-          const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100';
+          const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
+          const chBadge = x.chainage ? `CH ${x.chainage}` : 'AUTO';
+          const dirSubtitle = `${x.direction || 'NORMAL'} · ${x.turnout || '1:12'}`;
           return (
             <ItemCard
               key={i}
               title={`C${i + 1}${x.from && x.to ? ` · ${x.from} → ${x.to}` : ''}`}
+              badge={chBadge}
+              subtitle={dirSubtitle}
               onRemove={() => setTop({ crossovers: form.crossovers.filter((_, k) => k !== i) })}
             >
               <Grid>
@@ -82,7 +82,13 @@ export function CrossoversSection({ form, set, tracks }) {
                 </Field>
                 <Field
                   label="Start chainage (MAIN m) *"
-                  hint={ends ? `First SRJ on ${x.from} — range [${ends.c1}, ${ends.c2}], or AUTO` : 'First SRJ, or AUTO'}
+                  hint={
+                    ends
+                      ? `First SRJ on ${x.from || targetTrack} — range [${ends.c1}, ${ends.c2}], or AUTO${
+                          ends.isExtended ? ` (Extended from [${ends.baseC1}, ${ends.baseC2}])` : ''
+                        }`
+                      : 'First SRJ, or AUTO'
+                  }
                 >
                   <Text
                     value={x.chainage}

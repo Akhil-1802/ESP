@@ -5,6 +5,7 @@ import {
   FOB_MAX_SPAN_M,
   estimateFobSpan,
   formatStartChainage,
+  getExtendedLoopEnds,
   getPlatformBounds,
   getStationTrackDistance,
   getTrackRange,
@@ -145,14 +146,7 @@ export function StationYardSection({
     (x) => (x.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex,
   );
 
-  const loopEnds = {};
-  stationLoops.forEach((loop) => {
-    const globalIdx = (form.loops || []).indexOf(loop);
-    const n = String(loop.name || '').trim() || `LOOP_${globalIdx + 1}`;
-    const c1 = Number(String(loop.c1 ?? '').trim());
-    const c2 = Number(String(loop.c2 ?? '').trim());
-    if (Number.isFinite(c1) && Number.isFinite(c2)) loopEnds[n] = { c1, c2 };
-  });
+  const loopEnds = getExtendedLoopEnds(form);
 
   const isDefault = form.crossoverMode === 'default';
 
@@ -561,6 +555,8 @@ export function StationYardSection({
                   <ItemCard
                     key={idx}
                     title={`${l.name?.trim() || `LOOP_${globalLoopIdx + 1}`} · Referenced to ${stnName}`}
+                    badge={`${l.side || 'LEFT'} · ${extentLen}m`}
+                    subtitle={`[${c1Val} → ${c2Val}] · Spacing: ${l.spacing || 5.3}m`}
                     onRemove={() => removeLoop(l)}
                   >
                     <div className="mb-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
@@ -684,6 +680,8 @@ export function StationYardSection({
                   <ItemCard
                     key={idx}
                     title={`PLATFORM_${globalPlatIdx + 1}${p.name?.trim() ? ` · ${p.name.trim()}` : ''}`}
+                    badge={`${p.type || 'SIDE'} · ${p.track || 'Track'}`}
+                    subtitle={`${p.length || 550}m × ${p.width || 7}m`}
                     onRemove={() => removePlatform(p)}
                   >
                     <Grid>
@@ -849,13 +847,16 @@ export function StationYardSection({
             ) : (
               stationCrossovers.map((x, idx) => {
                 const globalXIdx = (form.crossovers || []).indexOf(x);
-                const ends = loopEnds[x.from];
+                const targetTrack = loopEnds[x.from] ? x.from : (loopEnds[x.to] ? x.to : null);
+                const ends = targetTrack ? loopEnds[targetTrack] : null;
                 const setChainage = (v) => updateCrossoverAt(x, { chainage: v });
                 const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
                 return (
                   <ItemCard
                     key={idx}
                     title={`C${globalXIdx + 1}${x.from && x.to ? ` · ${x.from} → ${x.to}` : ''}`}
+                    badge={x.chainage ? `CH ${x.chainage}` : 'AUTO'}
+                    subtitle={`${x.direction || 'NORMAL'} · ${x.turnout || '1:12'}`}
                     onRemove={() => removeCrossover(x)}
                   >
                     <Grid>
@@ -875,7 +876,13 @@ export function StationYardSection({
                       </Field>
                       <Field
                         label="Start chainage (MAIN m) *"
-                        hint={ends ? `First SRJ on ${x.from} — range [${ends.c1}, ${ends.c2}], or AUTO` : 'First SRJ, or AUTO'}
+                        hint={
+                          ends
+                            ? `First SRJ on ${x.from || targetTrack} — range [${ends.c1}, ${ends.c2}], or AUTO${
+                                ends.isExtended ? ` (Extended from [${ends.baseC1}, ${ends.baseC2}])` : ''
+                              }`
+                            : 'First SRJ, or AUTO'
+                        }
                       >
                         <Text
                           value={x.chainage}

@@ -30,7 +30,7 @@ from track.specs import CrossoverSpec as _CrossoverSpec
 from track.turnouts import select_turnout as _select_turnout
 
 from .base import PipelineStep
-from .crossover_cuts import apply_loop_overrun_cuts
+from .crossover_cuts import apply_loop_overrun_cuts, count_outer_loops
 
 __all__ = ["CrossoverStep", "CrossoverMixin"]
 
@@ -42,6 +42,11 @@ class CrossoverStep(PipelineStep):
         """Map bounded-loop track name -> effective (C1, C2) MAIN chainages."""
         trim = getattr(self, "_loop_trim_extents", None) or {}
         extents: Dict[str, Tuple[float, float]] = {}
+        specs_by_name = {
+            getattr(loop, "name", None): loop
+            for loop in list(self.config.loops) + list(self.config.additional_lines)
+            if getattr(loop, "name", None)
+        }
         for loop in list(self.config.loops) + list(self.config.additional_lines):
             c1 = getattr(loop, "first_crossover_chainage", None)
             if c1 is None:
@@ -53,8 +58,20 @@ class CrossoverStep(PipelineStep):
                 ext_s = getattr(loop, "extend_start_m", 0.0) or 0.0
                 ext_e = getattr(loop, "extend_end_m", 0.0) or 0.0
             else:
-                ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
-                ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
+                num_outer = count_outer_loops(loop.name, specs_by_name)
+                ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M) + num_outer * 150.0
+                ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M) + num_outer * 150.0
+                for xo in getattr(self.config, "crossovers", None) or []:
+                    if getattr(xo, "from_track", None) == loop.name or getattr(xo, "to_track", None) == loop.name:
+                        ch_val = getattr(xo, "from_chainage_m", None)
+                        try:
+                            ch_f = float(ch_val)
+                            if ch_f < c1:
+                                ext_s = max(ext_s, float(c1) - ch_f + float(DEFAULT_OVERRUN_M))
+                            if ch_f > c2:
+                                ext_e = max(ext_e, ch_f - float(c2) + float(DEFAULT_OVERRUN_M))
+                        except (TypeError, ValueError):
+                            pass
             eff = (max(0.0, float(c1) - ext_s), float(c2) + ext_e)
             extents[loop.name] = tuple(trim.get(loop.name, eff))  # type: ignore[assignment]
         return extents
@@ -62,6 +79,11 @@ class CrossoverStep(PipelineStep):
     def _bounded_loop_defined_ranges(self) -> Dict[str, Tuple[float, float, float, float]]:
         """Bounded-loop name -> (C1, C2, eff_start, eff_end) MAIN chainages."""
         ranges: Dict[str, Tuple[float, float, float, float]] = {}
+        specs_by_name = {
+            getattr(loop, "name", None): loop
+            for loop in list(self.config.loops) + list(self.config.additional_lines)
+            if getattr(loop, "name", None)
+        }
         for loop in list(self.config.loops) + list(self.config.additional_lines):
             c1 = getattr(loop, "first_crossover_chainage", None)
             if c1 is None or not hasattr(loop, "spacing"):
@@ -69,8 +91,20 @@ class CrossoverStep(PipelineStep):
             c2 = getattr(loop, "second_crossover_chainage", None)
             if c2 is None:
                 c2 = c1 + getattr(loop, "crossover_distance_m", 750.0)
-            ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
-            ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M)
+            num_outer = count_outer_loops(loop.name, specs_by_name)
+            ext_s = max(float(getattr(loop, "extend_start_m", 0.0) or 0.0), DEFAULT_OVERRUN_M) + num_outer * 150.0
+            ext_e = max(float(getattr(loop, "extend_end_m", 0.0) or 0.0), DEFAULT_OVERRUN_M) + num_outer * 150.0
+            for xo in getattr(self.config, "crossovers", None) or []:
+                if getattr(xo, "from_track", None) == loop.name or getattr(xo, "to_track", None) == loop.name:
+                    ch_val = getattr(xo, "from_chainage_m", None)
+                    try:
+                        ch_f = float(ch_val)
+                        if ch_f < c1:
+                            ext_s = max(ext_s, float(c1) - ch_f + float(DEFAULT_OVERRUN_M))
+                        if ch_f > c2:
+                            ext_e = max(ext_e, ch_f - float(c2) + float(DEFAULT_OVERRUN_M))
+                    except (TypeError, ValueError):
+                        pass
             ranges[loop.name] = (
                 float(c1),
                 float(c2),

@@ -21,7 +21,7 @@ from track.overrun import (
     split_loop_for_overrun as _split_loop,
 )
 
-__all__ = ["apply_loop_overrun_cuts", "resolve_net_offset_and_side"]
+__all__ = ["apply_loop_overrun_cuts", "resolve_net_offset_and_side", "count_outer_loops"]
 
 
 def resolve_net_offset_and_side(
@@ -49,6 +49,24 @@ def resolve_net_offset_and_side(
     net_spacing = abs(total_signed)
     net_side = "LEFT" if total_signed >= 0 else "RIGHT"
     return net_spacing, net_side
+
+
+def count_outer_loops(name: str, specs_by_name: dict[str, object]) -> int:
+    """Count how many loops on the same side are further from MAIN_LINE than this loop.
+
+    Uses net lateral offset from MAIN_LINE. LEFT and RIGHT are evaluated separately.
+    """
+    if name not in specs_by_name:
+        return 0
+    my_spacing, my_side = resolve_net_offset_and_side(name, specs_by_name)
+    count = 0
+    for other_name in specs_by_name:
+        if other_name == name or other_name == "MAIN_LINE" or str(other_name).startswith("MAIN_LINE_"):
+            continue
+        other_spacing, other_side = resolve_net_offset_and_side(other_name, specs_by_name)
+        if other_side == my_side and other_spacing > my_spacing + 1e-3:
+            count += 1
+    return count
 
 
 def apply_loop_overrun_cuts(
@@ -104,7 +122,76 @@ def apply_loop_overrun_cuts(
     except Exception:
         main_length = None
 
-    for name, (cut_start, cut_end) in cuts.items():
+    # Group all loops by net side (LEFT vs RIGHT)
+    loops_by_side: dict[str, list[str]] = {"LEFT": [], "RIGHT": []}
+    for name in ranges:
+        if name not in tracks:
+            continue
+        _spacing, side = resolve_net_offset_and_side(name, specs_by_name)
+        loops_by_side.setdefault(side, []).append(name)
+
+    # Sort each side from outermost (num_outer == 0) to innermost (num_outer > 0)
+    for side in ("LEFT", "RIGHT"):
+        loops_by_side[side].sort(
+            key=lambda n: count_outer_loops(n, specs_by_name)
+        )
+
+    target_extents: dict[str, tuple[float, float]] = {}
+    for side, side_loop_names in loops_by_side.items():
+        prev_s: float | None = None
+        prev_e: float | None = None
+        for name in side_loop_names:
+            c1, c2, _eff_s, _eff_e = ranges[name]
+            cut_start, cut_end = cuts.get(name, (None, None))
+            num_outer = count_outer_loops(name, specs_by_name)
+            spec = specs_by_name.get(name)
+            ladder_step = 110.578
+            t_des = str(getattr(spec, "turnout_designation", "1:12") or "1:12")
+            if "8.5" in t_des:
+                ladder_step = 78.0
+
+            # Running START
+            if cut_start is not None:
+                run_s = float(cut_start)
+            elif prev_s is not None:
+                run_s = min(float(c1) - num_outer * ladder_step, prev_s - ladder_step)
+            else:
+                run_s = float(c1)
+
+            srjs = _srjs_on_track(crossover_results, name)
+            start_srjs = [ch for ch in srjs if ch <= (c1 + c2) / 2.0]
+            if start_srjs:
+                min_srj = min(start_srjs)
+                if min_srj < run_s:
+                    run_s = min_srj
+
+            if prev_s is not None and run_s > prev_s:
+                run_s = prev_s
+
+            # Running END
+            if cut_end is not None:
+                run_e = float(cut_end)
+            elif prev_e is not None:
+                run_e = max(float(c2) + num_outer * ladder_step, prev_e + ladder_step)
+            else:
+                run_e = float(c2)
+
+            end_srjs = [ch for ch in srjs if ch > (c1 + c2) / 2.0]
+            if end_srjs:
+                max_srj = max(end_srjs)
+                if max_srj > run_e:
+                    run_e = max_srj
+
+            if prev_e is not None and run_e < prev_e:
+                run_e = prev_e
+
+            target_extents[name] = (run_s, run_e)
+            prev_s = run_s
+            prev_e = run_e
+
+    for name in ranges:
+        if name not in target_extents:
+            continue
         c1, c2, eff_s, eff_e = ranges[name]
         spec = specs_by_name.get(name)
         net_spacing, net_side = resolve_net_offset_and_side(name, specs_by_name)
@@ -114,23 +201,27 @@ def apply_loop_overrun_cuts(
         ov_end_val = getattr(spec, "extend_end_m", None) if spec else None
         ov_start = float(ov_start_val) if ov_start_val is not None else float(DEFAULT_OVERRUN_M)
         ov_end = float(ov_end_val) if ov_end_val is not None else float(DEFAULT_OVERRUN_M)
-        new_s = float(cut_start) - ov_start if cut_start is not None else float(c1) - ov_start
-        new_e = float(cut_end) + ov_end if cut_end is not None else float(c2) + ov_end
+
+        run_s, run_e = target_extents[name]
+        new_s = run_s - ov_start
+        new_e = run_e + ov_end
+
         if main_length is not None:
             if new_s < 0:
                 print(f"   ! Loop {name} START overrun clamped to MAIN start (wanted {new_s:.2f}m).")
                 new_s = 0.0
-                ov_start = float(cut_start) - new_s if cut_start is not None else ov_start
+                ov_start = run_s - new_s
             if new_e > main_length:
                 print(f"   ! Loop {name} END overrun clamped to MAIN end (wanted {new_e:.2f}m).")
                 new_e = float(main_length)
-                ov_end = new_e - float(cut_end) if cut_end is not None else ov_end
+                ov_end = new_e - run_e
+
         if new_e <= new_s:
             print(f"   ! Loop {name} overrun cut skipped (empty extent)")
             continue
         try:
             full = _gen_loop(main_points, new_s, new_e, net_spacing, net_side)
-            running, start_stub, end_stub = _split_loop(full, new_s, cut_start, cut_end)
+            running, start_stub, end_stub = _split_loop(full, new_s, run_s, run_e)
         except Exception as exc:
             print(f"   ! Loop {name} overrun cut skipped ({exc})")
             continue
@@ -140,10 +231,7 @@ def apply_loop_overrun_cuts(
         splits[name] = (running, start_stub, end_stub)
         full_lines[name] = [tuple(map(float, p[:2])) for p in full]
         split_full_extents[name] = (float(new_s), float(new_e))
-        trim_extents[name] = (
-            float(cut_start) if cut_start is not None else float(new_s),
-            float(cut_end) if cut_end is not None else float(new_e),
-        )
+        trim_extents[name] = (float(run_s), float(run_e))
 
     if not splits:
         return {}, {}, {}, {}
@@ -196,38 +284,17 @@ def apply_loop_overrun_cuts(
         ov_e_val = getattr(spec, "extend_end_m", None) if spec else None
         ov_s = float(ov_s_val) if ov_s_val is not None else float(DEFAULT_OVERRUN_M)
         ov_e = float(ov_e_val) if ov_e_val is not None else float(DEFAULT_OVERRUN_M)
-        if start_stub is not None and ov_s > 0:
+        if start_stub is not None and len(start_stub) >= 2 and ov_s > 0:
             try:
                 _draw_stub(doc, start_stub, True, outward_left)
             except Exception:
                 pass
-        if end_stub is not None and ov_e > 0:
+        if end_stub is not None and len(end_stub) >= 2 and ov_e > 0:
             try:
                 _draw_stub(doc, end_stub, False, outward_left)
             except Exception:
                 pass
 
-        try:
-            cut_start, cut_end = cuts.get(name, (None, None))
-        except Exception:
-            cut_start, cut_end = None, None
-        if spec is not None and (cut_start is None or cut_end is None):
-            try:
-                c1, c2, _eff_s, _eff_e = ranges[name]
-                new_s, new_e = split_full_extents.get(name, (_eff_s, _eff_e))
-                s_ann = ov_s if cut_start is None else 0.0
-                e_ann = ov_e if cut_end is None else 0.0
-                if s_ann > 0 or e_ann > 0:
-                    spec_one_side = dataclasses.replace(
-                        spec,
-                        extend_start_m=s_ann,
-                        extend_end_m=e_ann,
-                        spacing=_s_spacing,
-                        side=net_side,
-                    )
-                    _annotate_ext(doc, spec_one_side, running, c1, c2, float(new_s), float(new_e))
-            except Exception:
-                pass
         tracks[name] = list(running)
 
     for name, points in tracks.items():

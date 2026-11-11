@@ -74,10 +74,14 @@ export function MainTracksSection({ form, set }) {
             (form.mainLines || []).map((line, i) => {
               const name = `MAIN_LINE_${i + 1}`;
               const availableRefs = mainLineReferenceTracks(i);
+              const refBadge = `${line.referenceTrack || 'MAIN_LINE'} · ${line.spacing || 5.3}m`;
+              const dirSub = line.direction || 'UP/DN';
               return (
                 <ItemCard
                   key={i}
                   title={`${name} (Continuous)`}
+                  badge={refBadge}
+                  subtitle={dirSub}
                   onRemove={() => setTop({ mainLines: form.mainLines.filter((_, k) => k !== i) })}
                 >
                   <Grid>

@@ -3,12 +3,14 @@ import { fetchMainCenter } from '../lib/api.js';
 import { patchAt, fmt } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { blankLoop } from '../lib/formDefaults.js';
+import { getExtendedLoopEnds } from '../lib/config.js';
 import { Empty, Field, Grid, ItemCard, Num, Section, Sel, Text } from './fields.jsx';
 
 export function TracksSection({ form, set }) {
   const setTop = useFormSetter(set);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoMsg, setAutoMsg] = useState('');
+  const extendedExtents = getExtendedLoopEnds(form);
 
   const autoCentre = async (i) => {
     if (!form.kmlFile) {
@@ -57,13 +59,38 @@ export function TracksSection({ form, set }) {
       )}
       <div className="space-y-2">
         {form.loops.length === 0 && <Empty>No loops — add one, or skip for a MAIN-only layout.</Empty>}
-        {form.loops.map((l, i) => (
-          <ItemCard
-            key={i}
-            title={l.name.trim() || `LOOP_${i + 1}`}
-            onRemove={() => setTop({ loops: form.loops.filter((_, k) => k !== i) })}
-          >
-            <Grid>
+        {form.loops.map((l, i) => {
+          const loopName = l.name.trim() || `LOOP_${i + 1}`;
+          const ext = extendedExtents[loopName];
+          const c1 = l.c1 ?? '';
+          const c2 = l.c2 ?? '';
+          const hasExtent = c1 !== '' && c2 !== '' && !isNaN(Number(c1)) && !isNaN(Number(c2));
+          const baseLen = hasExtent ? `${Math.abs(Number(c2) - Number(c1))}m` : '750m';
+          const sideBadge = ext?.isExtended
+            ? `${l.side || 'LEFT'} · ${ext.extendedLength}m (Ext)`
+            : `${l.side || 'LEFT'} · ${baseLen}`;
+          const chSub = ext?.isExtended
+            ? `Running: [${ext.c1} → ${ext.c2}] · Spacing: ${l.spacing || 5.3}m`
+            : (hasExtent ? `[${c1} → ${c2}] · Spacing: ${l.spacing || 5.3}m` : `Spacing: ${l.spacing || 5.3}m`);
+          return (
+            <ItemCard
+              key={i}
+              title={loopName}
+              badge={sideBadge}
+              subtitle={chSub}
+              onRemove={() => setTop({ loops: form.loops.filter((_, k) => k !== i) })}
+            >
+              {ext?.isExtended && (
+                <div className="mb-2.5 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 flex items-center justify-between">
+                  <span>
+                    Extended running line: <strong>{ext.c1}</strong> → <strong>{ext.c2}</strong> m
+                  </span>
+                  <span className="font-semibold text-sky-800 font-mono">
+                    {ext.extendedLength} m
+                  </span>
+                </div>
+              )}
+              <Grid>
               <Field label="Name" hint="Unique track name">
                 <Text
                   value={l.name}
@@ -153,7 +180,8 @@ export function TracksSection({ form, set }) {
               <span className="text-[11px] text-slate-400">Fills C1/C2 from your KML (centre ± 375 m).</span>
             </div>
           </ItemCard>
-        ))}
+        );
+      })}
       </div>
     </Section>
   );

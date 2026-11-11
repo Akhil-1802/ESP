@@ -23,10 +23,14 @@ export function SidingsSection({ form, set, tracks }) {
       {sidings.length === 0 && <Empty>No sidings added.</Empty>}
       {sidings.map((s, i) => {
         const range = getTrackRange(s.sourceTrack, form);
+        const sBadge = s.csl ? `CSL ${s.csl}m` : null;
+        const sSub = s.direction ? `${s.direction} · ${s.turnout || '1:12'}` : (s.turnout || '1:12');
         return (
           <ItemCard
             key={i}
-            title={`S${i + 1}${s.sourceTrack ? ` · ${s.sourceTrack}` : ''}${s.csl ? ` (CSL: ${s.csl}m)` : ''}`}
+            title={`S${i + 1}${s.sourceTrack ? ` · ${s.sourceTrack}` : ''}`}
+            badge={sBadge}
+            subtitle={sSub}
             onRemove={() => setTop({ sidings: sidings.filter((_, k) => k !== i) })}
           >
             <Grid>

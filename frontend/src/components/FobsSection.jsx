@@ -100,12 +100,17 @@ export function FobsSection({ form, set, tracks, layers }) {
       {centreMsg && (
         <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">{centreMsg}</p>
       )}
-      {form.fobs.map((fb, i) => (
-        <ItemCard
-          key={i}
-          title={`FOB ${i + 1}`}
-          onRemove={() => setTop({ fobs: form.fobs.filter((_, k) => k !== i) })}
-        >
+      {form.fobs.map((fb, i) => {
+        const fbBadge = fb.chainage ? `CH ${fb.chainage}m` : 'Station-centred';
+        const fbSub = `Width: ${fb.width || 3.0}m · ${fb.refTrack || 'MAIN_LINE'}`;
+        return (
+          <ItemCard
+            key={i}
+            title={`FOB ${i + 1}`}
+            badge={fbBadge}
+            subtitle={fbSub}
+            onRemove={() => setTop({ fobs: form.fobs.filter((_, k) => k !== i) })}
+          >
           <Grid>
             <Field label="Reference track *">
               <Sel
@@ -249,7 +254,8 @@ export function FobsSection({ form, set, tracks, layers }) {
             ))}
           </div>
         </ItemCard>
-      ))}
+      );
+    })}
     </Section>
   );
 }

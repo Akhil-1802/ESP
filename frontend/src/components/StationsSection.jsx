@@ -16,12 +16,17 @@ export function StationsSection({ form, set, layers }) {
       addLabel="+ Add station"
     >
       {form.stations.length === 0 && <Empty>No station buildings.</Empty>}
-      {form.stations.map((s, i) => (
-        <ItemCard
-          key={i}
-          title={s.name.trim() || `Station ${i + 1}`}
-          onRemove={() => setTop({ stations: form.stations.filter((_, k) => k !== i) })}
-        >
+      {form.stations.map((s, i) => {
+        const stnBadge = s.platform || 'Platform';
+        const stnSub = s.chainage ? `CH ${s.chainage}m · ${s.length || 30}m × ${s.width || 10}m` : `${s.length || 30}m × ${s.width || 10}m`;
+        return (
+          <ItemCard
+            key={i}
+            title={s.name.trim() || `Station ${i + 1}`}
+            badge={stnBadge}
+            subtitle={stnSub}
+            onRemove={() => setTop({ stations: form.stations.filter((_, k) => k !== i) })}
+          >
           <Grid>
             <Field label="Platform *">
               <Sel
@@ -69,7 +74,8 @@ export function StationsSection({ form, set, layers }) {
             </Field>
           </Grid>
         </ItemCard>
-      ))}
+      );
+    })}
     </Section>
   );
 }

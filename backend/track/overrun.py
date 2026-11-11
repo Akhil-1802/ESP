@@ -81,54 +81,62 @@ def loop_end_srj_cuts(
     srj_chainages: Sequence[float],
     window_m: float | None = None,
 ) -> tuple[float | None, float | None]:
-    """Outermost in-window SRJ per loop end, or ``None`` when no cut.
+    """Outermost SRJ per loop end, or ``None`` when no cut.
 
-    Returns ``(cut_start, cut_end)`` in MAIN-datum metres: the smallest
-    SRJ strictly inside ``(c1, c1 + window]`` and the largest SRJ
-    strictly inside ``[c2 - window, c2)``. An SRJ exactly at C1/C2 (the
-    normal turnout point, e.g. the DEFAULT preset) never triggers, and
-    neither do mid-loop SRJs outside the windows.
-
-    ``window_m`` defaults to half the loop length ``(c2 - c1) / 2``
-    (375 m for a standard 750 m loop: centre -> tip on each side), so
-    any crossover before the tip ends the running line there. An
-    explicit window (e.g. ``LOOP_SRJ_OVERRUN_SEARCH_M``) is honoured
-    when given. Outer pieces shorter than
-    ``LOOP_SRJ_OVERRUN_MIN_STUB_M`` are ignored, and a pair that would
-    collapse the running line (``cut_start >= cut_end``) returns
-    ``(None, None)``.
+    Returns ``(cut_start, cut_end)`` in MAIN-datum metres:
+    - On start side (chainages <= midpoint):
+      If an SRJ extends outward (ch < c1 - 0.1), cut_start is set to it.
+      If an SRJ sits inside (c1 + min_stub <= ch <= midpoint), cut_start is set to it.
+      If sitting at c1, cut_start remains None.
+    - On end side (chainages > midpoint):
+      If an SRJ extends outward (ch > c2 + 0.1), cut_end is set to it.
+      If an SRJ sits inside (midpoint <= ch <= c2 - min_stub), cut_end is set to it.
+      If sitting at c2, cut_end remains None.
     """
     c1 = float(c1)
     c2 = float(c2)
     if c2 <= c1:
         return None, None
-    if window_m is None:
-        window_m = (c2 - c1) / 2.0
-    else:
-        window_m = float(window_m)
-        if window_m <= 0:
-            return None, None
-        window_m = min(window_m, (c2 - c1) / 2.0)
-    cut_start: float | None = None
-    cut_end: float | None = None
+
+    mid = (c1 + c2) / 2.0
+
+    valid_srjs: list[float] = []
     for chainage in srj_chainages:
         try:
-            ch = float(chainage)
+            valid_srjs.append(float(chainage))
         except (TypeError, ValueError):
             continue
-        if c1 < ch <= c1 + window_m:
-            if cut_start is None or ch < cut_start:
-                cut_start = ch
-        if c2 - window_m <= ch < c2:
-            if cut_end is None or ch > cut_end:
-                cut_end = ch
-    if cut_start is not None and (cut_start - c1) < LOOP_SRJ_OVERRUN_MIN_STUB_M:
-        cut_start = None
-    if cut_end is not None and (c2 - cut_end) < LOOP_SRJ_OVERRUN_MIN_STUB_M:
-        cut_end = None
+
+    if not valid_srjs:
+        return None, None
+
+    start_srjs = [ch for ch in valid_srjs if ch <= mid]
+    end_srjs = [ch for ch in valid_srjs if ch > mid]
+
+    cut_start: float | None = None
+    if start_srjs:
+        min_start = min(start_srjs)
+        if min_start < c1 - 0.1:
+            # Outward extension
+            cut_start = min_start
+        elif min_start > c1 + LOOP_SRJ_OVERRUN_MIN_STUB_M:
+            # In-window cut inside loop
+            cut_start = min_start
+
+    cut_end: float | None = None
+    if end_srjs:
+        max_end = max(end_srjs)
+        if max_end > c2 + 0.1:
+            # Outward extension
+            cut_end = max_end
+        elif max_end < c2 - LOOP_SRJ_OVERRUN_MIN_STUB_M:
+            # In-window cut inside loop
+            cut_end = max_end
+
     if cut_start is not None and cut_end is not None:
         if cut_end - cut_start < LOOP_SRJ_OVERRUN_MIN_STUB_M:
             return None, None
+
     return cut_start, cut_end
 
 

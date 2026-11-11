@@ -190,9 +190,15 @@ export default function App() {
     setStatus({ kind: 'busy' });
     try {
       const { blob, filename } = await generateDxf({ config: finalConfig, kmlFile: working.kmlFile });
+      const crossoverLabels =
+        Array.isArray(working.crossovers) && working.crossovers.length > 0
+          ? working.crossovers.map((c, i) => c.id || `C${i + 1}`)
+          : Array.isArray(finalConfig.crossovers)
+            ? finalConfig.crossovers.map((c, i) => c.id || `C${i + 1}`)
+            : null;
       let preview = { svg: null, w: 0, h: 0, entities: 0, error: '' };
       try {
-        preview = { ...dxfToSvg(await blob.arrayBuffer()), error: '' };
+        preview = { ...dxfToSvg(await blob.arrayBuffer(), { crossoverLabels }), error: '' };
       } catch {
         preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
       }

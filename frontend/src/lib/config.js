@@ -226,11 +226,139 @@ export function fillCentredChainages(form, centre) {
   };
 }
 
+/** Compute dynamic extended start and end chainages for all loops (ladder stepping without overrun). */
+export function getExtendedLoopEnds(form) {
+  const loops = form?.loops || [];
+  if (!loops.length) return {};
+
+  const specsByName = {};
+  loops.forEach((l, i) => {
+    const name = String(l.name || '').trim() || `LOOP_${i + 1}`;
+    specsByName[name] = l;
+  });
+
+  const resolveNet = (name) => {
+    const spec = specsByName[name];
+    if (!spec) return { spacing: 5.3, side: 'LEFT' };
+    let netOffset = 0.0;
+    let curr = spec;
+    const visited = new Set();
+    while (curr && curr.name && !visited.has(curr.name)) {
+      visited.add(curr.name);
+      const sp = Number(curr.spacing) || 5.3;
+      const sd = String(curr.side || 'LEFT').toUpperCase();
+      const sign = sd === 'LEFT' ? -1.0 : 1.0;
+      netOffset += sign * sp;
+      const ref = String(curr.referenceTrack || '').trim();
+      if (!ref || ref === 'MAIN_LINE' || ref.startsWith('MAIN_LINE_')) break;
+      curr = specsByName[ref];
+    }
+    const side = netOffset < 0 ? 'LEFT' : 'RIGHT';
+    return { spacing: Math.abs(netOffset), side };
+  };
+
+  const countOuter = (name) => {
+    const my = resolveNet(name);
+    let count = 0;
+    Object.keys(specsByName).forEach((otherName) => {
+      if (otherName === name) return;
+      const other = resolveNet(otherName);
+      if (other.side === my.side && other.spacing > my.spacing + 1e-3) {
+        count++;
+      }
+    });
+    return count;
+  };
+
+  const sides = { LEFT: [], RIGHT: [] };
+  Object.keys(specsByName).forEach((name) => {
+    const { side } = resolveNet(name);
+    if (!sides[side]) sides[side] = [];
+    sides[side].push(name);
+  });
+
+  ['LEFT', 'RIGHT'].forEach((side) => {
+    sides[side].sort((a, b) => countOuter(a) - countOuter(b));
+  });
+
+  const extents = {};
+  const crossovers = form?.crossovers || [];
+
+  ['LEFT', 'RIGHT'].forEach((side) => {
+    let prevS = null;
+    let prevE = null;
+
+    sides[side].forEach((name) => {
+      const l = specsByName[name];
+      const rawC1 = l.c1 !== undefined && l.c1 !== null && l.c1 !== '' ? Number(l.c1) : NaN;
+      let rawC2 = l.c2 !== undefined && l.c2 !== null && l.c2 !== '' ? Number(l.c2) : NaN;
+      if (Number.isFinite(rawC1) && !Number.isFinite(rawC2)) {
+        rawC2 = rawC1 + (Number(l.crossoverDistance) || 750);
+      }
+      if (!Number.isFinite(rawC1) || !Number.isFinite(rawC2)) {
+        return;
+      }
+      const c1 = Math.min(rawC1, rawC2);
+      const c2 = Math.max(rawC1, rawC2);
+
+      const numOuter = countOuter(name);
+      const tDes = String(l.turnout || '1:12');
+      const ladderStep = tDes.includes('8.5') ? 78.0 : 110.578;
+
+      let runS = c1;
+      if (numOuter > 0) {
+        runS = prevS !== null ? Math.min(c1 - numOuter * ladderStep, prevS - ladderStep) : c1 - numOuter * ladderStep;
+      }
+
+      let runE = c2;
+      if (numOuter > 0) {
+        runE = prevE !== null ? Math.max(c2 + numOuter * ladderStep, prevE + ladderStep) : c2 + numOuter * ladderStep;
+      }
+
+      crossovers.forEach((xo) => {
+        if (xo.from === name || xo.to === name) {
+          const ch = Number(xo.chainage);
+          if (Number.isFinite(ch)) {
+            const mid = (c1 + c2) / 2.0;
+            if (ch <= mid && ch < runS) runS = ch;
+            if (ch > mid && ch > runE) runE = ch;
+          }
+        }
+      });
+
+      if (numOuter > 0 && prevS !== null && runS > prevS) runS = prevS;
+      if (numOuter > 0 && prevE !== null && runE < prevE) runE = prevE;
+
+      const roundedS = Math.round(runS * 1000) / 1000;
+      const roundedE = Math.round(runE * 1000) / 1000;
+      extents[name] = {
+        c1: roundedS,
+        c2: roundedE,
+        baseC1: c1,
+        baseC2: c2,
+        isExtended: Math.abs(roundedS - c1) > 0.01 || Math.abs(roundedE - c2) > 0.01,
+        extendedLength: Math.round(Math.abs(roundedE - roundedS) * 1000) / 1000,
+      };
+
+      prevS = runS;
+      prevE = runE;
+    });
+  });
+
+  return extents;
+}
+
 /** Find the valid chainage range [c1, c2] for a chosen track in form state. */
 export function getTrackRange(trackName, form) {
   if (!trackName) return null;
   const tn = String(trackName).trim();
   const f = form || {};
+
+  const extMap = getExtendedLoopEnds(f);
+  if (extMap[tn]) {
+    const ext = extMap[tn];
+    return { track: tn, c1: ext.c1, c2: ext.c2, label: `${ext.c1} – ${ext.c2}` };
+  }
 
   const loops = f.loops || [];
   for (let i = 0; i < loops.length; i++) {

@@ -1,9 +1,28 @@
-import { useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+
+/** Context to broadcast Collapse All / Expand All signals from sections to ItemCards */
+export const CardCollapseContext = createContext(null);
+
+export function useCardCollapse() {
+  const [itemsExpanded, setItemsExpanded] = useState(true);
+  const [collapseSignal, setCollapseSignal] = useState(null);
+
+  const toggleAll = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const next = !itemsExpanded;
+    setItemsExpanded(next);
+    setCollapseSignal({ id: Date.now(), open: next });
+  };
+
+  return { itemsExpanded, collapseSignal, toggleAll };
+}
 
 /** Shared form primitives: cards, labeled inputs, list helpers. */
 
 export function Section({ id, title, hint, count, onAdd, addLabel, actions, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen);
+  const { itemsExpanded, collapseSignal, toggleAll } = useCardCollapse();
+
   return (
     <section id={id} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_12px_rgba(25,49,104,0.04)] overflow-hidden transition-all">
       <div
@@ -25,6 +44,16 @@ export function Section({ id, title, hint, count, onAdd, addLabel, actions, defa
           </span>
         )}
         <div className="ml-auto flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {count > 0 && open && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="rounded-md border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title={itemsExpanded ? 'Collapse all items in this section' : 'Expand all items in this section'}
+            >
+              {itemsExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
           {actions}
           {onAdd && (
             <button
@@ -38,30 +67,100 @@ export function Section({ id, title, hint, count, onAdd, addLabel, actions, defa
         </div>
       </div>
       {open && (
-        <div className="space-y-3.5 px-3.5 py-3.5 text-sm">
-          {hint && <p className="text-xs text-[var(--text-muted)] leading-relaxed">{hint}</p>}
-          {children}
-        </div>
+        <CardCollapseContext.Provider value={collapseSignal}>
+          <div className="space-y-3.5 px-3.5 py-3.5 text-sm">
+            {hint && <p className="text-xs text-[var(--text-muted)] leading-relaxed">{hint}</p>}
+            {children}
+          </div>
+        </CardCollapseContext.Provider>
       )}
     </section>
   );
 }
 
-export function ItemCard({ title, onRemove, children }) {
+export function ItemCard({
+  title,
+  subtitle,
+  badge,
+  onRemove,
+  defaultOpen = true,
+  isOpen,
+  onToggle,
+  collapsible = true,
+  children,
+}) {
+  const collapseSignal = useContext(CardCollapseContext);
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (collapseSignal && typeof collapseSignal.open === 'boolean') {
+      setLocalOpen(collapseSignal.open);
+    }
+  }, [collapseSignal]);
+
+  const open = isOpen !== undefined ? isOpen : localOpen;
+
+  const handleToggle = () => {
+    if (!collapsible) return;
+    if (onToggle) {
+      onToggle(!open);
+    } else {
+      setLocalOpen(!open);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-sm font-semibold text-[var(--text-primary)]">{title}</span>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="ml-auto rounded-md px-2 py-0.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-          title="Remove"
-        >
-          Remove
-        </button>
+    <div className={`rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] p-3 transition-all ${!open ? 'hover:border-slate-300' : ''}`}>
+      <div
+        className={`flex items-center gap-2 select-none ${
+          collapsible ? 'cursor-pointer group' : ''
+        } ${open ? 'mb-2.5 pb-2 border-b border-[var(--border)]' : ''}`}
+        onClick={handleToggle}
+      >
+        {collapsible && (
+          <span
+            className="text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-transform duration-200 inline-flex items-center justify-center w-4 h-4 shrink-0"
+            style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+            title={open ? 'Collapse item' : 'Expand item'}
+          >
+            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+              <path d="M6 4l8 6-8 6V4z" />
+            </svg>
+          </span>
+        )}
+        <span className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors truncate">
+          {title}
+        </span>
+        {subtitle && (
+          <span className="text-xs text-[var(--text-muted)] truncate hidden sm:inline">
+            {subtitle}
+          </span>
+        )}
+        {badge && (
+          <span className="rounded bg-[var(--surface)] border border-[var(--border)] px-1.5 py-0.5 text-[11px] font-mono text-[var(--text-muted)] shrink-0">
+            {badge}
+          </span>
+        )}
+        {!open && (
+          <span className="text-[11px] text-[var(--text-muted)] italic hidden sm:inline ml-1">
+            (click to expand)
+          </span>
+        )}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="ml-auto rounded-md px-2 py-0.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+            title="Remove"
+          >
+            Remove
+          </button>
+        )}
       </div>
-      {children}
+      {open && <div>{children}</div>}
     </div>
   );
 }

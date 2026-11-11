@@ -213,6 +213,8 @@ def _apply_loop_extension(
     c1: float,
     c2: float,
     base_points: Sequence[Point],
+    extra_prelim_s: float = 0.0,
+    extra_prelim_e: float = 0.0,
 ) -> tuple[List[Point], float, float]:
     """Extend a bounded loop past its turnouts (overrun)."""
     ext_start = getattr(loop, "extend_start_m", 0.0) or 0.0
@@ -223,8 +225,8 @@ def _apply_loop_extension(
     total_len = chainages[-1] if chainages else float("inf")
     # Maintain sufficient preliminary baseline so crossover planning and spacing checks
     # always find parallel track across the crossover zone; exact overrun trimming happens in Step 10.
-    prelim_s = max(float(ext_start), float(DEFAULT_OVERRUN_M))
-    prelim_e = max(float(ext_end), float(DEFAULT_OVERRUN_M))
+    prelim_s = max(float(ext_start), float(DEFAULT_OVERRUN_M)) + float(extra_prelim_s)
+    prelim_e = max(float(ext_end), float(DEFAULT_OVERRUN_M)) + float(extra_prelim_e)
     eff_c1 = max(0.0, c1 - prelim_s)
     eff_c2 = min(total_len, c2 + prelim_e)
     return _generate_bounded_loop(main_points, eff_c1, eff_c2, loop.spacing, loop.side), eff_c1, eff_c2
@@ -272,6 +274,14 @@ class TrackGenerator:
 
         loop_results: dict[str, object] = {}
         overrun_jobs: list[tuple] = []
+        from pipeline.steps.crossover_cuts import count_outer_loops
+
+        specs_by_name = {
+            getattr(l, "name", None): l
+            for l in list(self.config.loops) + list(self.config.additional_lines)
+            if getattr(l, "name", None)
+        }
+
         for loop in self.config.loops:
             reference = getattr(loop, "reference_track", "MAIN_LINE") or "MAIN_LINE"
             if reference not in tracks:
@@ -337,8 +347,25 @@ class TrackGenerator:
                     side=loop.side,
                     turnout_spec=turnout,
                 )
+                num_outer = count_outer_loops(loop.name, specs_by_name)
+                extra_prelim_s = num_outer * 150.0
+                extra_prelim_e = num_outer * 150.0
+                for xo in getattr(self.config, "crossovers", None) or []:
+                    if getattr(xo, "from_track", None) == loop.name or getattr(xo, "to_track", None) == loop.name:
+                        ch_val = getattr(xo, "from_chainage_m", None)
+                        try:
+                            ch_f = float(ch_val)
+                            if ch_f < c1:
+                                extra_prelim_s = max(extra_prelim_s, float(c1) - ch_f + float(DEFAULT_OVERRUN_M))
+                            if ch_f > c2:
+                                extra_prelim_e = max(extra_prelim_e, ch_f - float(c2) + float(DEFAULT_OVERRUN_M))
+                        except (TypeError, ValueError):
+                            pass
+
                 tracks[loop.name], eff_c1, eff_c2 = _apply_loop_extension(
                     base, loop, local_c1, local_c2, loop_geom.loop_points,
+                    extra_prelim_s=extra_prelim_s,
+                    extra_prelim_e=extra_prelim_e,
                 )
                 eff_c1, eff_c2 = eff_c1 + ref_start, eff_c2 + ref_start
                 main_extents[loop.name] = (eff_c1, eff_c2)
@@ -376,8 +403,25 @@ class TrackGenerator:
                     side=line.side,
                     turnout_spec=turnout,
                 )
+                num_outer = count_outer_loops(line.name, specs_by_name)
+                extra_prelim_s = num_outer * 150.0
+                extra_prelim_e = num_outer * 150.0
+                for xo in getattr(self.config, "crossovers", None) or []:
+                    if getattr(xo, "from_track", None) == line.name or getattr(xo, "to_track", None) == line.name:
+                        ch_val = getattr(xo, "from_chainage_m", None)
+                        try:
+                            ch_f = float(ch_val)
+                            if ch_f < c1:
+                                extra_prelim_s = max(extra_prelim_s, float(c1) - ch_f + float(DEFAULT_OVERRUN_M))
+                            if ch_f > c2:
+                                extra_prelim_e = max(extra_prelim_e, ch_f - float(c2) + float(DEFAULT_OVERRUN_M))
+                        except (TypeError, ValueError):
+                            pass
+
                 tracks[line.name], eff_c1, eff_c2 = _apply_loop_extension(
                     main, line, c1, c2, loop_geom.loop_points,
+                    extra_prelim_s=extra_prelim_s,
+                    extra_prelim_e=extra_prelim_e,
                 )
                 loop_results[line.name] = loop_geom
                 if not quiet:

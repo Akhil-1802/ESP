@@ -132,7 +132,7 @@ export function getLayerStyle(layer) {
 }
 
 /** Render a DXF to SVG structure and layer metadata. */
-export function dxfToSvg(input) {
+export function dxfToSvg(input, options = {}) {
   const text =
     typeof input === 'string'
       ? input
@@ -151,6 +151,7 @@ export function dxfToSvg(input) {
   let longestPoints = [];
   let maxPointsCount = 0;
   const allTrackCoords = [];
+  const crossoverCurves = [];
 
   const isFeatureLayer = (layerName) => {
     const s = String(layerName || '').toUpperCase();
@@ -238,6 +239,20 @@ export function dxfToSvg(input) {
           group.items.push(
             `<path d="${esc(d)}" ${fillAttr}stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
           );
+          if (
+            u === 'CROSSOVERS' ||
+            u === 'LOOP_CROSSOVER' ||
+            u.includes('CROSSOVER') ||
+            (u.includes('TURNOUT') && !u.includes('SWITCH') && !u.includes('CROSSING'))
+          ) {
+            let ptsLen = 0;
+            for (let i = 1; i < pts.length; i++) {
+              ptsLen += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+            }
+            if (ptsLen >= 15.0) {
+              crossoverCurves.push({ pts, length: ptsLen, layer });
+            }
+          }
         }
         break;
       }
@@ -257,6 +272,21 @@ export function dxfToSvg(input) {
           group.items.push(
             `<path d="${esc(d)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" ${dashAttr}${opacityAttr}stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`,
           );
+          const u = String(layer || '').toUpperCase();
+          if (
+            u === 'CROSSOVERS' ||
+            u === 'LOOP_CROSSOVER' ||
+            u.includes('CROSSOVER') ||
+            (u.includes('TURNOUT') && !u.includes('SWITCH') && !u.includes('CROSSING'))
+          ) {
+            let ptsLen = 0;
+            for (let i = 1; i < pts.length; i++) {
+              ptsLen += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+            }
+            if (ptsLen >= 15.0) {
+              crossoverCurves.push({ pts, length: ptsLen, layer });
+            }
+          }
         }
         break;
       }
@@ -503,11 +533,71 @@ export function dxfToSvg(input) {
     })
     .join('\n');
 
+  const crossoverTags = [];
+  crossoverCurves.forEach((curve, idx) => {
+    const pts = curve.pts;
+    const halfLen = curve.length / 2;
+    let travelled = 0;
+    let midX = (pts[0][0] + pts[pts.length - 1][0]) / 2;
+    let midY = (pts[0][1] + pts[pts.length - 1][1]) / 2;
+    let tx = 1;
+    let ty = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (travelled + seg >= halfLen && seg > 1e-6) {
+        const ratio = (halfLen - travelled) / seg;
+        midX = pts[i - 1][0] + ratio * (pts[i][0] - pts[i - 1][0]);
+        midY = pts[i - 1][1] + ratio * (pts[i][1] - pts[i - 1][1]);
+        tx = (pts[i][0] - pts[i - 1][0]) / seg;
+        ty = (pts[i][1] - pts[i - 1][1]) / seg;
+        break;
+      }
+      travelled += seg;
+    }
+
+    let ang = (Math.atan2(ty, tx) * 180) / Math.PI;
+    while (ang > 90) ang -= 180;
+    while (ang < -90) ang += 180;
+
+    let nx = -ty;
+    let ny = tx;
+    if (ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+
+    // Offset label ~2.6m above the crossover line along normal
+    const offset = 2.6;
+    const posX = midX + nx * offset;
+    const posY = midY + ny * offset;
+
+    const labelStr =
+      (options.crossoverLabels && options.crossoverLabels[idx]) ||
+      (options.crossovers && options.crossovers[idx] && options.crossovers[idx].id) ||
+      `C${idx + 1}`;
+
+    const badgeH = 2.2;
+    const badgeW = Math.max(badgeH * 1.8, labelStr.length * badgeH * 0.75 + badgeH * 0.8);
+    const svgX = posX;
+    const svgY = flip - posY;
+    const rot = -ang;
+    const rx = badgeH * 0.35;
+
+    crossoverTags.push(
+      `<g data-layer="CROSSOVERS" class="cad-crossover-tag" transform="rotate(${r3(rot)} ${r3(svgX)} ${r3(svgY)})">` +
+        `<rect x="${r3(svgX - badgeW / 2)}" y="${r3(svgY - badgeH / 2)}" width="${r3(badgeW)}" height="${r3(badgeH)}" rx="${r3(rx)}" class="crossover-badge-bg"/>` +
+        `<text x="${r3(svgX)}" y="${r3(svgY)}" font-size="${r3(badgeH * 0.65)}" class="crossover-badge-text">${esc(labelStr)}</text>` +
+        `</g>`,
+    );
+  });
+
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${r3(w)}" height="${r3(h)}" viewBox="${r3(x0)} ${r3(y0)} ${r3(w)} ${r3(h)}" preserveAspectRatio="xMidYMid meet">`,
     `<style>`,
     `  .cad-geom line, .cad-geom path, .cad-geom circle { vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }`,
     `  .cad-text text { font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }`,
+    `  .crossover-badge-bg { fill: #0f172a; stroke: #38bdf8; stroke-width: 0.35px; vector-effect: non-scaling-stroke; }`,
+    `  .crossover-badge-text { fill: #ffffff !important; stroke: none !important; font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700 !important; text-anchor: middle !important; dominant-baseline: central !important; }`,
     `</style>`,
     `<rect x="${r3(x0)}" y="${r3(y0)}" width="${r3(w)}" height="${r3(h)}" fill="${BG_DARK}" class="cad-bg"/>`,
     `<g transform="translate(0 ${r3(flip)}) scale(1 -1)" fill="none" class="cad-geom">`,
@@ -515,6 +605,9 @@ export function dxfToSvg(input) {
     `</g>`,
     `<g class="cad-text">`,
     textMarkup,
+    `</g>`,
+    `<g class="cad-crossovers-overlay">`,
+    crossoverTags.join('\n'),
     `</g>`,
     `</svg>`,
   ];

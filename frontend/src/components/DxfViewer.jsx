@@ -305,14 +305,19 @@ export function DxfViewer({
           .map(([name]) => `[data-layer="${name}"] { display: none !important; }`),
       );
     if (!layersVisible.text) {
-      hiddenRules.push('.cad-text { display: none !important; }');
+      hiddenRules.push('.cad-text, .cad-crossover-tag { display: none !important; }');
     }
+
+    const badgeBg = isDark ? '#1e293b' : '#0f172a';
+    const badgeBorder = isDark ? '#38bdf8' : '#2563eb';
 
     const dynamicStyle = `
       <style>
         .cad-bg { fill: ${bgFill} !important; }
         .cad-geom line, .cad-geom path, .cad-geom circle { vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
         .cad-text text { font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; fill: ${textColor}; stroke: ${textHalo}; }
+        .crossover-badge-bg { fill: ${badgeBg} !important; stroke: ${badgeBorder} !important; stroke-width: 0.35px !important; vector-effect: non-scaling-stroke; }
+        .crossover-badge-text { fill: #ffffff !important; stroke: none !important; font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700 !important; text-anchor: middle !important; dominant-baseline: central !important; }
         ${hiddenRules.join('\n')}
       </style>
     `;

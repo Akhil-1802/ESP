@@ -150,3 +150,109 @@ def test_chained_loop_reference_track_overrun_cuts_and_crossover(tmp_path):
     assert "LOOP_1" in layers_in_doc
     assert "LOOP_2" in layers_in_doc
     assert "LOOP_3" in layers_in_doc
+
+
+def test_dynamic_multi_loop_extensions_and_overruns(tmp_path):
+    """Verify that multiple loops on left and right sides dynamically extend their running lines
+
+    to the exact touch point of connected crossovers, and overrun lines start at those extended points.
+    Farthest loop on each side maintains nominal 750m length.
+    """
+    from config.loader import ESPConfig
+    from pipeline.orchestrator import ESPGenerator
+    from track.specs import CrossoverSpec, LoopSpec
+    from track.turnouts import select_turnout
+
+    src_dxf = tmp_path / "multi_loop_src.dxf"
+    doc = ezdxf.new("R2010")
+    doc.layers.add("MAIN_TRACK", color=1)
+    doc.modelspace().add_line((0.0, 0.0), (2500.0, 0.0), dxfattribs={"layer": "MAIN_TRACK"})
+    doc.saveas(str(src_dxf))
+
+    out_dxf = tmp_path / "multi_loop_out.dxf"
+
+    # 3 loops on LEFT, 1 loop on RIGHT
+    loops = [
+        LoopSpec(name="LOOP_1", side="LEFT", spacing=5.3, reference_track="MAIN_LINE",
+                 first_crossover_chainage=500.0, second_crossover_chainage=1250.0,
+                 extend_start_m=120.0, extend_end_m=120.0),
+        LoopSpec(name="LOOP_2", side="LEFT", spacing=5.3, reference_track="LOOP_1",
+                 first_crossover_chainage=500.0, second_crossover_chainage=1250.0,
+                 extend_start_m=120.0, extend_end_m=120.0),
+        LoopSpec(name="LOOP_3", side="LEFT", spacing=5.3, reference_track="LOOP_2",
+                 first_crossover_chainage=500.0, second_crossover_chainage=1250.0,
+                 extend_start_m=120.0, extend_end_m=120.0),
+        LoopSpec(name="LOOP_4", side="RIGHT", spacing=5.3, reference_track="MAIN_LINE",
+                 first_crossover_chainage=500.0, second_crossover_chainage=1250.0,
+                 extend_start_m=120.0, extend_end_m=120.0),
+    ]
+
+    t12 = select_turnout("1:12")
+    # Crossover 1: from LOOP_2 to LOOP_3, touches LOOP_3 at 500m (farthest line start)
+    # Crossover 2: from LOOP_1 to LOOP_2, arrives on LOOP_2 at 389.422m (13m separation before C1's 402.422m SRJ)
+    # Crossover 3: from MAIN_LINE to LOOP_4, touches LOOP_4 at 500m (farthest line on right side)
+    crossovers = [
+        CrossoverSpec(id="C1", from_track="LOOP_2", to_track="LOOP_3",
+                      from_chainage_m=402.422, direction="FORWARD", turnout=t12, position_mode="FIXED"),
+        CrossoverSpec(id="C2", from_track="LOOP_1", to_track="LOOP_2",
+                      from_chainage_m=291.844, direction="FORWARD", turnout=t12, position_mode="FIXED"),
+        CrossoverSpec(id="C3", from_track="MAIN_LINE", to_track="LOOP_4",
+                      from_chainage_m=402.422, direction="FORWARD", turnout=t12, position_mode="FIXED"),
+    ]
+
+    cfg = ESPConfig(
+        source_path=str(src_dxf),
+        output_dxf=str(out_dxf),
+        track_source_layer="MAIN_TRACK",
+        loops=loops,
+        additional_lines=[],
+        platforms=[],
+        stations=[],
+        crossovers=crossovers,
+    )
+
+    gen = ESPGenerator(cfg)
+    gen.run()
+
+    # Verify trim extents for each loop:
+    trim = gen._loop_trim_extents
+    # LOOP_3 (farthest on LEFT) starts at 500.0m
+    assert abs(trim["LOOP_3"][0] - 500.0) < 0.1
+    # LOOP_2 extends to 389.42m where C2 touches it
+    assert abs(trim["LOOP_2"][0] - 389.422) < 0.1
+    # LOOP_1 extends to 291.84m where C2 starts
+    assert abs(trim["LOOP_1"][0] - 291.844) < 0.1
+    # LOOP_4 (farthest on RIGHT) starts at 500.0m
+    assert abs(trim["LOOP_4"][0] - 500.0) < 0.1
+
+    # Verify in the generated DXF
+    rendered = ezdxf.readfile(str(out_dxf))
+    layers = {e.dxf.layer for e in rendered.modelspace()}
+    assert "LOOP_1" in layers
+    assert "LOOP_2" in layers
+    assert "LOOP_3" in layers
+    assert "LOOP_4" in layers
+    assert "OVER_RUN" in layers
+    assert "CROSSOVERS" in layers
+
+    # Check loop running lines
+    l1_ents = [e for e in rendered.modelspace() if e.dxf.layer == "LOOP_1"]
+    assert len(l1_ents) == 1
+    l1_pts = list(l1_ents[0].get_points())
+    assert abs(l1_pts[0][0] - 291.844) < 0.1
+
+    l2_ents = [e for e in rendered.modelspace() if e.dxf.layer == "LOOP_2"]
+    assert len(l2_ents) == 1
+    l2_pts = list(l2_ents[0].get_points())
+    assert abs(l2_pts[0][0] - 389.422) < 0.1
+
+    l3_ents = [e for e in rendered.modelspace() if e.dxf.layer == "LOOP_3"]
+    assert len(l3_ents) == 1
+    l3_pts = list(l3_ents[0].get_points())
+    assert abs(l3_pts[0][0] - 500.0) < 0.1
+
+    l4_ents = [e for e in rendered.modelspace() if e.dxf.layer == "LOOP_4"]
+    assert len(l4_ents) == 1
+    l4_pts = list(l4_ents[0].get_points())
+    assert abs(l4_pts[0][0] - 500.0) < 0.1
+

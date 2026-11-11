@@ -53,10 +53,15 @@ export function RobsSection({ form, set, tracks, layers }) {
         const startSpan = centerCh !== null ? centerCh - widthNum / 2 : null;
         const endSpan = centerCh !== null ? centerCh + widthNum / 2 : null;
 
+        const robBadge = `${rob.platform || (layers.length ? layers[0] : 'PLATFORM_1')} · ${refEnd}`;
+        const robSub = `Offset: ${rob.offsetM || 0}m · Width: ${widthNum}m`;
+
         return (
           <ItemCard
             key={i}
             title={`ROB ${i + 1}`}
+            badge={robBadge}
+            subtitle={robSub}
             onRemove={() => setTop({ robs: robs.filter((_, k) => k !== i) })}
           >
             <Grid>

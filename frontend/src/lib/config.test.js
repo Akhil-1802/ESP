@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getPlatformBounds, getStationTrackDistance, getTrackRange, loopsNeedingCentre, parseKmM, platformLayers, trackOptions, validateForm } from './config.js';
+import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getExtendedLoopEnds, getPlatformBounds, getStationTrackDistance, getTrackRange, loopsNeedingCentre, parseKmM, platformLayers, trackOptions, validateForm } from './config.js';
 
 const base = () => ({
   kmlFile: { name: 'ESP.kml' },
@@ -479,6 +479,45 @@ describe('sidings', () => {
       assert.equal(getTrackRange(null, base()), null);
       assert.equal(getTrackRange('', base()), null);
       assert.equal(getTrackRange('NONEXISTENT_TRACK', base()), null);
+    });
+  });
+
+  describe('getExtendedLoopEnds', () => {
+    it('dynamically extends inner loops by ladder step without overrun', () => {
+      const f = {
+        ...base(),
+        loops: [
+          { name: 'LOOP_1', side: 'LEFT', spacing: '5.3', c1: '500', c2: '1250' },
+          { name: 'LOOP_2', side: 'LEFT', spacing: '10.6', c1: '500', c2: '1250' },
+        ],
+      };
+      const ext = getExtendedLoopEnds(f);
+      // LOOP_2 is outermost on LEFT: remains at base 500 to 1250
+      assert.equal(ext.LOOP_2.c1, 500);
+      assert.equal(ext.LOOP_2.c2, 1250);
+      assert.equal(ext.LOOP_2.isExtended, false);
+
+      // LOOP_1 is inner: extended by 1 ladder step (110.578 m) on both ends (no overrun stub)
+      assert.equal(ext.LOOP_1.c1, 389.422);
+      assert.equal(ext.LOOP_1.c2, 1360.578);
+      assert.equal(ext.LOOP_1.isExtended, true);
+      assert.equal(ext.LOOP_1.extendedLength, 971.156);
+    });
+
+    it('further extends running line if a crossover is placed outside base range', () => {
+      const f = {
+        ...base(),
+        loops: [
+          { name: 'LOOP_1', side: 'LEFT', spacing: '5.3', c1: '500', c2: '1250' },
+        ],
+        crossovers: [
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '350.0' },
+        ],
+      };
+      const ext = getExtendedLoopEnds(f);
+      assert.equal(ext.LOOP_1.c1, 350.0);
+      assert.equal(ext.LOOP_1.c2, 1250);
+      assert.equal(ext.LOOP_1.isExtended, true);
     });
   });
 });

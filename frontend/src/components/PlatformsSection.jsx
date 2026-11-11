@@ -28,12 +28,17 @@ export function PlatformsSection({ form, set, tracks }) {
       addLabel="+ Add platform"
     >
       {form.platforms.length === 0 && <Empty>No platforms.</Empty>}
-      {form.platforms.map((p, i) => (
-        <ItemCard
-          key={i}
-          title={`PLATFORM_${i + 1}${p.name.trim() ? ` · ${p.name.trim()}` : ''}`}
-          onRemove={() => setTop({ platforms: form.platforms.filter((_, k) => k !== i) })}
-        >
+      {form.platforms.map((p, i) => {
+        const pBadge = `${p.type || 'SIDE'} · ${p.track || 'Track'}`;
+        const pSub = `${p.length || 550}m × ${p.width || 7}m`;
+        return (
+          <ItemCard
+            key={i}
+            title={`PLATFORM_${i + 1}${p.name.trim() ? ` · ${p.name.trim()}` : ''}`}
+            badge={pBadge}
+            subtitle={pSub}
+            onRemove={() => setTop({ platforms: form.platforms.filter((_, k) => k !== i) })}
+          >
           <Grid>
             <Field label="Track *">
               <Sel
@@ -114,7 +119,8 @@ export function PlatformsSection({ form, set, tracks }) {
             />
           </div>
         </ItemCard>
-      ))}
+      );
+    })}
     </Section>
   );
 }
