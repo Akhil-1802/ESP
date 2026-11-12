@@ -49,7 +49,7 @@ export function TracksSection({ form, set }) {
     <Section
       id="tracks"
       title="3 · Loop lines"
-      hint="Loops are bounded parallel lines (C1 → C2). Blank spacing = 5.3 m, blank turnout = 1:12, blank distance = 750 m. Leave C1+C2 blank for auto-centring."
+      hint="Loops are bounded parallel lines (C1 → C2). Blank spacing = 5.3 m, blank distance = 750 m. Leave C1+C2 blank for auto-centring."
       count={form.loops.length}
       onAdd={addLoop}
       addLabel="+ Add loop"
@@ -158,13 +158,6 @@ export function TracksSection({ form, set }) {
                   placeholder="120"
                   min="0"
                   onChange={(e) => setTop({ loops: patchAt(form.loops, i, { overrunAfterC2: e.target.value }) })}
-                />
-              </Field>
-              <Field label="Turnout type" hint="Affects lead length and angle (default 1:12)">
-                <Sel
-                  value={l.turnout}
-                  onChange={(e) => setTop({ loops: patchAt(form.loops, i, { turnout: e.target.value }) })}
-                  options={['1:8.5', '1:12']}
                 />
               </Field>
             </Grid>
