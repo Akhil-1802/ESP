@@ -110,13 +110,18 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
 
   (f.fobs || []).forEach((fb, i) => {
     if (isBlank(fb.refTrack)) at('FOB', i, 'reference track is required.');
-    const isMc = isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER';
-    if (!isMc && (!Number.isFinite(Number(fb.chainage)) || Number(fb.chainage) < 0))
-      at('FOB', i, 'reference chainage must be >= 0 (MAIN m), MAIN_CENTER, or blank.');
-    if (!isBlank(fb.offset)) {
-      const off = Number(fb.offset);
-      if (!Number.isFinite(off) || off < minFobOffset || off > maxFobOffset)
-        at('FOB', i, `offset from station edge must be between ${minFobOffset} m and ${maxFobOffset} m.`);
+    const isOffsetMode = fb.placementMode === 'offset';
+    if (!isOffsetMode) {
+      const isMc = isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER';
+      if (!isMc && (!Number.isFinite(Number(fb.chainage)) || Number(fb.chainage) < 0))
+        at('FOB', i, 'reference chainage must be >= 0 (MAIN m), MAIN_CENTER, or blank.');
+    }
+    if ((isOffsetMode || !isBlank(fb.offset)) && fb.placementMode !== 'fixed') {
+      if (!isBlank(fb.offset)) {
+        const off = Number(fb.offset);
+        if (!Number.isFinite(off) || off < minFobOffset || off > maxFobOffset)
+          at('FOB', i, `offset from station edge must be between ${minFobOffset} m and ${maxFobOffset} m.`);
+      }
     }
     if ((fb.platforms || []).length < 2)
       at('FOB', i, 'select at least two platforms to connect.');

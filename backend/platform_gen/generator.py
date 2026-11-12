@@ -26,8 +26,8 @@ class PlatformGenerator:
         )
 
         if self.cfg.platform_type == PlatformType.SIDE:
-            result = side_platform(track1, self.cfg)
-        else:
+            result = side_platform(track1, self.cfg) #for side platform
+        else: #for island platform
             track2 = Track.from_dxf(
                 doc,
                 layer_name=self.cfg.second_track_layer,

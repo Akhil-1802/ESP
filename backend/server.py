@@ -185,13 +185,13 @@ def _execute_config_dict(payload: dict, workdir: Path, download_name: str) -> Fi
 @app.post("/detect-tracks")
 def detect_tracks_endpoint(
     kml: UploadFile = File(...),
-    min_length: float = 30.0,
-    max_candidates: int = 4,
+    min_length: float = 30.0, #any geometry shorter than this are ignored
+    max_candidates: int = 4, #number of candidate tracks to return
 ) -> dict:
     """Detect and topologically group candidate railway tracks from KML."""
-    workdir = Path(tempfile.mkdtemp(prefix="esp_detect_"))
+    workdir = Path(tempfile.mkdtemp(prefix="esp_detect_")) #create an isolated temporary directory
     try:
-        local_source = _save_kml_upload(kml, workdir)
+        local_source = _save_kml_upload(kml, workdir) #save the uploaded KML file to the temporary directory
         tracks = detect_kml_tracks(
             str(local_source),
             min_track_length_m=min_length,
@@ -236,6 +236,7 @@ def generate(
 ) -> FileResponse:
     """Generate the ESP DXF from an uploaded config JSON + KML file."""
     config_data = _read_json_upload(config, "config")
+    print(f"{config_data=}")
 
     workdir = Path(tempfile.mkdtemp(prefix="esp_"))
     local_source = _save_kml_upload(kml, workdir)

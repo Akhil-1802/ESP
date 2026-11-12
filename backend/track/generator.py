@@ -444,7 +444,7 @@ class TrackGenerator:
 
     def run(self) -> dict[str, List[Point]]:
         """Build tracks, draw them to DXF, and return track centrelines."""
-        built = self.build_tracks()
+        built = self.build_tracks() #Pure mathematical coordinate engine
         tracks, loop_results, overrun_jobs = (
             built.tracks,
             built.loop_results,
@@ -452,7 +452,7 @@ class TrackGenerator:
         )
 
         doc = ezdxf.readfile(self.config.source_dxf)
-        _remove_source_alignment_entities(doc, self.config.source_layer)
+        _remove_source_alignment_entities(doc, self.config.source_layer) #delete the dxf things which were present before so that it only draw the new thing will make it cleaner. 
 
         draw_tracks(
             doc=doc,

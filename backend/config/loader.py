@@ -156,6 +156,8 @@ def _load_fob(item: dict[str, Any], number: int = 1):
     """Convert JSON FOB entry to FOBConfig (span auto-derived later)."""
     values = _strip_comments(dict(item))
     values.setdefault("output_layer", f"FOB_{number}")
+    allowed = {f.name for f in _dc.fields(FOBConfig)}
+    values = {k: v for k, v in values.items() if k in allowed}
     return FOBConfig(**values)
 
 

@@ -141,7 +141,10 @@ export function loopsNeedingCentre(form) {
 /** Indices of FOBs with a blank reference chainage (auto-centre on MAIN). */
 export function fobsNeedingCentre(form) {
   return ((form || {}).fobs || [])
-    .map((fb, i) => (isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER' ? i : -1))
+    .map((fb, i) => {
+      if (fb.placementMode === 'offset') return -1;
+      return (isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER' ? i : -1);
+    })
     .filter((i) => i >= 0);
 }
 
@@ -549,9 +552,10 @@ function buildStation(s, index, f) {
 }
 
 function buildFob(f) {
+  const isOffset = f.placementMode === 'offset' || (!f.placementMode && (isBlank(f.chainage) || !isBlank(f.offset)));
   const rawCh = String(f.chainage ?? '').trim().toUpperCase();
   let refCh = null;
-  if (!isBlank(f.chainage)) {
+  if (!isOffset && !isBlank(f.chainage)) {
     refCh = rawCh === 'MAIN_CENTER' ? 'MAIN_CENTER' : Number(f.chainage);
   }
   const entry = {
@@ -562,9 +566,15 @@ function buildFob(f) {
     extend_start_m: numOr(f.extStart, DEFAULTS.extension),
     extend_end_m: numOr(f.extEnd, DEFAULTS.extension),
   };
-  if (!isBlank(f.offset) || isBlank(f.chainage) || rawCh === 'MAIN_CENTER' || !isBlank(f.direction)) {
+  if (f.placementMode) {
+    entry.position_mode = isOffset ? 'OFFSET' : 'FIXED';
+  }
+  if (isOffset) {
     entry.offset = numOr(f.offset, DEFAULTS.fobOffset);
     entry.direction = strOr(f.direction, DEFAULTS.fobDirection).toUpperCase();
+  } else if (f.placementMode !== 'fixed' && (!isBlank(f.offset) || !isBlank(f.direction))) {
+    if (!isBlank(f.offset)) entry.offset = numOr(f.offset, DEFAULTS.fobOffset);
+    if (!isBlank(f.direction)) entry.direction = strOr(f.direction, DEFAULTS.fobDirection).toUpperCase();
   }
   const arms = {};
   const connectedPlats = f.platforms || [];

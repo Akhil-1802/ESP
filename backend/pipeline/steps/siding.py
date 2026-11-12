@@ -61,7 +61,7 @@ class SidingStep(PipelineStep):
             for layer in doc.layers
             if re.fullmatch(r"SIDING_\d+", layer.dxf.name or "")
         )
-        self._wipe_layers(doc, targets)
+        self._wipe_layers(doc, targets) #it deletes the old entity so that new entity can be easily drawn without any duplication
         extents = self._loop_main_extents()
         platform_outlines = []
         for layer in self.platform_layers:

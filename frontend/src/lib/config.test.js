@@ -182,6 +182,37 @@ describe('defaults', () => {
     assert.equal(cfg.fobs[0].direction, 'DECREASING');
   });
 
+  it('FOB serializes position_mode correctly for offset and fixed modes', () => {
+    const cfgOffset = buildConfig({
+      ...base(),
+      fobs: [{
+        placementMode: 'offset',
+        refTrack: 'MAIN_LINE',
+        chainage: '831.712', // should be ignored in offset mode
+        offset: '40',
+        direction: 'INCREASING',
+        platforms: ['PLATFORM_1', 'PLATFORM_2'],
+      }],
+    });
+    assert.equal(cfgOffset.fobs[0].position_mode, 'OFFSET');
+    assert.equal(cfgOffset.fobs[0].reference_chainage, null);
+    assert.equal(cfgOffset.fobs[0].offset, 40);
+
+    const cfgFixed = buildConfig({
+      ...base(),
+      fobs: [{
+        placementMode: 'fixed',
+        refTrack: 'MAIN_LINE',
+        chainage: '850.5',
+        offset: '40', // should be omitted/ignored in fixed mode
+        platforms: ['PLATFORM_1', 'PLATFORM_2'],
+      }],
+    });
+    assert.equal(cfgFixed.fobs[0].position_mode, 'FIXED');
+    assert.equal(cfgFixed.fobs[0].reference_chainage, 850.5);
+    assert.equal(cfgFixed.fobs[0].offset, undefined);
+  });
+
   it('loop overruns default to 120 m', () => {
     const cfg = buildConfig({ ...base(), loops: [{ name: '', c1: '10', c2: '20' }] });
     assert.equal(cfg.loops[0].extend_start_m, 120);

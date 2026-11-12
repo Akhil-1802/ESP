@@ -77,6 +77,7 @@ class FOBConfig:
     arms: dict = field(default_factory=dict)
     fob_chainage: Optional[float] = None
     dimension_layer: Optional[str] = None
+    position_mode: Optional[str] = None
 
     def __post_init__(self):
         if self.width <= 0:

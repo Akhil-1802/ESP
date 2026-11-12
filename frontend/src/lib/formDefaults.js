@@ -49,7 +49,10 @@ export const blankStation = () => ({
 
 export const blankFob = () => ({
   refTrack: 'MAIN_LINE',
+  placementMode: 'offset',
   chainage: '',
+  offset: '',
+  direction: 'INCREASING',
   platforms: [],
   width: '',
   extStart: '',

@@ -20,34 +20,12 @@ export function FobsSection({ form, set, tracks, layers }) {
     setCentreMsg('');
     try {
       const c = await fetchMainCenter({ kmlFile: form.kmlFile });
-      const fb = form.fobs[i];
-      const offset = Number(fb?.offset || 40.0);
-      const dir = fb?.direction || 'INCREASING';
-      const width = Number(fb?.width || 3.0);
-      const hw = width / 2.0;
-      const towardsSide = dir === 'INCREASING' ? 'LEFT' : 'RIGHT';
-      let armTowardsStation = 0.0;
-      for (const a of fb?.arms || []) {
-        if ((a.side || '').toUpperCase() === towardsSide) {
-          armTowardsStation = Math.max(armTowardsStation, Number(a.length || 0.0));
-        }
-      }
-      const stn = form.stations?.[0];
-      const stnLen = Number(stn?.length || 40.0);
-      const edgeOffset = stnLen / 2.0;
-      const extra = hw + armTowardsStation;
-      const fobCh = dir === 'INCREASING'
-        ? c.main_center_m + edgeOffset + offset + extra
-        : c.main_center_m - edgeOffset - (offset + extra);
-
       setTop({
         fobs: patchAt(form.fobs, i, {
-          chainage: fmt(fobCh),
-          offset: String(offset),
-          direction: dir,
+          chainage: fmt(c.main_center_m),
         }),
       });
-      setCentreMsg(`FOB ${i + 1} chainage set to ${fmt(fobCh)} m (starts ${offset} m from station edge).`);
+      setCentreMsg(`FOB ${i + 1} chainage reset to track centre (${fmt(c.main_center_m)} m).`);
     } catch (err) {
       setCentreMsg(err.message);
     } finally {
@@ -101,7 +79,10 @@ export function FobsSection({ form, set, tracks, layers }) {
         <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">{centreMsg}</p>
       )}
       {form.fobs.map((fb, i) => {
-        const fbBadge = fb.chainage ? `CH ${fb.chainage}m` : 'Station-centred';
+        const isOffsetMode = fb.placementMode !== 'fixed';
+        const fbBadge = isOffsetMode
+          ? `Offset ${fb.offset || 40}m (${fb.direction || 'INCREASING'})`
+          : (fb.chainage ? `CH ${fb.chainage}m` : 'Track-centre');
         const fbSub = `Width: ${fb.width || 3.0}m · ${fb.refTrack || 'MAIN_LINE'}`;
         return (
           <ItemCard
@@ -111,45 +92,77 @@ export function FobsSection({ form, set, tracks, layers }) {
             subtitle={fbSub}
             onRemove={() => setTop({ fobs: form.fobs.filter((_, k) => k !== i) })}
           >
+          <div className="mb-3 flex items-center gap-4 text-xs font-medium text-slate-700">
+            <span className="text-slate-500">Placement mode:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name={`fob-mode-${i}`}
+                checked={isOffsetMode}
+                onChange={() => setTop({ fobs: patchAt(form.fobs, i, { placementMode: 'offset' }) })}
+                className="text-sky-600 focus:ring-sky-500"
+              />
+              <span>Offset from station edge (Recommended)</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name={`fob-mode-${i}`}
+                checked={!isOffsetMode}
+                onChange={() => {
+                  const defaultCh = fb.chainage || (form.mainCenter ? fmt(form.mainCenter) : '');
+                  setTop({ fobs: patchAt(form.fobs, i, { placementMode: 'fixed', chainage: defaultCh }) });
+                }}
+                className="text-sky-600 focus:ring-sky-500"
+              />
+              <span>Fixed chainage</span>
+            </label>
+          </div>
+
           <Grid>
             <Field label="Reference track *">
               <Sel
-                value={fb.refTrack}
+                value={fb.refTrack || 'MAIN_LINE'}
                 onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { refTrack: e.target.value }) })}
                 options={tracks.length ? tracks : ['MAIN_LINE']}
               />
             </Field>
-            <Field label="FOB chainage (MAIN m)" hint="Default = 40m from station edge">
-              <Text
-                value={fb.chainage}
-                placeholder="MAIN_CENTER"
-                onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { chainage: e.target.value }) })}
-              />
-              <button
-                type="button"
-                onClick={() => applyMainCentre(i)}
-                disabled={centreBusy}
-                className="mt-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-              >
-                {centreBusy ? 'Locating…' : 'Use MAIN centre'}
-              </button>
-            </Field>
-            <Field label="Offset from station edge (m)" hint="40 m to 60 m (blank = 40.0)">
-              <Num
-                value={fb.offset}
-                placeholder="40.0"
-                min="40"
-                max="60"
-                onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { offset: e.target.value }) })}
-              />
-            </Field>
-            <Field label="Placement direction">
-              <Sel
-                value={fb.direction || 'INCREASING'}
-                onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { direction: e.target.value }) })}
-                options={['INCREASING', 'DECREASING']}
-              />
-            </Field>
+            {isOffsetMode ? (
+              <>
+                <Field label="Offset from station edge (m)" hint="40 m to 60 m (blank = 40.0)">
+                  <Num
+                    value={fb.offset}
+                    placeholder="40.0"
+                    min="40"
+                    max="60"
+                    onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { offset: e.target.value }) })}
+                  />
+                </Field>
+                <Field label="Placement direction">
+                  <Sel
+                    value={fb.direction || 'INCREASING'}
+                    onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { direction: e.target.value }) })}
+                    options={['INCREASING', 'DECREASING']}
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field label="FOB chainage (MAIN m)" hint="Default = track centre">
+                <Text
+                  value={fb.chainage}
+                  placeholder={form.mainCenter ? fmt(form.mainCenter) : 'MAIN_CENTER'}
+                  onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { chainage: e.target.value }) })}
+                />
+                <button
+                  type="button"
+                  onClick={() => applyMainCentre(i)}
+                  disabled={centreBusy}
+                  className="mt-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
+                >
+                  {centreBusy ? 'Locating…' : 'Use track centre'}
+                </button>
+              </Field>
+            )}
             <Field label="Deck width (m)" hint="Blank = 3.0">
               <Num
                 value={fb.width}

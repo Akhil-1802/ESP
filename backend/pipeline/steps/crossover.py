@@ -230,7 +230,7 @@ class CrossoverStep(PipelineStep):
 
     def _generate_crossovers(self, tracks: dict) -> None:
         """Generate an arbitrary number of crossovers via the generic engine."""
-        extents = self._loop_main_extents()
+        extents = self._loop_main_extents() #Track Extents-> C1,C2(chainage or we can say start and end) 
         if getattr(self.config, "crossover_preset", None) and not getattr(self.config, "crossovers", None):
             self._expand_default_preset(tracks, extents)
         if not self.config.crossovers:

@@ -7,6 +7,7 @@ from typing import Dict, List, Sequence
 
 from common.alignment import nearest_point_on_alignment, point_at_chainage
 from common.constants import (
+    DEFAULT_FOB_OFFSET_M,
     DEFAULT_FOB_WIDTH_M,
     FOB_MAX_SPAN_M,
     FOB_VERTICAL_CLEARANCE_M,
@@ -146,8 +147,13 @@ def resolve_fob_chainage(
         except (ValueError, TypeError):
             ref_chainage = float(center_ch)
 
-    if cfg.offset is not None:
-        off = float(cfg.offset)
+    pos_mode = str(getattr(cfg, "position_mode", "") or "").upper()
+    is_fixed = pos_mode == "FIXED" or (not pos_mode and cfg.offset is None)
+
+    if is_fixed:
+        chainage = ref_chainage
+    else:
+        off = float(cfg.offset) if cfg.offset is not None else DEFAULT_FOB_OFFSET_M
         dir_norm = normalize_fob_direction(cfg.direction)
         station_edge_ch = None
         if station_geom is not None:
@@ -157,6 +163,18 @@ def resolve_fob_chainage(
                 )
             except Exception:
                 station_edge_ch = None
+        if station_edge_ch is None and station_requests:
+            try:
+                s_req = station_requests[0]
+                b_len = float(getattr(s_req, "building_length", 40.0) or 40.0)
+                half_len = b_len / 2.0
+                if dir_norm == "INCREASING":
+                    station_edge_ch = center_ch + half_len
+                else:
+                    station_edge_ch = center_ch - half_len
+            except Exception:
+                station_edge_ch = None
+
         base_ch = (
             station_edge_ch if station_edge_ch is not None else ref_chainage
         )
@@ -177,8 +195,6 @@ def resolve_fob_chainage(
             chainage = base_ch + off + extra_to_center
         else:
             chainage = base_ch - (off + extra_to_center)
-    else:
-        chainage = ref_chainage
 
     cfg.reference_chainage = chainage
     cfg.fob_chainage = chainage

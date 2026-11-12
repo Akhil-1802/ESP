@@ -357,3 +357,123 @@ def test_fob_widening_only_on_insufficient_platform_and_not_on_sufficient_platfo
     assert align_y == pytest.approx(2.65, abs=0.5)
 
 
+def test_platform_widening_at_offset_fob_not_at_station_building(tmp_path):
+    """When an FOB is offset from station edge, platform widening occurs at the FOB, never at the station building."""
+    import ezdxf
+    from config.loader import ESPConfig, PlatformRequest, StationRequest
+    from fob.config import FOBConfig
+    from pipeline.orchestrator import ESPGenerator
+    from track.specs import LoopSpec
+
+    src = tmp_path / "source_offset.dxf"
+    out = tmp_path / "result_offset.dxf"
+
+    doc = ezdxf.new("R2010")
+    doc.layers.add("MAIN_TRACK", color=1)
+    doc.modelspace().add_line((0.0, 0.0), (1600.0, 0.0), dxfattribs={"layer": "MAIN_TRACK"})
+    doc.saveas(str(src))
+
+    loops = [
+        LoopSpec("LOOP_1", 5.3, "LEFT", 200.0, 1400.0, extend_start_m=0.0, extend_end_m=0.0),
+    ]
+
+    # Station building at ch 800m, length 40m (edge at 820m)
+    stations = [
+        StationRequest(
+            platform_layer="PLATFORM_1",
+            building_length=40.0,
+            building_width=10.0,
+            building_name="STATION BUILDING",
+            platform_side="LEFT",
+            station_chainage=800.0,
+        )
+    ]
+
+    # Platform 1: 6m width (narrow, needs widening at FOB arm)
+    # Standard far offset on LOOP_1 (y=5.3) is 5.3 + 1.68 + 6.0 = 12.98m
+    # FOB arm outer edge: 5.3 + 5.33 + 3.0 = 13.63m -> widened offset = 14.63m
+    p1_cfg = PlatformConfig(
+        source_dxf=str(src),
+        output_dxf=str(out),
+        track_layer="LOOP_1",
+        platform_type=PlatformType.SIDE,
+        side=PlatformSide.LEFT,
+        clearance=1.68,
+        platform_width=6.0,
+        platform_length=500.0,
+        center_on_track=True,
+        output_layer="PLATFORM_1",
+    )
+    p2_cfg = PlatformConfig(
+        source_dxf=str(src),
+        output_dxf=str(out),
+        track_layer="MAIN_LINE",
+        platform_type=PlatformType.SIDE,
+        side=PlatformSide.RIGHT,
+        clearance=1.68,
+        platform_width=7.0,
+        platform_length=500.0,
+        center_on_track=True,
+        output_layer="PLATFORM_2",
+    )
+    platforms = [PlatformRequest("LOOP_1", p1_cfg), PlatformRequest("MAIN_LINE", p2_cfg)]
+
+    # FOB with offset=40.0m INCREASING from station edge (edge=820m)
+    # FOB deck will be at ~878m (820 + 40 + 1.5 + arm_length)
+    fobs = [
+        FOBConfig(
+            reference_track="MAIN_LINE",
+            platforms=["PLATFORM_1", "PLATFORM_2"],
+            position_mode="OFFSET",
+            offset=40.0,
+            direction="INCREASING",
+            width=3.0,
+            arms={
+                "PLATFORM_1": {"length": 17.0, "side": "LEFT"},
+                "PLATFORM_2": {"length": 17.0, "side": "LEFT"},
+            },
+            output_layer="FOB_1",
+        )
+    ]
+
+    esp_cfg = ESPConfig(
+        source_path=str(src),
+        output_dxf=str(out),
+        track_source_layer="MAIN_TRACK",
+        loops=loops,
+        platforms=platforms,
+        stations=stations,
+        fobs=fobs,
+    )
+
+    gen = ESPGenerator(esp_cfg)
+    gen.run()
+
+    out_doc = ezdxf.readfile(str(out))
+    plat1 = [e for e in out_doc.modelspace() if getattr(e.dxf, "layer", "") == "PLATFORM_1"]
+    assert len(plat1) >= 1
+    pts = list(plat1[0].get_points())
+    # Platform must have a widening bump (stepped 9 vertices)
+    assert len(pts) == 9
+
+    # The widening bump vertices (where y > 13.0m) must be near the FOB (~860m - 885m)
+    # and strictly NOT near the station building (ch 780m - 820m)
+    widened_pts = [p for p in pts if p[1] > 13.5]
+    assert len(widened_pts) >= 2
+    for p in widened_pts:
+        # Must be well past station edge (820m), around ~860-885m
+        assert p[0] > 840.0, f"Widening point {p} is too close to station building (edge=820m)"
+
+    # FOB deck line/polygon x-coordinates must coincide with the widened region
+    fob_lines = [e for e in out_doc.modelspace() if getattr(e.dxf, "layer", "") == "FOB_1" and e.dxftype() == "LWPOLYLINE"]
+    assert len(fob_lines) >= 1
+    fob_pts = list(fob_lines[0].get_points())
+    fob_xs = [p[0] for p in fob_pts]
+    fob_mid_x = (min(fob_xs) + max(fob_xs)) / 2.0
+    assert fob_mid_x > 840.0
+    # FOB mid_x should align with the platform widening range
+    widened_xs = [p[0] for p in widened_pts]
+    assert min(widened_xs) - 1.0 <= fob_mid_x <= max(widened_xs) + 1.0
+
+
+
