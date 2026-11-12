@@ -118,3 +118,26 @@ def test_station_flag_end_to_end(tmp_path):
         elif cl.dxftype() in ("TEXT", "MTEXT"):
             assert cl.dxf.insert[1] < land_boundary_y
 
+
+def test_station_building_on_stepped_fob_platform():
+    """Station building stays outside the platform and maintains forward orientation even when the platform is stepped."""
+    from station.builder import _building_from_platform
+
+    # Stepped platform (e.g. 4m width from y=1.68 to 5.68, with FOB arm widening from ch 620 to 645 reaching y=9.33)
+    plat_stepped = [
+        (200.0, 1.68), (750.0, 1.68), (750.0, 5.68),
+        (645.0, 5.68), (645.0, 9.33), (620.0, 9.33), (620.0, 5.68),
+        (200.0, 5.68), (200.0, 1.68)
+    ]
+    building = _building_from_platform(plat_stepped, 40.0, 15.0, "LEFT")
+    # Must be on the outside of the platform (y > 5.68), not dropped into the tracks (y < 0)
+    assert building.center[1] > 5.68
+    assert building.center[1] == pytest.approx(5.68 + 7.5)
+    assert building.center[0] == pytest.approx(475.0)
+    # Orientation must remain 0.0 deg (along track from left to right), not flipped
+    assert building.angle == pytest.approx(0.0)
+    # Check outline corners are on the outside
+    for pt in building.outline:
+        assert pt[1] >= 5.68
+
+

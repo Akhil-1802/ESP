@@ -80,6 +80,7 @@ def build_fob_outline(
     width: float,
     extend_start: float = 0.0,
     extend_end: float = 0.0,
+    arm_bounds: Optional[Tuple[float, float]] = None,
 ) -> List[Point]:
     """Closed 4-corner FOB deck outline (not repeated: writer closes it)."""
     try:
@@ -101,15 +102,19 @@ def build_fob_outline(
         raise ValueError("FOB reference tangent must not be zero-length.")
     tx, ty = tangent[0] / tn, tangent[1] / tn
     nx, ny = -ty, tx
-    spans = [span for span in axis_spans(origin, (nx, ny), platform_polygons) if span is not None]
-    if not spans:
-        raise ValueError(
-            "FOB axis (perpendicular at the reference chainage) misses "
-            "every selected platform - pick a chainage within the "
-            "platforms' extent."
-        )
-    lo = min(span[0] for span in spans) - extend_start
-    hi = max(span[1] for span in spans) + extend_end
+    if arm_bounds is not None:
+        lo = arm_bounds[0] - extend_start
+        hi = arm_bounds[1] + extend_end
+    else:
+        spans = [span for span in axis_spans(origin, (nx, ny), platform_polygons) if span is not None]
+        if not spans:
+            raise ValueError(
+                "FOB axis (perpendicular at the reference chainage) misses "
+                "every selected platform - pick a chainage within the "
+                "platforms' extent."
+            )
+        lo = min(span[0] for span in spans) - extend_start
+        hi = max(span[1] for span in spans) + extend_end
     validate_fob_span(hi - lo)
     ox, oy = float(origin[0]), float(origin[1])
     hw = width / 2.0
@@ -144,17 +149,38 @@ def choose_label_spot(
     blocked: Sequence[tuple] = (),
 ) -> float:
     """Axis projection for the deck label: midpoint of the widest track gap."""
-    cuts = sorted({min(max(t, lo), hi) for t in crossings})
-    bounds = [lo] + cuts + [hi]
+    all_cuts = list(crossings)
+    for blo, bhi in blocked:
+        all_cuts.append(min(blo, bhi))
+        all_cuts.append(max(blo, bhi))
+    cuts = sorted({min(max(t, lo), hi) for t in all_cuts if lo <= t <= hi})
+    inner_cuts = [c for c in cuts if lo + 1e-4 < c < hi - 1e-4]
+    bounds = [lo] + inner_cuts + [hi]
+    center_span = (lo + hi) / 2.0
     gaps = []
     for start, end in zip(bounds, bounds[1:]):
-        if end - start >= text_len + 2.0 * margin:
-            gaps.append(((start + end) / 2.0, end - start))
-    gaps.sort(key=lambda gap: -gap[1])
-    for mid, _length in gaps:
-        if not any(blo - margin <= mid <= bhi + margin for blo, bhi in blocked):
-            return mid
-    return (lo + hi) / 2.0
+        gap_w = end - start
+        if gap_w < 1e-4:
+            continue
+        mid = (start + end) / 2.0
+        is_blocked = any(
+            min(blo, bhi) - 1e-3 <= mid <= max(blo, bhi) + 1e-3
+            for blo, bhi in blocked
+        )
+        if not is_blocked:
+            gaps.append((mid, gap_w))
+
+    qualifying = [g for g in gaps if g[1] >= text_len + 2.0 * margin]
+    if qualifying:
+        # Prefer largest gap; tie-break by proximity to bridge center
+        qualifying.sort(key=lambda g: (-round(g[1], 1), abs(g[0] - center_span)))
+        return qualifying[0][0]
+
+    if gaps:
+        gaps.sort(key=lambda g: (-round(g[1], 1), abs(g[0] - center_span)))
+        return gaps[0][0]
+
+    return center_span
 
 
 def build_fob_arms(
@@ -164,8 +190,15 @@ def build_fob_arms(
     spans_by_layer: Dict[str, object],
     arm_specs: Dict[str, dict],
     deck_width: float,
+    tracks: Dict[str, List[Point]] | None = None,
+    track_hits: Sequence[float] | None = None,
 ) -> List[List[Point]]:
-    """Landing-arm outlines, one closed rectangle per specified platform."""
+    """Landing-arm outlines, one closed rectangle per specified platform.
+
+    For side platforms, the clearance from adjacent track centerline to FOB arm near edge
+    is enforced to 5.33 m (IRS SOD minimum structure clearance), and the arm width
+    is maintained at >= 3.0 m.
+    """
     tn = math.hypot(tangent[0], tangent[1])
     if tn < 1e-12:
         raise ValueError("FOB reference tangent must not be zero-length.")
@@ -174,10 +207,15 @@ def build_fob_arms(
     nx, ny = normal[0] / nn, normal[1] / nn
     ox, oy = float(origin[0]), float(origin[1])
     s0 = ox * tx + oy * ty
-    hw = deck_width / 2.0
+    bridge_hw = deck_width / 2.0
+    arm_w = max(3.0, float(deck_width))
 
     def _pt(s, a):
         return (ox + tx * (s - s0) + nx * a, oy + ty * (s - s0) + ny * a)
+
+    hits = list(track_hits) if track_hits is not None else []
+    if not hits and tracks:
+        hits = track_axis_hits(origin, (nx, ny), tracks)
 
     arms: List[List[Point]] = []
     for layer, span in spans_by_layer.items():
@@ -186,10 +224,51 @@ def build_fob_arms(
             continue
         length = float(spec["length"])
         stride = -1.0 if spec["side"] == "LEFT" else 1.0
-        mid = (span[0] + span[1]) / 2.0
-        s_in = s0 - hw if stride < 0 else s0 + hw
+        s_in = s0 - bridge_hw if stride < 0 else s0 + bridge_hw
         s_out = s_in + stride * length
-        low, high = mid - hw, mid + hw
+
+        p_lo, p_hi = min(span[0], span[1]), max(span[0], span[1])
+        if hits:
+            low_tracks = [t for t in hits if t <= p_lo + 0.5]
+            high_tracks = [t for t in hits if t >= p_hi - 0.5]
+            nearest_low = max(low_tracks) if low_tracks else None
+            nearest_high = min(high_tracks) if high_tracks else None
+            dist_low = (p_lo - nearest_low) if nearest_low is not None else float("inf")
+            dist_high = (nearest_high - p_hi) if nearest_high is not None else float("inf")
+
+            if dist_low < 3.5 and dist_high < 3.5:
+                # Island platform: tracks on both sides, center the arm
+                mid = (p_lo + p_hi) / 2.0
+                low = mid - arm_w / 2.0
+                high = mid + arm_w / 2.0
+            elif dist_low <= dist_high:
+                # Side platform on positive side of nearest_low track
+                t_track = nearest_low if nearest_low is not None else (p_lo - 1.68)
+                arm_near = t_track + 5.33
+                arm_far = arm_near + arm_w
+                low = arm_near
+                high = arm_far
+            else:
+                # Side platform on negative side of nearest_high track
+                t_track = nearest_high if nearest_high is not None else (p_hi + 1.68)
+                arm_near = t_track - 5.33
+                arm_far = arm_near - arm_w
+                low = arm_far
+                high = arm_near
+        else:
+            if p_lo >= 0.0 or abs(p_lo) < abs(p_hi):
+                t_track = (p_lo - 1.68) if abs(p_lo - 1.68) > 0.5 else 0.0
+                arm_near = t_track + 5.33
+                arm_far = arm_near + arm_w
+                low = arm_near
+                high = arm_far
+            else:
+                t_track = (p_hi + 1.68) if abs(p_hi + 1.68) > 0.5 else 0.0
+                arm_near = t_track - 5.33
+                arm_far = arm_near - arm_w
+                low = arm_far
+                high = arm_near
+
         arms.append([_pt(s_in, low), _pt(s_out, low), _pt(s_out, high), _pt(s_in, high)])
     return arms
 

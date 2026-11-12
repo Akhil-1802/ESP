@@ -146,6 +146,7 @@ def validate_fob_conflicts(
     connected_platforms: Sequence[str],
     station_polygons: Optional[Sequence[Sequence[Point]]] = None,
     restricted_regions: Optional[Sequence] = None,
+    arm_specs: Optional[dict] = None,
 ) -> None:
     """Validate that the resulting FOB does not conflict with platforms, tracks, or restricted areas."""
     track_pts = tracks.get(reference_track)
@@ -182,10 +183,31 @@ def validate_fob_conflicts(
         raise ValueError("FOB placement conflict: FOB axis misses all selected platforms.")
     lo = min(s[0] for s in spans)
     hi = max(s[1] for s in spans)
+
+    if arm_specs:
+        try:
+            from fob.deck_geom import build_fob_arms
+            spans_by_layer = dict(zip(connected_platforms, axis_spans(origin, normal, polys)))
+            arms = build_fob_arms(origin, tangent, normal, spans_by_layer, arm_specs, fob_width, tracks=tracks)
+            if arms:
+                arm_projections = [
+                    (p[0] - origin[0]) * normal[0] + (p[1] - origin[1]) * normal[1]
+                    for arm in arms
+                    for p in arm
+                ]
+                if arm_projections:
+                    lo = min(arm_projections)
+                    hi = max(arm_projections)
+        except Exception:
+            pass
+
     validate_fob_span(hi - lo)
 
     # 3. Station building footprint conflict
-    deck_outline = build_fob_outline(origin, tangent, polys, fob_width)
+    deck_outline = build_fob_outline(
+        origin, tangent, polys, fob_width,
+        arm_bounds=(lo, hi) if arm_specs else None,
+    )
     if station_polygons:
         for sb in station_polygons:
             if len(sb) >= 3 and polygons_overlap(deck_outline, sb):

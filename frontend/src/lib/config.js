@@ -866,10 +866,7 @@ export function buildConfig(form) {
       })),
     ],
     platforms: (f.platforms || []).map(buildPlatform),
-    crossovers:
-      f.crossoverMode === 'default'
-        ? 'DEFAULT'
-        : (f.crossovers || []).map(buildCrossover),
+    crossovers: (f.crossovers || []).map(buildCrossover),
     stations: (f.stations || []).map((s, i) => buildStation(s, i, f)),
     fobs: (f.fobs || []).map(buildFob),
     robs: (f.robs || []).map(buildRob),

@@ -56,7 +56,6 @@ const initialForm = () => ({
   mainLineDirection: 'UP',
   additionalLines: [],
   platforms: [],
-  crossoverMode: 'manual',
   crossovers: [],
   stations: [],
   fobs: [],
@@ -217,7 +216,7 @@ export default function App() {
       });
       setStatus({
         kind: 'ok',
-        filename: trimmedApplied ? `${filename} (Trimmed: 50m from outermost SRJ)` : filename,
+        filename: trimmedApplied ? `${filename} (Final Plan)` : filename,
       });
     } catch (err) {
       setStatus({ kind: 'error', messages: [err.message] });
@@ -404,14 +403,14 @@ export default function App() {
               }`}
               title={
                 isTrimmed
-                  ? '50m SRJ Trim is active. Click to revert to full surveyed track length.'
-                  : 'Done / Finalize: Show ESP till 50m after the last SRJ on both sides.'
+                  ? 'Plan is finalized. Click to view full survey extent.'
+                  : 'Finalize the engineering scale plan.'
               }
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
-              <span>{isTrimmed ? 'Done: 50m Trimmed' : 'Done (50m from SRJ)'}</span>
+              <span>{isTrimmed ? 'Plan Finalized' : 'Finalize Plan'}</span>
             </button>
           )}
         </div>
@@ -552,14 +551,14 @@ export default function App() {
                   }`}
                   title={
                     isTrimmed
-                      ? 'ESP trimmed to 50m from outermost SRJs. Click to revert to full surveyed track length.'
-                      : 'Done / Finalize: Show ESP till 50m after the last SRJ on both sides.'
+                      ? 'Plan is finalized. Click to view full survey extent.'
+                      : 'Finalize the engineering scale plan.'
                   }
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>{isTrimmed ? 'Done: 50m Trim Active (Click for Full)' : 'Done / Complete (50m from SRJ)'}</span>
+                  <span>{isTrimmed ? 'Plan Finalized' : 'Finalize Plan'}</span>
                 </button>
               )}
             </div>

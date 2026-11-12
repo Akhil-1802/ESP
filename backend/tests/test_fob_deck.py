@@ -163,6 +163,12 @@ def test_fob_arms_and_deck_merge_cleanly():
             seen[key] = seen.get(key, 0) + 1
     assert all(v == 1 for v in seen.values()), "doubled wall segment found"
 
+    # Bridge must finish at the arm outer edge (y = 5.33 + 4.0 = 9.33 and -9.33)
+    # and MUST NOT extend to the platform outer boundary (y = 13.0 and -13.0)
+    fob_line_pts = [p for e in fob if e.dxftype() == "LINE" for p in ((e.dxf.start[0], e.dxf.start[1]), (e.dxf.end[0], e.dxf.end[1]))]
+    assert max(p[1] for p in fob_line_pts) == pytest.approx(9.33)
+    assert min(p[1] for p in fob_line_pts) == pytest.approx(-9.33)
+
 
 def test_wipe_layers_only_clears_targets():
     doc = ezdxf.new()

@@ -132,7 +132,14 @@ class FobStep(PipelineStep):
 
             restrictions = []
             try:
-                restrictions.extend(platforms_to_restricted_regions(self.config.platforms, tracks, extents))
+                unconnected = []
+                for p in (self.config.platforms or []):
+                    layer = getattr(p, "output_layer", None)
+                    if layer is None and hasattr(p, "config"):
+                        layer = getattr(p.config, "output_layer", None)
+                    if layer not in cfg.platforms:
+                        unconnected.append(p)
+                restrictions.extend(platforms_to_restricted_regions(unconnected, tracks, extents))
             except Exception:
                 pass
             try:
@@ -151,6 +158,7 @@ class FobStep(PipelineStep):
                 cfg.platforms,
                 station_polygons=station_buildings,
                 restricted_regions=restrictions,
+                arm_specs=getattr(cfg, "arms", None),
             )
 
             cfg.reference_chainage = fob_ch

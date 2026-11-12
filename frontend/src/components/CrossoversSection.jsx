@@ -7,7 +7,6 @@ import { Empty, Field, Grid, ItemCard, Section, Sel, Text } from './fields.jsx';
 export function CrossoversSection({ form, set, tracks }) {
   const setTop = useFormSetter(set);
   const trackOpts = [{ value: '', label: 'Select…' }, ...tracks];
-  const isDefault = form.crossoverMode === 'default';
 
   const loopEnds = getExtendedLoopEnds(form);
 
@@ -15,42 +14,13 @@ export function CrossoversSection({ form, set, tracks }) {
     <Section
       id="crossovers"
       title="5 · Crossovers"
-      hint="Only the START chainage is input — the second SRJ is derived (OL = TC·N + 2·A). Type AUTO to let the engine place it, or use the DEFAULT preset for the standard 4-crossover station layout."
-      count={isDefault ? 0 : form.crossovers.length}
-      onAdd={isDefault ? null : () => setTop({ crossovers: [...form.crossovers, blankCrossover()] })}
+      hint="Only the START chainage is input — the second SRJ is derived (OL = TC·N + 2·A). Type AUTO to let the engine place it."
+      count={form.crossovers.length}
+      onAdd={() => setTop({ crossovers: [...form.crossovers, blankCrossover()] })}
       addLabel="+ Add crossover"
     >
-      <div className="flex flex-wrap gap-4">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="radio"
-            checked={!isDefault}
-            onChange={() => setTop({ crossoverMode: 'manual' })}
-            className="h-4 w-4 accent-slate-900"
-          />
-          Manual list
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="radio"
-            checked={isDefault}
-            onChange={() => setTop({ crossoverMode: 'default' })}
-            className="h-4 w-4 accent-slate-900"
-          />
-          DEFAULT preset(Only for Class B station)
-        </label>
-      </div>
-      {isDefault && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Requires loops named <b>LOOP_1</b> and <b>LOOP_2</b> on opposite sides of MAIN_LINE. Turnout 1:12.
-          Fixed standard layout: C1/C2 sit exactly at your loop chainages with ~98 m footprints —
-          any overlap with a platform is rejected. For engine-placed crossovers that dodge
-          platforms, use the Manual list with <b>AUTO</b> chainages instead.
-        </p>
-      )}
-      {!isDefault && form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
-      {!isDefault &&
-        form.crossovers.map((x, i) => {
+      {form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
+      {form.crossovers.map((x, i) => {
           const itemLoopEnds = getExtendedLoopEnds(form, i);
           const targetTrack = itemLoopEnds[x.from] ? x.from : (itemLoopEnds[x.to] ? x.to : null);
           const ends = targetTrack ? itemLoopEnds[targetTrack] : null;

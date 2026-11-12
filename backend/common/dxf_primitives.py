@@ -64,12 +64,17 @@ def add_text(
     color: int,
     height: float = 1.0,
     rotation: float = 0.0,
+    align: str | None = None,
+    resolve: bool = True,
 ):
     """Add TEXT with a readable rotation (1 m clear of other texts)."""
+    from ezdxf.enums import TextEntityAlignment
+
     ensure_layer(doc, layer, color)
     ang = readable_angle_deg(rotation)
-    insert = resolve_text_insert(doc, text, height, ang, insert)
-    return doc.modelspace().add_text(
+    if resolve:
+        insert = resolve_text_insert(doc, text, height, ang, insert)
+    entity = doc.modelspace().add_text(
         text,
         dxfattribs={
             "layer": layer,
@@ -80,6 +85,14 @@ def add_text(
             "insert": (insert[0], insert[1], 0),
         },
     )
+    if align is not None:
+        if isinstance(align, str):
+            align_enum = getattr(TextEntityAlignment, align.upper(), None)
+        else:
+            align_enum = align
+        if align_enum is not None:
+            entity.set_placement((insert[0], insert[1]), align=align_enum)
+    return entity
 
 
 def add_line(doc, p1: Point, p2: Point, layer: str, color: int):

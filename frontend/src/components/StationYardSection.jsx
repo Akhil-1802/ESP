@@ -148,8 +148,6 @@ export function StationYardSection({
 
   const loopEnds = getExtendedLoopEnds(form);
 
-  const isDefault = form.crossoverMode === 'default';
-
   const addStandardCrossovers = () => {
     const l1 = stationLoops[0]?.name || 'LOOP_1';
     const l2 = stationLoops[1]?.name || (tracks.find((t) => t.startsWith('LOOP_') && t !== l1) || 'LOOP_2');
@@ -779,68 +777,32 @@ export function StationYardSection({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🔀</span> Crossovers ({isDefault ? 'DEFAULT preset' : stationCrossovers.length})
+                  <span>🔀</span> Crossovers ({stationCrossovers.length})
                 </h3>
                 <p className="text-[10.5px] text-slate-500">
-                  Only the START chainage is input — the second SRJ is derived. Type AUTO to let the engine place it, or use the DEFAULT preset for the standard 4-crossover Class B station layout.
+                  Only the START chainage is input — the second SRJ is derived. Type AUTO to let the engine place it.
                 </p>
               </div>
-              {!isDefault && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={addStandardCrossovers}
-                    className="rounded-lg border border-emerald-600/60 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
-                    title="Populate standard 4 Class B crossovers (C1–C4) for this station"
-                  >
-                    + Standard 4 (C1–C4)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addCrossover}
-                    className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
-                  >
-                    + Add crossover
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Radio toggle: Manual list vs DEFAULT preset */}
-            <div className="flex flex-wrap gap-4 pt-1 border-t border-slate-100">
-              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={!isDefault}
-                  onChange={() => setTop({ crossoverMode: 'manual' })}
-                  className="h-3.5 w-3.5 accent-slate-900"
-                />
-                Manual list
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={isDefault}
-                  onChange={() => setTop({ crossoverMode: 'default' })}
-                  className="h-3.5 w-3.5 accent-slate-900"
-                />
-                DEFAULT preset (Only for Class B station)
-              </label>
-            </div>
-
-            {isDefault ? (
-              <div className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900 border border-amber-200">
-                <p className="font-semibold text-amber-950 mb-1">
-                  DEFAULT preset active (Standard 4 Class B Crossovers)
-                </p>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Requires loops named <b>LOOP_1</b> and <b>LOOP_2</b> on opposite sides of MAIN_LINE. Turnout 1:12.
-                  Fixed standard layout: C1/C2 sit exactly at your loop chainages with ~98 m footprints —
-                  any overlap with a platform is rejected. For engine-placed crossovers that dodge
-                  platforms, use the <b>Manual list</b> with <b>AUTO</b> chainages or click <b>"+ Standard 4 (C1–C4)"</b>.
-                </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={addStandardCrossovers}
+                  className="rounded-lg border border-emerald-600/60 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                  title="Populate standard 4 Class B crossovers (C1–C4) for this station"
+                >
+                  + Standard 4 (C1–C4)
+                </button>
+                <button
+                  type="button"
+                  onClick={addCrossover}
+                  className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
+                >
+                  + Add crossover
+                </button>
               </div>
-            ) : stationCrossovers.length === 0 ? (
+            </div>
+
+            {stationCrossovers.length === 0 ? (
               <Empty>
                 No crossovers configured for {stnName}. Click "+ Standard 4 (C1–C4)" to add the standard set, or "+ Add crossover" for a custom one.
               </Empty>

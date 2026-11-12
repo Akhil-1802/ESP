@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List
 
 from common.geometry import (
+    Point,
     find_straight_window,
     offset_alignment,
     offset_point,
@@ -15,6 +16,86 @@ from platform_gen.config import PlatformConfig
 from platform_gen.models import DimensionSpec, LabelSpec, PlatformResult, StairSpec, _order_outward
 from platform_gen.stairs import generate_stair
 from platform_gen.track import Track
+
+
+def _build_far_edge_with_widenings(
+    track_points: List[Point],
+    start_chainage: float,
+    end_chainage: float,
+    clearance: float,
+    platform_width: float,
+    side_value: float,
+    widenings: List[dict],
+    curve_samples: int = 2,
+) -> List[Point]:
+    """Generate far edge polyline with local rectangular extra-width projections."""
+    std_offset = clearance + platform_width
+    far_pts: List[Point] = []
+
+    valid_zones = []
+    for w in widenings:
+        s1 = max(start_chainage, float(w.get("start_chainage", 0.0)))
+        s2 = min(end_chainage, float(w.get("end_chainage", 0.0)))
+        w_off = float(w.get("widened_offset", std_offset))
+        if s2 > s1 and w_off > std_offset + 1e-4:
+            valid_zones.append((s1, s2, w_off))
+
+    if not valid_zones:
+        return offset_alignment(
+            track_points, start_chainage, end_chainage,
+            std_offset, side_value, curve_samples,
+        )
+
+    valid_zones.sort(key=lambda z: z[0])
+
+    curr_ch = start_chainage
+    for s1, s2, w_off in valid_zones:
+        if s1 > curr_ch:
+            seg = offset_alignment(
+                track_points, curr_ch, s1,
+                std_offset, side_value, curve_samples,
+            )
+            for pt in seg:
+                if not far_pts or (abs(pt[0] - far_pts[-1][0]) > 1e-6 or abs(pt[1] - far_pts[-1][1]) > 1e-6):
+                    far_pts.append(pt)
+
+        # Step outward at s1
+        p_out = offset_alignment(
+            track_points, s1, s1,
+            w_off, side_value, 1,
+        )[0]
+        if not far_pts or (abs(p_out[0] - far_pts[-1][0]) > 1e-6 or abs(p_out[1] - far_pts[-1][1]) > 1e-6):
+            far_pts.append(p_out)
+
+        # Widened segment from s1 to s2
+        widened_seg = offset_alignment(
+            track_points, s1, s2,
+            w_off, side_value, curve_samples,
+        )
+        for pt in widened_seg:
+            if not far_pts or (abs(pt[0] - far_pts[-1][0]) > 1e-6 or abs(pt[1] - far_pts[-1][1]) > 1e-6):
+                far_pts.append(pt)
+
+        # Step inward at s2
+        p_in = offset_alignment(
+            track_points, s2, s2,
+            std_offset, side_value, 1,
+        )[0]
+        if not far_pts or (abs(p_in[0] - far_pts[-1][0]) > 1e-6 or abs(p_in[1] - far_pts[-1][1]) > 1e-6):
+            far_pts.append(p_in)
+
+        curr_ch = s2
+
+    if curr_ch < end_chainage:
+        seg = offset_alignment(
+            track_points, curr_ch, end_chainage,
+            std_offset, side_value, curve_samples,
+        )
+        for pt in seg:
+            if not far_pts or (abs(pt[0] - far_pts[-1][0]) > 1e-6 or abs(pt[1] - far_pts[-1][1]) > 1e-6):
+                far_pts.append(pt)
+
+    return far_pts
 
 
 def side_platform(track: Track, cfg: PlatformConfig) -> PlatformResult:
@@ -71,10 +152,17 @@ def side_platform(track: Track, cfg: PlatformConfig) -> PlatformResult:
         track.points, start_chainage, end_chainage,
         cfg.clearance, cfg.side.value, cfg.curve_samples,
     )
-    far = offset_alignment(
-        track.points, start_chainage, end_chainage,
-        cfg.clearance + cfg.platform_width, cfg.side.value, cfg.curve_samples,
-    )
+    if getattr(cfg, "fob_widenings", None):
+        far = _build_far_edge_with_widenings(
+            track.points, start_chainage, end_chainage,
+            cfg.clearance, cfg.platform_width, cfg.side.value,
+            cfg.fob_widenings, cfg.curve_samples,
+        )
+    else:
+        far = offset_alignment(
+            track.points, start_chainage, end_chainage,
+            cfg.clearance + cfg.platform_width, cfg.side.value, cfg.curve_samples,
+        )
     outline = rectangle_from_two_offsets(near, far)
 
     length = end_chainage - start_chainage

@@ -53,6 +53,138 @@ def write_fob_deck(doc, outline: Sequence[Point], layer: str, color: int = 1) ->
     )
 
 
+def resolve_fob_chainage(
+    cfg: FOBConfig,
+    tracks: Dict[str, List[Point]],
+    polygons_by_layer: Dict[str, Any] | None = None,
+    doc=None,
+    station_requests=None,
+    station_markers=None,
+) -> float:
+    """Resolve and cache the FOB chainage along cfg.reference_track."""
+    if getattr(cfg, "fob_chainage", None) is not None:
+        return float(cfg.fob_chainage)
+
+    ref_track = cfg.reference_track if cfg.reference_track in tracks else "MAIN_LINE"
+    if ref_track not in tracks:
+        ref_track = next(iter(tracks))
+    points = tracks[ref_track]
+    total = polyline_length(points)
+
+    is_main_center = (
+        cfg.reference_chainage is None
+        or (
+            isinstance(cfg.reference_chainage, str)
+            and cfg.reference_chainage.strip().upper() in ("MAIN_CENTER", "AUTO", "")
+        )
+    )
+
+    polys = polygons_by_layer or {}
+    station_geom = None
+    for name in ("STATION-BUILDING", "STATION_BUILDING"):
+        if name in polys:
+            station_geom = polys[name]
+            break
+    if station_geom is None and doc is not None and hasattr(doc, "modelspace"):
+        for e in list(doc.modelspace()):
+            try:
+                if (
+                    getattr(e.dxf, "layer", "") in ("STATION-BUILDING", "STATION_BUILDING")
+                    and e.dxftype() in ("LWPOLYLINE", "POLYLINE")
+                ):
+                    from platform_gen.track import _extract_points
+
+                    station_geom = _extract_points(e)
+                    if len(station_geom) >= 3:
+                        break
+            except Exception:
+                pass
+    if station_geom is None and polys:
+        station_geom = [polys[p] for p in cfg.platforms if p in polys]
+
+    center_ch = None
+    if (
+        station_geom
+        and isinstance(station_geom, list)
+        and isinstance(station_geom[0], (tuple, list))
+    ):
+        if len(station_geom[0]) >= 2 and isinstance(
+            station_geom[0][0], (int, float)
+        ):
+            scx = sum(p[0] for p in station_geom) / len(station_geom)
+            scy = sum(p[1] for p in station_geom) / len(station_geom)
+            center_ch = float(
+                nearest_point_on_alignment(points, (scx, scy)).chainage
+            )
+        else:
+            all_pts = [p for poly in station_geom for p in poly]
+            if all_pts:
+                scx = sum(p[0] for p in all_pts) / len(all_pts)
+                scy = sum(p[1] for p in all_pts) / len(all_pts)
+                center_ch = float(
+                    nearest_point_on_alignment(points, (scx, scy)).chainage
+                )
+
+    if center_ch is None and station_requests:
+        for s_req in station_requests:
+            s_ch = getattr(s_req, "station_chainage", None) or getattr(s_req, "chainage", None)
+            if s_ch is not None:
+                try:
+                    center_ch = float(s_ch)
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    if center_ch is None or center_ch <= 0.0:
+        center_ch = total / 2.0
+
+    if is_main_center:
+        ref_chainage = float(center_ch)
+    else:
+        try:
+            ref_chainage = float(cfg.reference_chainage)
+        except (ValueError, TypeError):
+            ref_chainage = float(center_ch)
+
+    if cfg.offset is not None:
+        off = float(cfg.offset)
+        dir_norm = normalize_fob_direction(cfg.direction)
+        station_edge_ch = None
+        if station_geom is not None:
+            try:
+                station_edge_ch = determine_station_edge(
+                    points, station_geom, dir_norm
+                )
+            except Exception:
+                station_edge_ch = None
+        base_ch = (
+            station_edge_ch if station_edge_ch is not None else ref_chainage
+        )
+
+        arm_towards_station = 0.0
+        towards_side = "LEFT" if dir_norm == "INCREASING" else "RIGHT"
+        for arm_spec in (cfg.arms or {}).values():
+            if (
+                isinstance(arm_spec, dict)
+                and str(arm_spec.get("side", "")).upper() == towards_side
+            ):
+                arm_towards_station = max(
+                    arm_towards_station, float(arm_spec.get("length", 0.0))
+                )
+        extra_to_center = (float(cfg.width) / 2.0) + arm_towards_station
+
+        if dir_norm == "INCREASING":
+            chainage = base_ch + off + extra_to_center
+        else:
+            chainage = base_ch - (off + extra_to_center)
+    else:
+        chainage = ref_chainage
+
+    cfg.reference_chainage = chainage
+    cfg.fob_chainage = chainage
+    return chainage
+
+
 def generate_fob(
     doc,
     tracks: Dict[str, List[Point]],
@@ -87,108 +219,7 @@ def generate_fob(
     points = tracks[cfg.reference_track]
     total = polyline_length(points)
 
-    if getattr(cfg, "fob_chainage", None) is not None:
-        chainage = float(cfg.fob_chainage)
-    else:
-        is_main_center = (
-            cfg.reference_chainage is None
-            or (
-                isinstance(cfg.reference_chainage, str)
-                and cfg.reference_chainage.strip().upper() in ("MAIN_CENTER", "AUTO", "")
-            )
-        )
-        station_geom = None
-        for name in ("STATION-BUILDING", "STATION_BUILDING"):
-            if name in polygons_by_layer:
-                station_geom = polygons_by_layer[name]
-                break
-        if station_geom is None and hasattr(doc, "modelspace"):
-            for e in list(doc.modelspace()):
-                try:
-                    if (
-                        getattr(e.dxf, "layer", "") in ("STATION-BUILDING", "STATION_BUILDING")
-                        and e.dxftype() in ("LWPOLYLINE", "POLYLINE")
-                    ):
-                        from platform_gen.track import _extract_points
-
-                        station_geom = _extract_points(e)
-                        if len(station_geom) >= 3:
-                            break
-                except Exception:
-                    pass
-        if station_geom is None:
-            station_geom = [
-                polygons_by_layer[p] for p in cfg.platforms if p in polygons_by_layer
-            ]
-
-        if (
-            station_geom
-            and isinstance(station_geom, list)
-            and isinstance(station_geom[0], (tuple, list))
-        ):
-            if len(station_geom[0]) >= 2 and isinstance(
-                station_geom[0][0], (int, float)
-            ):
-                scx = sum(p[0] for p in station_geom) / len(station_geom)
-                scy = sum(p[1] for p in station_geom) / len(station_geom)
-                center_ch = float(
-                    nearest_point_on_alignment(points, (scx, scy)).chainage
-                )
-            else:
-                all_pts = [p for poly in station_geom for p in poly]
-                scx = sum(p[0] for p in all_pts) / len(all_pts)
-                scy = sum(p[1] for p in all_pts) / len(all_pts)
-                center_ch = float(
-                    nearest_point_on_alignment(points, (scx, scy)).chainage
-                )
-        else:
-            center_ch = total / 2.0
-
-        if center_ch <= 0.0:
-            center_ch = total / 2.0
-
-        if is_main_center:
-            ref_chainage = float(center_ch)
-        else:
-            ref_chainage = float(cfg.reference_chainage)
-
-        # Apply station-edge offset when offset is explicitly configured.
-        # When offset=None (the default), use ref_chainage verbatim.
-        if cfg.offset is not None:
-            off = float(cfg.offset)
-            dir_norm = normalize_fob_direction(cfg.direction)
-            station_edge_ch = None
-            if station_geom is not None:
-                try:
-                    station_edge_ch = determine_station_edge(
-                        points, station_geom, dir_norm
-                    )
-                except Exception:
-                    station_edge_ch = None
-            base_ch = (
-                station_edge_ch if station_edge_ch is not None else ref_chainage
-            )
-
-            arm_towards_station = 0.0
-            towards_side = "LEFT" if dir_norm == "INCREASING" else "RIGHT"
-            for arm_spec in (cfg.arms or {}).values():
-                if (
-                    isinstance(arm_spec, dict)
-                    and str(arm_spec.get("side", "")).upper() == towards_side
-                ):
-                    arm_towards_station = max(
-                        arm_towards_station, float(arm_spec.get("length", 0.0))
-                    )
-            extra_to_center = (float(cfg.width) / 2.0) + arm_towards_station
-
-            if dir_norm == "INCREASING":
-                chainage = base_ch + off + extra_to_center
-            else:
-                chainage = base_ch - (off + extra_to_center)
-        else:
-            chainage = ref_chainage
-        cfg.reference_chainage = chainage
-        cfg.fob_chainage = chainage
+    chainage = resolve_fob_chainage(cfg, tracks, polygons_by_layer=polygons_by_layer, doc=doc)
 
     if not 0.0 <= chainage <= total:
         raise ValueError(
@@ -203,6 +234,18 @@ def generate_fob(
     normal = (-station.tangent[1] / tn, station.tangent[0] / tn)
     names = list(cfg.platforms)
     polys = [polygons_by_layer[name] for name in names]
+    spans = dict(zip(names, axis_spans(station.point, normal, polys)))
+    arms = build_fob_arms(
+        station.point, station.tangent, normal, spans, cfg.arms, cfg.width,
+        tracks=tracks,
+    )
+    arm_bounds = None
+    if arms:
+        ox_tmp, oy_tmp = float(station.point[0]), float(station.point[1])
+        arm_projs = [(p[0] - ox_tmp) * normal[0] + (p[1] - oy_tmp) * normal[1] for arm in arms for p in arm]
+        if arm_projs:
+            arm_bounds = (min(arm_projs), max(arm_projs))
+
     outline = build_fob_outline(
         station.point,
         station.tangent,
@@ -210,10 +253,7 @@ def generate_fob(
         cfg.width,
         cfg.extend_start_m,
         cfg.extend_end_m,
-    )
-    spans = dict(zip(names, axis_spans(station.point, normal, polys)))
-    arms = build_fob_arms(
-        station.point, station.tangent, normal, spans, cfg.arms, cfg.width
+        arm_bounds=arm_bounds,
     )
     layer, color = cfg.output_layer, cfg.color
     _ensure_layer(doc, layer, color)
@@ -224,8 +264,38 @@ def generate_fob(
     hw = float(cfg.width) / 2.0
     lo_span, hi_span = _deck_span(station.point, normal, outline)
 
+    # When platforms have landing arms, terminate the bridge at the outer edge
+    # of the arms rather than extending all the way to merge with the platform outer edge.
+    valid_spans = [(name, spans[name]) for name in names if spans.get(name) is not None]
+    if valid_spans and arms:
+        arm_projections = [
+            (p[0] - ox) * nx + (p[1] - oy) * ny
+            for arm in arms
+            for p in arm
+        ]
+        if arm_projections:
+            arm_outer_lo = min(arm_projections)
+            arm_outer_hi = max(arm_projections)
+
+            valid_spans.sort(key=lambda item: item[1][0])
+            low_plat_name, _ = valid_spans[0]
+            high_plat_name, _ = valid_spans[-1]
+
+            if (cfg.arms or {}).get(low_plat_name):
+                lo_span = arm_outer_lo - float(getattr(cfg, "extend_start_m", 0.0) or 0.0)
+            if (cfg.arms or {}).get(high_plat_name):
+                hi_span = arm_outer_hi + float(getattr(cfg, "extend_end_m", 0.0) or 0.0)
+
     def _wpt(s, a):
         return (ox + tx * s + nx * a, oy + ty * s + ny * a)
+
+    if arms:
+        outline = [
+            _wpt(-hw, lo_span),
+            _wpt(hw, lo_span),
+            _wpt(hw, hi_span),
+            _wpt(-hw, hi_span),
+        ]
 
     if not arms:
         write_fob_deck(doc, outline, layer, color)
@@ -253,14 +323,7 @@ def generate_fob(
                 close=False,
             )
 
-    rot_deg = 90.0
-    label_h = (
-        min(FOB_LABEL_HEIGHT, (cfg.width - 0.6) / (len(FOB_LABEL) * 0.7))
-        if cfg.width < 4.0
-        else FOB_LABEL_HEIGHT
-    )
-    label_h = max(label_h, 0.4)
-    text_len = len(FOB_LABEL) * label_h * 0.7
+    rot_deg = math.degrees(math.atan2(ny, nx))
     crossings = track_axis_hits(station.point, normal, tracks)
     blocked = []
     for arm in arms:
@@ -270,19 +333,50 @@ def generate_fob(
             for p in arm
         ]
         blocked.append((min(proj), max(proj)))
+
+    # Determine widest unblocked track gap to size the label appropriately
+    inner_cuts = [
+        c for c in sorted({min(max(t, lo_span), hi_span) for t in crossings})
+        if lo_span + 1e-4 < c < hi_span - 1e-4
+    ]
+    bounds = [lo_span] + inner_cuts + [hi_span]
+    max_gap_len = 0.0
+    for s_start, s_end in zip(bounds, bounds[1:]):
+        s_mid = (s_start + s_end) / 2.0
+        if not any(min(blo, bhi) - 1e-3 <= s_mid <= max(blo, bhi) + 1e-3 for blo, bhi in blocked):
+            max_gap_len = max(max_gap_len, s_end - s_start)
+
+    char_count = len(FOB_LABEL)
+    cfg_lbl_h = getattr(cfg, "label_height", None)
+    if cfg_lbl_h is not None:
+        label_h = float(cfg_lbl_h)
+    elif max_gap_len > 0:
+        # Leave at least 0.8m margin (0.4m on each end) from track centerlines
+        avail_len = max(1.5, max_gap_len - 0.8)
+        target_h = avail_len / (char_count * 0.7)
+        label_h = min(FOB_LABEL_HEIGHT, max(0.25, target_h))
+    else:
+        label_h = 0.4
+
+    label_h = max(label_h, 0.25)
+    text_len = char_count * label_h * 0.7
     spot = choose_label_spot(
-        lo_span, hi_span, crossings, text_len, blocked=blocked
+        lo_span, hi_span, crossings, text_len, margin=0.4, blocked=blocked
     )
-    ins_x = station.point[0] + 0.35 * label_h
-    ins_y = station.point[1] + normal[1] * spot - text_len / 2.0
+
+    # Center text both along the bridge span (spot) and across the bridge deck width (ox, oy)
+    center_x = ox + nx * spot
+    center_y = oy + ny * spot
     _add_text(
         doc,
         FOB_LABEL,
-        (ins_x, ins_y),
+        (center_x, center_y),
         cfg.output_layer,
         cfg.color,
         height=label_h,
         rotation=rot_deg,
+        align="MIDDLE_CENTER",
+        resolve=False,
     )
 
     dim_layer = getattr(cfg, "dimension_layer", "") or f"{cfg.output_layer}-DIM"
@@ -315,7 +409,7 @@ def generate_fob(
             doc,
             arm_a,
             arm_b,
-            dim_offset=2.0,
+            dim_offset=-2.0,
             text=f"{arm_width:.2f}",
             layer=dim_layer,
             color=color,

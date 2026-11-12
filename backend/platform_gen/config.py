@@ -71,6 +71,9 @@ class PlatformConfig:
     station_index: Optional[int] = None
     center_chainage: Optional[float] = None
 
+    # --- localized FOB extra-width zones --------------------------------
+    fob_widenings: Optional[List[dict]] = None
+
     @property
     def effective_arm_length(self) -> float:
         """Centralized platform arm length (defaults to 16.999 m if unspecified)."""

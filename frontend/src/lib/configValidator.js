@@ -88,25 +88,14 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
       at('Platform', i, 'arm length must be >= 0 (blank = 16.999 m, 0 = none).');
   });
 
-  if (f.crossoverMode === 'default') {
-    const byName = {};
-    (f.loops || []).forEach((l, i) => {
-      byName[strOr(l.name, `LOOP_${i + 1}`)] = strOr(l.side, 'LEFT').toUpperCase();
-    });
-    if (!byName.LOOP_1 || !byName.LOOP_2)
-      errors.push('Crossovers: DEFAULT preset needs loops named LOOP_1 and LOOP_2.');
-    else if (byName.LOOP_1 === byName.LOOP_2)
-      errors.push('Crossovers: DEFAULT preset needs LOOP_1 and LOOP_2 on opposite sides.');
-  } else {
-    (f.crossovers || []).forEach((x, i) => {
-      if (isBlank(x.from) || isBlank(x.to)) at('Crossover', i, 'from/to tracks are required.');
-      else if (strOr(x.from, '') === strOr(x.to, '')) at('Crossover', i, 'from/to tracks must differ.');
-      const raw = strOr(x.chainage, '');
-      if (isBlank(raw)) at('Crossover', i, 'chainage is required (number or AUTO).');
-      else if (raw.toUpperCase() !== 'AUTO' && (!Number.isFinite(Number(raw)) || Number(raw) < 0))
-        at('Crossover', i, 'chainage must be >= 0 or AUTO.');
-    });
-  }
+  (f.crossovers || []).forEach((x, i) => {
+    if (isBlank(x.from) || isBlank(x.to)) at('Crossover', i, 'from/to tracks are required.');
+    else if (strOr(x.from, '') === strOr(x.to, '')) at('Crossover', i, 'from/to tracks must differ.');
+    const raw = strOr(x.chainage, '');
+    if (isBlank(raw)) at('Crossover', i, 'chainage is required (number or AUTO).');
+    else if (raw.toUpperCase() !== 'AUTO' && (!Number.isFinite(Number(raw)) || Number(raw) < 0))
+      at('Crossover', i, 'chainage must be >= 0 or AUTO.');
+  });
 
   const layers = platformLayersFn ? platformLayersFn(f) : [];
   (f.stations || []).forEach((s, i) => {

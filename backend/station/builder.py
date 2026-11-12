@@ -44,39 +44,68 @@ def _building_from_platform(
     if platform_side.upper() not in {"LEFT", "RIGHT"}:
         raise ValueError("Platform side must be LEFT or RIGHT")
     edges = list(zip(platform, platform[1:]))
-    longest = max(_distance(*pair) for pair in edges)
-    long_edges = [pair for pair in edges if _distance(*pair) >= longest * 0.9]
-    tx, ty = long_edges[0][1][0] - long_edges[0][0][0], long_edges[0][1][1] - long_edges[0][0][1]
-    tl = math.hypot(tx, ty) or 1.0
-    tx, ty = tx / tl, ty / tl
-    platform_center = _center(platform)
+    if not edges:
+        raise ValueError("Platform must have at least 3 vertices")
 
+    # Longitudinal platform direction from longest edge, consistently pointing forward (+X)
+    longest_edge = max(edges, key=lambda pair: _distance(*pair))
+    dx = longest_edge[1][0] - longest_edge[0][0]
+    dy = longest_edge[1][1] - longest_edge[0][1]
+    tl = math.hypot(dx, dy) or 1.0
+    tx, ty = dx / tl, dy / tl
+    if tx < 0 or (abs(tx) < 1e-6 and ty < 0):
+        tx, ty = -tx, -ty
+
+    along = (tx, ty)
     want_left = platform_side.upper() == "LEFT"
+    across = (-ty, tx) if want_left else (ty, -tx)
 
-    def _side_score(pair) -> float:
-        mx = (pair[0][0] + pair[1][0]) / 2.0 - platform_center[0]
-        my = (pair[0][1] + pair[1][1]) / 2.0 - platform_center[1]
-        return tx * my - ty * mx
-
-    left_edges = [pair for pair in long_edges if _side_score(pair) > 0]
-    right_edges = [pair for pair in long_edges if _side_score(pair) <= 0]
-    pool = left_edges if want_left else right_edges
-    edge = pool[0] if pool else long_edges[0]
-    dx, dy = edge[1][0] - edge[0][0], edge[1][1] - edge[0][1]
-    edge_length = math.hypot(dx, dy) or 1.0
-    along = (dx / edge_length, dy / edge_length)
-    across = (-along[1], along[0])
-    edge_center = ((edge[0][0] + edge[1][0]) / 2.0, (edge[0][1] + edge[1][1]) / 2.0)
-    if ((platform_center[0] - edge_center[0]) * across[0] +
-            (platform_center[1] - edge_center[1]) * across[1]) > 0:
-        across = (-across[0], -across[1])
-    if length > edge_length:
+    platform_center = _center(platform)
+    p_proj_s = [p[0] * tx + p[1] * ty for p in platform]
+    s_min, s_max = min(p_proj_s), max(p_proj_s)
+    total_plat_len = s_max - s_min
+    if length > total_plat_len + 1e-3:
         raise ValueError(
             f"Building ({length:g}m x {width:g}m) must fit inside the platform "
-            f"length ({edge_length:.2f}m)"
+            f"length ({total_plat_len:.2f}m)"
         )
-    center = (edge_center[0] + across[0] * width / 2.0,
-              edge_center[1] + across[1] * width / 2.0)
+
+    s_center = (s_min + s_max) / 2.0
+
+    # Collect edges on the requested platform_side that run parallel to the platform axis
+    outer_edges = []
+    for p1, p2 in edges:
+        edx = p2[0] - p1[0]
+        edy = p2[1] - p1[1]
+        el = math.hypot(edx, edy)
+        if el < 0.1:
+            continue
+        if abs(edx * tx + edy * ty) / el > 0.8:
+            emx = (p1[0] + p2[0]) / 2.0
+            emy = (p1[1] + p2[1]) / 2.0
+            rx = emx - platform_center[0]
+            ry = emy - platform_center[1]
+            if (rx * across[0] + ry * across[1]) > 0:
+                s1 = p1[0] * tx + p1[1] * ty
+                s2 = p2[0] * tx + p2[1] * ty
+                trans = emx * across[0] + emy * across[1]
+                outer_edges.append((min(s1, s2), max(s1, s2), trans, el))
+
+    covering = [e for e in outer_edges if e[0] - 1.0 <= s_center <= e[1] + 1.0]
+    if covering:
+        best_edge = max(covering, key=lambda e: e[3])
+    elif outer_edges:
+        best_edge = min(outer_edges, key=lambda e: min(abs(e[0] - s_center), abs(e[1] - s_center)))
+    else:
+        best_edge = (s_min, s_max, platform_center[0] * across[0] + platform_center[1] * across[1], total_plat_len)
+
+    edge_transverse = best_edge[2]
+    center_transverse = edge_transverse + width / 2.0
+
+    center = (
+        tx * s_center + across[0] * center_transverse,
+        ty * s_center + across[1] * center_transverse,
+    )
     half_length, half_width = length / 2.0, width / 2.0
     corners = [
         (center[0] - along[0] * half_length - across[0] * half_width,
@@ -88,4 +117,4 @@ def _building_from_platform(
         (center[0] - along[0] * half_length + across[0] * half_width,
          center[1] - along[1] * half_length + across[1] * half_width),
     ]
-    return StationBuilding(corners, center, _readable_angle(math.degrees(math.atan2(dy, dx))))
+    return StationBuilding(corners, center, _readable_angle(math.degrees(math.atan2(ty, tx))))

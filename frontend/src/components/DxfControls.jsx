@@ -261,14 +261,14 @@ export function DxfControls({
                   }`}
                   title={
                     isTrimmed
-                      ? 'ESP trimmed to 50m from outermost SRJs. Click to revert to full surveyed length.'
-                      : 'Done / Finalize: Trim main lines to 50m past outermost SRJs on both sides.'
+                      ? 'Plan is finalized. Click to view full survey extent.'
+                      : 'Finalize the engineering scale plan.'
                   }
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>{isTrimmed ? 'Done (50m Trimmed)' : 'Done (50m Trim)'}</span>
+                  <span>{isTrimmed ? 'Plan Finalized' : 'Finalize Plan'}</span>
                 </button>
               )}
               <button

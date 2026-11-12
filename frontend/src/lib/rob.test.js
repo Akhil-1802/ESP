@@ -11,7 +11,6 @@ const base = () => ({
   mainLineDirection: 'UP',
   additionalLines: [],
   platforms: [],
-  crossoverMode: 'manual',
   crossovers: [],
   stations: [],
   fobs: [],

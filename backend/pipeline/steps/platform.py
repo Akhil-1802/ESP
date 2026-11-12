@@ -250,6 +250,130 @@ class PlatformStep(PipelineStep):
         proj = nearest_point_on_alignment(cleaned_target, stn_pt)
         platform_cfg.center_chainage = proj.chainage
 
+    def _calculate_fob_widenings(self, platform_cfg, tracks) -> list[dict]:
+        """Compute localized extra-width rectangular zones for side platforms where an FOB arm is placed."""
+        plat_type = getattr(platform_cfg, "platform_type", "SIDE")
+        plat_type_str = getattr(plat_type, "value", str(plat_type)).upper()
+        if plat_type_str not in ("SIDE", "PLATFORMTYPE.SIDE"):
+            return []
+
+        plat_layer = getattr(platform_cfg, "output_layer", "")
+        fobs = getattr(self.config, "fobs", None) or []
+        if not fobs or not tracks:
+            return []
+
+        clr = float(getattr(platform_cfg, "clearance", 1.68) or 1.68)
+        std_w = float(getattr(platform_cfg, "platform_width", 7.0) or 7.0)
+        std_far_offset = clr + std_w
+
+        plat_track_name = platform_cfg.track_layer or "MAIN_LINE"
+        plat_track_pts = tracks.get(plat_track_name)
+        if not plat_track_pts:
+            return []
+        cleaned_plat_track = [(float(p[0]), float(p[1])) for p in plat_track_pts]
+        plat_track_len = polyline_length(cleaned_plat_track)
+
+        widenings = []
+        for fob in fobs:
+            connected = getattr(fob, "platforms", None) or []
+            norm_conn = [str(p).strip().upper().replace(" ", "_") for p in connected]
+            norm_layer = plat_layer.strip().upper().replace(" ", "_")
+            if norm_conn and norm_layer not in norm_conn:
+                continue
+
+            arms = getattr(fob, "arms", None) or {}
+            arm_spec = None
+            if isinstance(arms, dict):
+                arm_spec = arms.get(plat_layer)
+                if arm_spec is None:
+                    arm_spec = arms.get(plat_layer.replace("_", " "))
+                if arm_spec is None:
+                    for k, v in arms.items():
+                        if str(k).strip().upper().replace(" ", "_") == norm_layer:
+                            arm_spec = v
+                            break
+
+            if arms and arm_spec is None:
+                continue
+
+            fob_w = max(3.0, float(getattr(fob, "width", 3.0) or 3.0))
+            arm_w = max(3.0, fob_w)
+            if isinstance(arm_spec, dict) and arm_spec.get("width"):
+                try:
+                    arm_w = max(3.0, float(arm_spec["width"]))
+                except (ValueError, TypeError):
+                    pass
+
+            # Distance from track centerline to outer edge of FOB arm:
+            # IRS SOD clearance for side platform is 5.33m from track centerline.
+            # Arm width is arm_w (>= 3.0m).
+            # FOB arm outer edge is at 5.33 + arm_w from track centerline.
+            fob_arm_outer_dist = 5.33 + arm_w
+
+            # Only widen if the FOB arm actually extends beyond the standard platform width
+            if std_far_offset < fob_arm_outer_dist:
+                widened_offset = round(fob_arm_outer_dist + 1.0, 2)
+                extra_width = round(widened_offset - std_far_offset, 2)
+
+                # Determine FOB reference chainage
+                from fob.deck import resolve_fob_chainage
+
+                fob_ch = resolve_fob_chainage(
+                    fob,
+                    tracks,
+                    station_requests=getattr(self.config, "stations", None),
+                    station_markers=getattr(self.config, "station_markers", None),
+                )
+
+                ref_track_name = getattr(fob, "reference_track", "MAIN_LINE") or "MAIN_LINE"
+                ref_track_pts = tracks.get(ref_track_name) or tracks.get("MAIN_LINE")
+                if not ref_track_pts:
+                    continue
+                cleaned_ref_track = [(float(p[0]), float(p[1])) for p in ref_track_pts]
+                fob_pt = point_at_chainage(cleaned_ref_track, fob_ch).point
+
+                # Project FOB 2D point onto the platform's target track
+                proj = nearest_point_on_alignment(cleaned_plat_track, fob_pt)
+                plat_fob_ch = proj.chainage
+
+                half_fob_w = fob_w / 2.0
+
+                if arm_spec and isinstance(arm_spec, dict):
+                    arm_len = float(arm_spec.get("length", 15.0) or 15.0)
+                    arm_side = str(arm_spec.get("side", "LEFT") or "LEFT").upper()
+                    if arm_side == "LEFT":
+                        fob_min_ch = plat_fob_ch - half_fob_w - arm_len
+                        fob_max_ch = plat_fob_ch + half_fob_w
+                    else:
+                        fob_min_ch = plat_fob_ch - half_fob_w
+                        fob_max_ch = plat_fob_ch + half_fob_w + arm_len
+                else:
+                    fob_min_ch = plat_fob_ch - half_fob_w
+                    fob_max_ch = plat_fob_ch + half_fob_w
+
+                # User requirement:
+                # "from 1m before the FOB arm and make a line above or down depending on the side where we are making FOB,
+                #  then we will push that line required width + 1m so that to have little gap on the width
+                #  and the extended platform will have length till the end of the FOB on that side + 1m
+                #  and then we will connect it with the old platform"
+                s1 = fob_min_ch - 1.0
+                s2 = fob_max_ch + 1.0
+
+                p_start = platform_cfg.resolved_start_chainage(plat_track_len)
+                p_end = platform_cfg.resolved_end_chainage(plat_track_len)
+                s1 = max(p_start, s1)
+                s2 = min(p_end, s2)
+
+                if s2 > s1 + 0.5:
+                    widenings.append({
+                        "start_chainage": s1,
+                        "end_chainage": s2,
+                        "widened_offset": widened_offset,
+                        "extra_width": extra_width,
+                    })
+
+        return widenings
+
     def _generate_platforms(self, tracks=None) -> None:
         """Generate all platforms (outlines, stairs and tracks validated)."""
         self._platform_footprints = []
@@ -260,6 +384,11 @@ class PlatformStep(PipelineStep):
 
             if platform_cfg.center_on_track and platform_cfg.center_chainage is None:
                 self._resolve_platform_center(platform_cfg, tracks)
+
+            if getattr(platform_cfg, "fob_widenings", None) is None:
+                widenings = self._calculate_fob_widenings(platform_cfg, tracks)
+                if widenings:
+                    platform_cfg.fob_widenings = widenings
 
             result, doc = PlatformGenerator(platform_cfg).build()
             _write_platform(doc, result, platform_cfg)

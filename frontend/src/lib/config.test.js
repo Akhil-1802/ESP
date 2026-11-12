@@ -11,7 +11,6 @@ const base = () => ({
   mainLineDirection: 'UP',
   additionalLines: [],
   platforms: [],
-  crossoverMode: 'manual',
   crossovers: [],
   stations: [],
   fobs: [],
@@ -107,11 +106,6 @@ describe('defaults', () => {
       turnout: '1:12',
       direction: 'FORWARD',
     });
-  });
-
-  it('DEFAULT preset mode sends the preset string', () => {
-    const cfg = buildConfig({ ...base(), crossoverMode: 'default' });
-    assert.equal(cfg.crossovers, 'DEFAULT');
   });
 
   it('FOB omits width only when blank is impossible: defaults to 3.0, arms shaped correctly', () => {
@@ -253,11 +247,6 @@ describe('validateForm', () => {
       fobs: [{ refTrack: 'MAIN_LINE', chainage: '10', platforms: ['PLATFORM_1'], width: '' }],
     });
     assert.match(errors.join('\n'), /at least two platforms/);
-  });
-
-  it('DEFAULT preset requires LOOP_1 + LOOP_2 on opposite sides', () => {
-    const errors = validateForm({ ...base(), crossoverMode: 'default', loops: [{ name: 'LOOP_1', side: 'LEFT', c1: '10', c2: '20' }] });
-    assert.match(errors.join('\n'), /LOOP_1 and LOOP_2/);
   });
 
   it('accepts a complete valid form', () => {
