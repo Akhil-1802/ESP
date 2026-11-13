@@ -53,10 +53,14 @@ def test_custom_width_and_extensions():
 
 
 def test_max_span_raised():
-    # actual: "FOB span 30.010 m exceeds the maximum 30 m single span."
-    with pytest.raises(ValueError, match=r"exceeds the maximum 30 m"):
-        validate_fob_span(30.01)
-    validate_fob_span(30.0)
+    # 30m constraint removed: spans > 30m are accepted
+    assert validate_fob_span(30.01) == 30.01
+    assert validate_fob_span(30.0) == 30.0
+    assert validate_fob_span(50.0) == 50.0
+    with pytest.raises(ValueError, match="positive"):
+        validate_fob_span(0)
+    with pytest.raises(ValueError, match="number"):
+        validate_fob_span("invalid")
 
 
 def test_vertical_clearance_raised():
