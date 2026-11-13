@@ -54,7 +54,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
     setConfirmedTrackId(null);
 
     if (!chosen) {
-      set((f) => ({ ...f, kmlFile: null, selectedTrackId: null, mainLength: null, mainCenter: null }));
+      set((f) => ({ ...f, kmlFile: null, selectedTrackId: null, alignmentPoints: null, mainLength: null, mainCenter: null }));
       return;
     }
     setCentreBusy(true);
@@ -70,7 +70,8 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
       }
 
       // Default to track 0 if candidates exist
-      const defaultTrackId = tracks.length > 0 ? tracks[0].candidate_id : null;
+      const defaultTrack = tracks.length > 0 ? tracks[0] : null;
+      const defaultTrackId = defaultTrack ? defaultTrack.candidate_id : null;
       setTop({ selectedTrackId: defaultTrackId });
       setConfirmedTrackId(defaultTrackId);
 
@@ -79,6 +80,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: defaultTrackId,
+        alignmentPoints: defaultTrack?.pts_utm || null,
         mainLength: c.main_length_m,
         mainCenter: c.main_center_m,
       }));
@@ -94,13 +96,14 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
 
   const onSelectCandidateTrack = async (cand) => {
     if (!file || !cand) return;
-    setTop({ selectedTrackId: cand.candidate_id });
+    setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: cand.pts_utm || form.alignmentPoints });
     setCentreBusy(true);
     try {
       const c = await fetchMainCenter({ kmlFile: file, selectedTrackId: cand.candidate_id });
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: cand.candidate_id,
+        alignmentPoints: cand.pts_utm || f.alignmentPoints,
         mainLength: c.main_length_m,
         mainCenter: c.main_center_m,
       }));
@@ -117,7 +120,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
   const onConfirmCandidateMainLine = (cand) => {
     if (!cand) return;
     setConfirmedTrackId(cand.candidate_id);
-    setTop({ selectedTrackId: cand.candidate_id });
+    setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: cand.pts_utm || form.alignmentPoints });
     setCentreMsg(
       `✓ Confirmed Main Line: ${cand.name} (${cand.length_m.toFixed(2)} m). Ready for ESP generation.`,
     );

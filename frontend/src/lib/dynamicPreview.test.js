@@ -1,0 +1,361 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { generateDynamicPreview } from './dynamicPreview.js';
+
+describe('generateDynamicPreview', () => {
+  test('renders strictly single baseline MAIN_LINE without extra lines when form has minimal data', () => {
+    const form = {
+      mainLength: 1200,
+      mainCenter: 600,
+      mainLineDirection: 'UP',
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res);
+    assert.equal(res.isDynamic, true);
+    // Strictly only 1 track entity (MAIN_LINE) - no synthetic direction lines
+    assert.equal(res.entities, 1);
+    assert.ok(res.svg.includes('<svg'));
+    assert.ok(res.svg.includes('MAIN_LINE'));
+    assert.ok(res.layers.includes('MAIN_LINE'));
+    assert.ok(!res.layers.includes('DIRECTION'));
+  });
+
+  test('dynamically renders loop lines as parallel tracks strictly as configured', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [
+        {
+          name: 'LOOP_1',
+          referenceTrack: 'MAIN_LINE',
+          spacing: 5.3,
+          side: 'LEFT',
+          c1: 425,
+          c2: 1175,
+        },
+      ],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res.layers.includes('LOOP_1'));
+    assert.ok(!res.layers.includes('LOOP_CROSSOVER'));
+    assert.ok(res.svg.includes('LOOP_1'));
+  });
+
+  test('dynamically renders platforms and station buildings', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      platforms: [
+        {
+          name: 'PLATFORM_1',
+          track: 'LOOP_1',
+          side: 'LEFT',
+          length: 550,
+          width: 6,
+          chainage: 800,
+        },
+      ],
+      stations: [
+        {
+          name: 'CENTRAL STATION',
+          length: 40,
+          width: 10,
+          chainage: 800,
+        },
+      ],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res.layers.includes('PLATFORM_1'));
+    assert.ok(res.layers.includes('STATION-BUILDING'));
+    assert.ok(res.layers.includes('STATION-FLAG'));
+    assert.ok(res.svg.includes('HIGH LEVEL PASSENGER PLATFORM'));
+    assert.ok(res.svg.includes('CENTRAL STATION'));
+  });
+
+  test('renders FOB deck connecting platforms and FOB stairs widening', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      platforms: [
+        {
+          name: 'PLATFORM_1',
+          track: 'MAIN_LINE',
+          side: 'RIGHT',
+          length: 550,
+          width: 6,
+          chainage: 800,
+        },
+        {
+          name: 'PLATFORM_2',
+          track: 'LOOP_1',
+          side: 'LEFT',
+          length: 550,
+          width: 6,
+          chainage: 800,
+        },
+      ],
+      fobs: [
+        {
+          referenceTrack: 'MAIN_LINE',
+          chainage: 840,
+          width: 3,
+          platforms: ['PLATFORM_1', 'PLATFORM_2'],
+          arms: [
+            { platform: 'PLATFORM_1', side: 'LEFT', length: 17 },
+            { platform: 'PLATFORM_2', side: 'LEFT', length: 17 },
+          ],
+        },
+      ],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res.layers.includes('FOB'));
+    assert.ok(res.svg.includes('FOOT OVER BRIDGE'));
+  });
+
+  test('dynamically renders crossovers and badges when configured in form', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      crossovers: [
+        {
+          id: 'X-101',
+          track1: 'MAIN_LINE',
+          track2: 'LOOP_1',
+          c1: 500,
+          c2: 575,
+        },
+      ],
+      robs: [
+        {
+          chainage: 950,
+          width: 12,
+        },
+      ],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.strictEqual(res.crossoverCount, 1);
+    assert.strictEqual(res.crossoverTags.length, 1);
+    assert.strictEqual(res.crossoverTags[0].id, 'X-101');
+    assert.ok(res.layers.includes('CROSSOVERS'));
+    assert.ok(res.layers.includes('SRJ'));
+    assert.ok(res.svg.includes('cad-crossover-tag'));
+    assert.ok(res.svg.includes('X-101'));
+    assert.ok(res.layers.includes('ROB'));
+    assert.ok(res.svg.includes('ROAD OVER BRIDGE'));
+  });
+
+  test('dynamically responds to crossover parameter updates (chainage, turnout, direction)', () => {
+    const form1 = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      crossovers: [
+        {
+          from: 'MAIN_LINE',
+          to: 'LOOP_1',
+          chainage: 500,
+          turnout: '1:12',
+          direction: 'FORWARD',
+        },
+      ],
+    };
+    const res1 = generateDynamicPreview(form1);
+    assert.strictEqual(res1.crossoverCount, 1);
+    assert.strictEqual(res1.crossoverTags[0].id, 'C1');
+    assert.ok(res1.svg.includes('1 in 12'));
+    const xMid1 = res1.crossoverTags[0].x;
+
+    // Shift chainage from 500 to 700
+    const form2 = {
+      ...form1,
+      crossovers: [{ ...form1.crossovers[0], chainage: 700, turnout: '1:8.5' }],
+    };
+    const res2 = generateDynamicPreview(form2);
+    const xMid2 = res2.crossoverTags[0].x;
+    assert.ok(xMid2 > xMid1);
+    assert.ok(res2.svg.includes('1 in 8.5'));
+
+    // Without crossovers, zero crossover entities or badges
+    const formEmpty = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+    };
+    const resEmpty = generateDynamicPreview(formEmpty);
+    assert.strictEqual(resEmpty.crossoverCount, 0);
+    assert.strictEqual(resEmpty.crossoverTags.length, 0);
+    assert.ok(!resEmpty.layers.includes('CROSSOVERS'));
+  });
+
+  test('intelligently snaps AUTO crossovers to loop boundaries and autoAnchor crossovers', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [
+        { name: 'LOOP_1', spacing: 5.3, side: 'LEFT', crossoverDistance: 750 },
+        { name: 'LOOP_2', spacing: 5.3, side: 'RIGHT', crossoverDistance: 750 },
+      ],
+      crossovers: [
+        {
+          id: 'C1',
+          from: 'MAIN_LINE',
+          to: 'LOOP_1',
+          direction: 'FORWARD',
+          chainage: 'AUTO',
+          turnout: '1:12',
+        },
+        {
+          id: 'C2',
+          from: 'MAIN_LINE',
+          to: 'LOOP_1',
+          direction: 'REVERSE',
+          chainage: 'AUTO',
+          turnout: '1:12',
+        },
+        {
+          id: 'C3',
+          from: 'MAIN_LINE',
+          to: 'LOOP_2',
+          direction: 'FORWARD',
+          chainage: 'AUTO',
+          turnout: '1:12',
+          autoAnchor: 'C1',
+        },
+        {
+          id: 'C4',
+          from: 'MAIN_LINE',
+          to: 'LOOP_2',
+          direction: 'REVERSE',
+          chainage: 'AUTO',
+          turnout: '1:12',
+          autoAnchor: 'C2',
+        },
+      ],
+    };
+
+    const res = generateDynamicPreview(form);
+    assert.strictEqual(res.crossoverCount, 4);
+
+    // C1: FORWARD on LOOP_1 snaps directly to LOOP_1.c1 (425m)
+    // C2: REVERSE on LOOP_1 snaps directly to LOOP_1.c2 (1175m)
+    // C3: FORWARD on LOOP_2 anchored to C1 -> placed at C1.endCh + 54m (approx 522.58 + 54 = 576.58m)
+    // C4: REVERSE on LOOP_2 anchored to C2 -> placed at C2.startCh - 54m (approx 1077.42 - 54 = 1023.42m)
+    const tagC1 = res.crossoverTags.find((t) => t.id === 'C1');
+    const tagC2 = res.crossoverTags.find((t) => t.id === 'C2');
+    const tagC3 = res.crossoverTags.find((t) => t.id === 'C3');
+    const tagC4 = res.crossoverTags.find((t) => t.id === 'C4');
+
+    assert.ok(tagC1 && tagC2 && tagC3 && tagC4);
+    // C1 is around (425 + 522.58)/2 = 473.79m
+    assert.ok(tagC1.x > 425 && tagC1.x < 525);
+    // C2 is around (1175 + 1077.42)/2 = 1126.21m
+    assert.ok(tagC2.x > 1070 && tagC2.x < 1180);
+    // C3 is ahead of C1 (around 625m)
+    assert.ok(tagC3.x > tagC1.x);
+    // C4 is around (1121 + 1023.42)/2 = 1072.21m (separated by 54m from C2, inside loop)
+    assert.ok(tagC4.x < tagC2.x);
+    assert.ok(tagC4.x > 1000 && tagC4.x < 1150);
+
+    // Verify angles are strictly normalized to [-90, 90] so badge text is NEVER upside down or reversed
+    res.crossoverTags.forEach((t) => {
+      assert.ok(t.ang >= -90 && t.ang <= 90, `Tag ${t.id} angle ${t.ang} must be in [-90, 90]`);
+    });
+  });
+
+  test('places arrival crossover C5 exactly 13m before C3 on shared track matching CAD standard', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      mainLines: [{ name: 'MAIN_LINE_1', spacing: 5.3, side: 'LEFT', direction: 'DN' }],
+      loops: [
+        { name: 'LOOP_1', referenceTrack: 'MAIN_LINE', spacing: 5.3, side: 'LEFT', c1: 500, c2: 1250 },
+        { name: 'LOOP_2', referenceTrack: 'MAIN_LINE_1', spacing: 5.3, side: 'RIGHT', c1: 500, c2: 1250 },
+      ],
+      crossovers: [
+        { id: 'C1', from: 'MAIN_LINE', to: 'LOOP_1', direction: 'FORWARD', chainage: 'AUTO' },
+        { id: 'C3', from: 'MAIN_LINE_1', to: 'LOOP_2', direction: 'FORWARD', chainage: 'AUTO' },
+        { id: 'C5', from: 'MAIN_LINE', to: 'MAIN_LINE_1', direction: 'FORWARD', chainage: 'AUTO', autoAnchor: 'C3' },
+      ],
+    };
+
+    const res = generateDynamicPreview(form);
+    const tagC1 = res.crossoverTags.find((t) => t.id === 'C1');
+    const tagC3 = res.crossoverTags.find((t) => t.id === 'C3');
+    const tagC5 = res.crossoverTags.find((t) => t.id === 'C5');
+
+    assert.ok(tagC1 && tagC3 && tagC5);
+    // C1 and C3 both start at loop start (500m)
+    // C5 ends 13m before C3 on MAIN_LINE_1: C5 end is at 500 - 13 = 487m
+    // C5 tag is to the left of C3 and C1
+    assert.ok(tagC5.x < tagC3.x);
+    assert.ok(tagC5.x < tagC1.x);
+  });
+
+  test('trims main lines when enableMainLineTrim is active matching post-generation plan', () => {
+    const untrimmedForm = {
+      mainLength: 2000,
+      mainCenter: 1000,
+      enableMainLineTrim: false,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT', c1: 600, c2: 1400, overrunBeforeC1: 120, overrunAfterC2: 120 }],
+    };
+    const untrimmedRes = generateDynamicPreview(untrimmedForm);
+
+    const trimmedForm = {
+      ...untrimmedForm,
+      enableMainLineTrim: true,
+    };
+    const trimmedRes = generateDynamicPreview(trimmedForm);
+
+    // Trimmed plan has smaller width and bounds than full 2000m survey line
+    assert.ok(trimmedRes.w < untrimmedRes.w);
+  });
+
+  test('dynamically responds to increasing loop parameters (spacing, distance, overrun)', () => {
+    const baseForm = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT', crossoverDistance: 750, overrunBeforeC1: 120, overrunAfterC2: 120 }],
+    };
+    const baseRes = generateDynamicPreview(baseForm);
+
+    // Now increase spacing to 10.0m, crossover distance to 900m, and overruns to 200m
+    const expandedForm = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 10.0, side: 'LEFT', crossoverDistance: 900, overrunBeforeC1: 200, overrunAfterC2: 200 }],
+    };
+    const expandedRes = generateDynamicPreview(expandedForm);
+
+    assert.ok(baseRes.svg.includes('CAL 750m'));
+    assert.ok(expandedRes.svg.includes('CAL 900m'));
+    // Expanded spacing increases Y height of drawing
+    assert.ok(expandedRes.h > baseRes.h);
+  });
+
+  test('renders along curved surveyed alignment points', () => {
+    // 3 curved points in UTM meters
+    const alignmentPoints = [
+      [1000.0, 2000.0],
+      [1500.0, 2100.0],
+      [2000.0, 2050.0],
+    ];
+    const form = {
+      alignmentPoints,
+      loops: [{ name: 'LOOP_CURVED', spacing: 5.3, side: 'LEFT' }],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res.entities > 0);
+    assert.ok(res.w > 0);
+    assert.ok(res.h > 0);
+    assert.ok(res.layers.includes('LOOP_CURVED'));
+  });
+});

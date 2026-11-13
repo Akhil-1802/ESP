@@ -134,7 +134,17 @@ export function DxfViewer({
   }, [calculateFittedViewBox, result]);
 
   // Auto-focus and zoom into the track information whenever a new result arrives
+  const prevDynamicRef = useRef(false);
   useEffect(() => {
+    const wasDynamic = prevDynamicRef.current;
+    const isNowDynamic = Boolean(result?.isDynamic);
+    prevDynamicRef.current = isNowDynamic;
+
+    // Preserve existing pan/zoom when editing form in live dynamic preview mode
+    if (isNowDynamic && wasDynamic && customViewBox) {
+      return;
+    }
+
     setCustomViewBox(null);
     if (result && result.w && result.h) {
       const timer = setTimeout(() => {

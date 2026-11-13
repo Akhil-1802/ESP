@@ -46,6 +46,17 @@ export function DxfControls({
               <span className="max-w-[180px] truncate text-xs font-medium" title={result.filename}>
                 {result.filename}
               </span>
+              {result.isDynamic ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Live Preview
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  DXF Ready
+                </span>
+              )}
               {result.entities > 0 && (
                 <span
                   className={`rounded px-1.5 py-0.2 font-mono text-[10px] ${
@@ -249,7 +260,7 @@ export function DxfControls({
           {/* Export Buttons */}
           {result && (
             <>
-              {onToggleTrim && (
+              {onToggleTrim && !result?.isDynamic && (
                 <button
                   type="button"
                   onClick={onToggleTrim}
@@ -275,12 +286,12 @@ export function DxfControls({
                 type="button"
                 onClick={onDownloadDxf}
                 className="flex items-center gap-1 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-strong)] px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer"
-                title="Download DXF drawing"
+                title={result?.isDynamic ? 'Generate & download official CAD DXF' : 'Download DXF drawing'}
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                DXF
+                {result?.isDynamic ? 'Generate DXF' : 'DXF'}
               </button>
               <button
                 type="button"

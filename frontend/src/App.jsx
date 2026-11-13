@@ -39,6 +39,7 @@ import {
 } from './lib/config.js';
 import { downloadBlob, fetchMainCenter, generateDxf, convertKmlDirect } from './lib/api.js';
 import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
+import { generateDynamicPreview } from './lib/dynamicPreview.js';
 
 const initialForm = () => ({
   kmlFile: null,
@@ -67,7 +68,7 @@ const initialForm = () => ({
 export default function App() {
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ kind: 'idle' });
-  const [result, setResult] = useState(null);
+  const [backendResult, setBackendResult] = useState(null);
   const [isTrimmed, setIsTrimmed] = useState(false);
 
   // Panel visibility toggles
@@ -127,6 +128,47 @@ export default function App() {
   const configText = useMemo(() => JSON.stringify(config, null, 2), [config]);
   const busy = status.kind === 'busy';
 
+  const dynamicResult = useMemo(() => {
+    const hasContent = Boolean(
+      form.kmlFile ||
+      form.alignmentPoints ||
+      (form.loops && form.loops.length > 0) ||
+      (form.platforms && form.platforms.length > 0) ||
+      (form.stations && form.stations.length > 0) ||
+      (form.mainLines && form.mainLines.length > 0) ||
+      (form.crossovers && form.crossovers.length > 0) ||
+      (form.fobs && form.fobs.length > 0) ||
+      (form.robs && form.robs.length > 0) ||
+      (form.sidings && form.sidings.length > 0)
+    );
+    if (!hasContent) return null;
+
+    try {
+      const dyn = generateDynamicPreview(form, { isTrimmed });
+      const filename = form.outputDxf
+        ? form.outputDxf.trim()
+        : form.kmlFile
+          ? form.kmlFile.name.replace(/\.kml$/i, '.dxf')
+          : 'ESP_live_preview.dxf';
+      return {
+        ...dyn,
+        filename: filename.endsWith('.dxf') ? filename : `${filename}.dxf`,
+        json: configText,
+        blob: null,
+      };
+    } catch (err) {
+      console.warn('Dynamic preview generation error:', err);
+      return null;
+    }
+  }, [form, configText, isTrimmed]);
+
+  const result = backendResult || dynamicResult;
+
+  const updateForm = (updater) => {
+    setBackendResult(null);
+    setForm(updater);
+  };
+
   const onPreviewDirectKml = async () => {
     if (!form.kmlFile) {
       setStatus({ kind: 'error', messages: ['KML file: upload the track alignment (.kml).'] });
@@ -142,7 +184,7 @@ export default function App() {
       } catch {
         preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
       }
-      setResult({
+      setBackendResult({
         blob,
         filename,
         json: JSON.stringify({ mode: 'direct_kml_1to1', file: form.kmlFile.name }, null, 2),
@@ -207,7 +249,12 @@ export default function App() {
       }
       const trimmedApplied = Boolean(finalConfig.enable_main_line_trim);
       setIsTrimmed(trimmedApplied);
-      setResult({
+      setForm((prev) => ({
+        ...prev,
+        ...working,
+        enableMainLineTrim: trimmedApplied,
+      }));
+      setBackendResult({
         blob,
         filename,
         json: JSON.stringify(finalConfig, null, 2),
@@ -237,7 +284,7 @@ export default function App() {
       const buf = await res.arrayBuffer();
       const preview = dxfToSvg(buf);
       const blob = new Blob([buf], { type: 'application/dxf' });
-      setResult({
+      setBackendResult({
         blob,
         filename: 'ESP_sample.dxf',
         json: configText,
@@ -268,7 +315,8 @@ export default function App() {
     if (!result || !result.svg) return;
     try {
       const blob = await svgToPngBlob(result.svg, result.w, result.h);
-      downloadBlob(blob, result.filename.replace(/\.dxf$/i, '') + '.png');
+      const fname = (result.filename || 'ESP_preview.dxf').replace(/\.dxf$/i, '') + '.png';
+      downloadBlob(blob, fname);
     } catch {
       setStatus({ kind: 'error', messages: ['PNG export failed in this browser — download the DXF instead.'] });
     }
@@ -277,6 +325,8 @@ export default function App() {
   const handleDownloadDxf = () => {
     if (result && result.blob) {
       downloadBlob(result.blob, result.filename);
+    } else {
+      onGenerate();
     }
   };
 
@@ -391,7 +441,7 @@ export default function App() {
           </button>
 
           {/* Finalize Trim Button (appears after generation) */}
-          {result && (
+          {backendResult && (
             <button
               type="button"
               onClick={onToggleTrim}
@@ -455,9 +505,9 @@ export default function App() {
             >
               <StatusBanner status={status} />
 
-              <SourceSection form={form} set={setForm} onPreviewKml={onGenerate} onPreviewDirectKml={onPreviewDirectKml} />
+              <SourceSection form={form} set={updateForm} onPreviewKml={onGenerate} onPreviewDirectKml={onPreviewDirectKml} />
 
-              <MainTracksSection form={form} set={setForm} />
+              <MainTracksSection form={form} set={updateForm} />
 
               {(form.stationMarkers || []).length > 0 ? (
                 <>
@@ -476,7 +526,7 @@ export default function App() {
                       station={stn}
                       stationIndex={idx}
                       form={form}
-                      set={setForm}
+                      set={updateForm}
                       tracks={tracks}
                       layers={layers}
                     />
@@ -493,14 +543,14 @@ export default function App() {
                     </span>
                   </div>
 
-                  <TracksSection form={form} set={setForm} />
-                  <PlatformsSection form={form} set={setForm} tracks={tracks} />
-                  <CrossoversSection form={form} set={setForm} tracks={tracks} />
-                  <StationsSection form={form} set={setForm} layers={layers} />
-                  <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
-                  <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
-                  <SidingsSection form={form} set={setForm} tracks={tracks} />
-                  <GradientsSection form={form} set={setForm} tracks={tracks} />
+                  <TracksSection form={form} set={updateForm} />
+                  <PlatformsSection form={form} set={updateForm} tracks={tracks} />
+                  <CrossoversSection form={form} set={updateForm} tracks={tracks} />
+                  <StationsSection form={form} set={updateForm} layers={layers} />
+                  <FobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
+                  <RobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
+                  <SidingsSection form={form} set={updateForm} tracks={tracks} />
+                  <GradientsSection form={form} set={updateForm} tracks={tracks} />
                 </>
               )}
             </div>
@@ -539,7 +589,7 @@ export default function App() {
                 )}
               </button>
 
-              {result && (
+              {backendResult && (
                 <button
                   type="button"
                   onClick={onToggleTrim}
@@ -587,11 +637,11 @@ export default function App() {
         {/* ============================================================ */}
         <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-white">
           <DxfViewer
-            key={result ? `${result.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'empty'}
+            key={backendResult ? `${backendResult.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'live-viewer'}
             result={result}
             busy={busy}
             isTrimmed={isTrimmed}
-            onToggleTrim={onToggleTrim}
+            onToggleTrim={backendResult ? onToggleTrim : null}
             onDownloadDxf={handleDownloadDxf}
             onDownloadPng={downloadResultPng}
             onDownloadJson={downloadJson}
