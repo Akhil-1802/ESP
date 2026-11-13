@@ -190,14 +190,9 @@ export function FobsSection({ form, set, tracks, layers }) {
             {(() => {
               const est = estimateFobSpan(form, i);
               if (est === null) return null;
-              return est > FOB_MAX_SPAN_M ? (
-                <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-                  Estimated span ~{est.toFixed(2)} m — over the {FOB_MAX_SPAN_M} m maximum. Narrow the
-                  connected platforms (width/clearance) or the backend will reject this FOB.
-                </p>
-              ) : (
+              return (
                 <p className="mt-2 text-xs text-slate-500">
-                  Estimated span ~{est.toFixed(2)} m (within the {FOB_MAX_SPAN_M} m maximum).
+                  Estimated span ~{est.toFixed(2)} m.
                 </p>
               );
             })()}

@@ -81,13 +81,10 @@ def test_geometry_uses_local_tangent_not_fixed_xy():
 
 def test_max_span_validated():
     platforms = [_square(0, -8, 5), _square(0, 8, 5)]
-    try:
-        build_fob_outline((0, 0), (1, 0), platforms, 3.0,
-                          extend_start=10.0, extend_end=10.0)
-    except ValueError as exc:
-        assert "30 m" in str(exc)
-    else:
-        raise AssertionError("expected >30 m span to raise")
+    # With 30m constraint removed, >30m span builds successfully without error
+    outline = build_fob_outline((0, 0), (1, 0), platforms, 3.0,
+                                extend_start=10.0, extend_end=10.0)
+    assert len(outline) == 4
 
 
 def test_clearance_validated():

@@ -2,11 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CrossoversSection,
   FobsSection,
-  GradientsSection,
   MainTracksSection,
   PlatformsSection,
   RobsSection,
-  SidingsSection,
   SourceSection,
   StationYardSection,
   StationsSection,
@@ -499,8 +497,6 @@ export default function App() {
                   <StationsSection form={form} set={setForm} layers={layers} />
                   <FobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
                   <RobsSection form={form} set={setForm} tracks={tracks} layers={layers} />
-                  <SidingsSection form={form} set={setForm} tracks={tracks} />
-                  <GradientsSection form={form} set={setForm} tracks={tracks} />
                 </>
               )}
             </div>

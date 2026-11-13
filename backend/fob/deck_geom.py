@@ -10,16 +10,13 @@ from common.geometry import Point
 
 
 def validate_fob_span(span_m: float) -> float:
-    """Raise when a derived deck span exceeds the 30 m maximum."""
+    """Validate that the derived deck span is a valid positive number."""
     try:
         span = float(span_m)
     except (TypeError, ValueError):
         raise ValueError(f"FOB span must be a number, got {span_m!r}.")
-    if span > FOB_MAX_SPAN_M:
-        raise ValueError(
-            f"FOB span {span:.3f} m exceeds the maximum "
-            f"{FOB_MAX_SPAN_M:g} m single span."
-        )
+    if span <= 0:
+        raise ValueError(f"FOB span must be positive, got {span_m!r}.")
     return span
 
 
