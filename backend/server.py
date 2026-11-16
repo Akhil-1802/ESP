@@ -94,7 +94,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://railway-esp.netlify.app",
-        "https://railway-esp.netlify.app/",
+        "https://esp-beige.vercel.app",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
