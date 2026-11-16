@@ -540,6 +540,24 @@ describe('sidings', () => {
       assert.equal(ext.LOOP_1.isExtended, true);
     });
 
+    it('resolves colliding crossovers by pushing the second by 64m and adjusting loop extent', () => {
+      const f = {
+        ...base(),
+        loops: [
+          { name: 'LOOP_1', side: 'LEFT', spacing: '5.3', c1: '500', c2: '1250' },
+        ],
+        crossovers: [
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '350.0', direction: 'REVERSE' },
+          // Second crossover collides at 350.0, pushed by -64m in REVERSE to 286.0
+          { from: 'LOOP_1', to: 'MAIN_LINE', chainage: '350.0', direction: 'REVERSE' },
+        ],
+      };
+      const ext = getExtendedLoopEnds(f);
+      assert.equal(ext.LOOP_1.c1, 286.0);
+      assert.equal(ext.LOOP_1.c2, 1250);
+      assert.equal(ext.LOOP_1.isExtended, true);
+    });
+
     it('does not extend loop start to 0 when crossover chainage is blank, AUTO, or non-positive', () => {
       const f = {
         ...base(),

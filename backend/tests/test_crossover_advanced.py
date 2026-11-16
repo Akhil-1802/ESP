@@ -223,3 +223,28 @@ def test_centerline_distance_antiparallel_tracks():
     to_pts = [(1000.0, 5.3), (0.0, 5.3)]
     dist_mm = centerline_distance_mm(from_pts, to_pts)
     assert dist_mm == pytest.approx(5300.0, abs=1.0)
+
+
+def test_crossover_collision_push_64m():
+    """When two crossovers point at the exact same chainage or point on a shared track,
+    the first placed crossover stays in place, and the second is pushed by 64.0 m along its direction.
+    """
+    tracks = straight_tracks(tc=5.3, length=3000.0)
+    # Both C1 and C2 start at chainage 500.0 on MAIN_LINE (C1 to LOOP_1 on LEFT, C2 to LOOP_2 on RIGHT)
+    c1_req = req("C1", "MAIN_LINE", "LOOP_1", 500.0, "FORWARD", "1:12", None)
+    c2_req = req("C2", "MAIN_LINE", "LOOP_2", 500.0, "FORWARD", "1:12", None)
+
+    results, report = plan_ok([c1_req, c2_req], tracks)
+    assert report.overall_valid, report.errors
+
+    res_c1 = next(r for r in results if r.id == "C1")
+    res_c2 = next(r for r in results if r.id == "C2")
+
+    # C1 stays at 500.0
+    assert res_c1.chainage == pytest.approx(500.0, abs=0.001)
+
+    # C2 is pushed by exactly 64.0 m
+    assert res_c2.chainage == pytest.approx(564.0, abs=0.001)
+
+    # End point (end_chainage) of C2 is also shifted by 64.0 m relative to C1
+    assert (res_c2.end_chainage - res_c1.end_chainage) == pytest.approx(64.0, abs=0.001)

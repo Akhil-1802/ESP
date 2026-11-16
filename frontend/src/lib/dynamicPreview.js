@@ -276,7 +276,178 @@ export function generateDynamicPreview(form, options = {}) {
   };
 
   // ---------------------------------------------------------------------------
-  // 1. Compute Loop Extents & Alignment Trimming (backend main_line_trim mirror)
+  // 1. Compute Base Loops & Pre-resolve Crossovers (with 64m Collision Push)
+  // ---------------------------------------------------------------------------
+  const resolveTrackOffset = (name, fallback) => {
+    if (!name) return fallback;
+    if (trackOffsets[name] != null) return trackOffsets[name];
+    const key = Object.keys(trackOffsets).find((k) => k.toUpperCase() === String(name).toUpperCase());
+    return key ? trackOffsets[key] : fallback;
+  };
+
+  const baseLoops = {};
+  (f.loops || []).forEach((lp, idx) => {
+    const name = (lp.name || `LOOP_${idx + 1}`).trim();
+    const crossDist = parseNum(lp.crossoverDistance, 750.0);
+    const defaultHalf = crossDist / 2.0;
+    const autoC1 = Math.max(0.0, baseCenter - defaultHalf);
+    const autoC2 = autoC1 + crossDist;
+    const c1 = parseNum(lp.c1, autoC1);
+    const c2 = parseNum(lp.c2, autoC2);
+    baseLoops[name] = { c1, c2 };
+  });
+
+  const placedCrossovers = [];
+
+  (f.crossovers || []).forEach((x, idx) => {
+    const xId = (x.id || `C${idx + 1}`).trim();
+    const fromTrack = (x.from || x.fromTrack || x.track1 || 'MAIN_LINE').trim();
+    const otherTracks = Object.keys(trackOffsets).filter((k) => k !== fromTrack);
+    const defaultTo = otherTracks.length > 0 ? otherTracks[0] : 'LOOP_1';
+    const toTrack = (x.to || x.toTrack || x.track2 || defaultTo).trim();
+
+    const fromOff = resolveTrackOffset(fromTrack, 0.0);
+    let toOff = resolveTrackOffset(toTrack, fromOff !== 0.0 ? 0.0 : 5.3);
+    if (Math.abs(toOff - fromOff) < 1e-4) {
+      toOff = fromOff + 5.3;
+    }
+
+    const tc_m = Math.abs(toOff - fromOff);
+    const is85 = String(x.turnout || '').includes('8.5');
+    const n = is85 ? 8.5 : 12.0;
+    const a_m = is85 ? 12.025 : 16.989;
+
+    let ol_m;
+    if (tc_m <= 6.0) {
+      ol_m = tc_m * n + 2.0 * a_m;
+    } else {
+      const b_m = is85 ? 16.486 : 22.912;
+      const r_m = is85 ? 232.26 : 441.36;
+      const fAngle = Math.atan(1.0 / n);
+      const cosF = Math.cos(fAngle);
+      const sinF = Math.sin(fAngle);
+      const tc_mm = tc_m * 1000.0;
+      const r_mm = r_m * 1000.0;
+      const b_mm = b_m * 1000.0;
+      const arg = (r_mm * cosF + b_mm * sinF - tc_mm / 2.0) / r_mm;
+      if (arg >= -1.0 && arg <= 1.0) {
+        const theta = Math.acos(arg);
+        const tanVal = r_mm * Math.tan((theta - fAngle) / 2.0);
+        const x_mm = 2.0 * ((b_mm + tanVal) * cosF + tanVal * Math.cos(theta));
+        ol_m = (x_mm + 2.0 * a_m * 1000.0) / 1000.0;
+      } else {
+        ol_m = tc_m * n + 2.0 * a_m;
+      }
+    }
+
+    const dirStr = String(x.direction || 'FORWARD').toUpperCase();
+    const isReverse = dirStr === 'REVERSE';
+    const sgnDir = isReverse ? -1.0 : 1.0;
+
+    let c1;
+    const rawCh = String(x.chainage ?? x.c1 ?? x.fromChainage ?? '').trim();
+    if (rawCh && rawCh.toUpperCase() !== 'AUTO') {
+      c1 = parseNum(rawCh, mainCenter - ol_m / 2.0);
+    } else {
+      // AUTO placement
+      const targetLoopName = [toTrack, fromTrack].find((t) => baseLoops[t]);
+      const targetLoop = targetLoopName ? baseLoops[targetLoopName] : null;
+
+      // Check if user selected an anchor crossover (e.g. 'C1', 'C2', 'C3')
+      let anchorCrossover = null;
+      if (x.autoAnchor) {
+        anchorCrossover = placedCrossovers.find((c) => c.id === String(x.autoAnchor).trim());
+      }
+
+      if (anchorCrossover) {
+        const sameDir = anchorCrossover.direction === dirStr;
+        // Same direction separation is 13m; opposite direction separation is 54m (Indian Railways standard)
+        const sep = sameDir ? 13.0 : 54.0;
+
+        if (dirStr === 'FORWARD' && toTrack === anchorCrossover.fromTrack) {
+          c1 = anchorCrossover.c1 - sep - ol_m;
+        } else if (dirStr === 'FORWARD') {
+          c1 = Math.max(anchorCrossover.c1, anchorCrossover.c2) + sep;
+        } else {
+          if (fromTrack === anchorCrossover.toTrack) {
+            c1 = anchorCrossover.c2 - sep;
+          } else {
+            c1 = Math.min(anchorCrossover.c1, anchorCrossover.c2) - sep;
+          }
+        }
+      } else if (targetLoop) {
+        c1 = dirStr === 'FORWARD' ? targetLoop.c1 : targetLoop.c2;
+      } else if (placedCrossovers.length > 0) {
+        const prev = placedCrossovers[placedCrossovers.length - 1];
+        const sameDir = prev.direction === dirStr;
+        const sep = sameDir ? 13.0 : 54.0;
+        if (dirStr === 'FORWARD' && toTrack === prev.fromTrack) {
+          c1 = prev.c1 - sep - ol_m;
+        } else if (dirStr === 'FORWARD') {
+          c1 = Math.max(prev.c1, prev.c2) + sep;
+        } else {
+          c1 = Math.min(prev.c1, prev.c2) - sep;
+        }
+      } else {
+        c1 = dirStr === 'FORWARD' ? Math.max(0.0, mainCenter - 300.0) : Math.min(totalLength, mainCenter + 300.0);
+      }
+    }
+
+    // --- Collision check and 64m shift ---
+    let collision = true;
+    let iter = 0;
+    while (collision && iter < 10) {
+      collision = false;
+      iter++;
+      const curC2 = c1 + sgnDir * ol_m;
+
+      for (const prev of placedCrossovers) {
+        const sharesTrack =
+          fromTrack === prev.fromTrack ||
+          fromTrack === prev.toTrack ||
+          toTrack === prev.fromTrack ||
+          toTrack === prev.toTrack;
+        if (!sharesTrack) continue;
+
+        let collides = false;
+        if (Math.abs(c1 - prev.c1) < 1.0) {
+          collides = true;
+        } else {
+          if (fromTrack === prev.fromTrack && Math.abs(c1 - prev.c1) < 1.0) collides = true;
+          if (fromTrack === prev.toTrack && Math.abs(c1 - prev.c2) < 1.0) collides = true;
+          if (toTrack === prev.fromTrack && Math.abs(curC2 - prev.c1) < 1.0) collides = true;
+          if (toTrack === prev.toTrack && Math.abs(curC2 - prev.c2) < 1.0) collides = true;
+        }
+
+        if (collides) {
+          collision = true;
+          const shift = isReverse ? -64.0 : 64.0;
+          c1 += shift;
+          break;
+        }
+      }
+    }
+
+    const c2 = c1 + sgnDir * ol_m;
+
+    placedCrossovers.push({
+      id: xId,
+      c1,
+      c2,
+      startCh: Math.min(c1, c2),
+      endCh: Math.max(c1, c2),
+      direction: dirStr,
+      fromTrack,
+      toTrack,
+      fromOff,
+      toOff,
+      ol_m,
+      rawTurnout: x.turnout,
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2. Compute Loop Extents & Alignment Trimming (overrun 120m from outermost SRJ)
   // ---------------------------------------------------------------------------
   const loopExtents = {};
 
@@ -293,10 +464,23 @@ export function generateDynamicPreview(form, options = {}) {
     const defaultHalf = crossDist / 2.0;
     const autoC1 = Math.max(0.0, baseCenter - defaultHalf);
     const autoC2 = autoC1 + crossDist;
-    const c1 = parseNum(lp.c1, autoC1);
-    const c2 = parseNum(lp.c2, autoC2);
+    const baseC1 = parseNum(lp.c1, autoC1);
+    const baseC2 = parseNum(lp.c2, autoC2);
 
-    // Overruns (default 120m per Indian Railways standards)
+    let runS = baseC1;
+    let runE = baseC2;
+
+    // Check all SRJs on this loop from placedCrossovers to extend running line
+    placedCrossovers.forEach((xo) => {
+      if (xo.fromTrack === name || xo.toTrack === name) {
+        const srj = xo.fromTrack === name ? xo.c1 : xo.c2;
+        const mid = (baseC1 + baseC2) / 2.0;
+        if (srj <= mid && srj < runS) runS = srj;
+        if (srj > mid && srj > runE) runE = srj;
+      }
+    });
+
+    // Overruns (default 120m per Indian Railways standards, exactly 120m from outermost SRJ)
     const overrunBefore = parseNum(lp.overrunBeforeC1 ?? lp.extStart, 120.0);
     const overrunAfter = parseNum(lp.overrunAfterC2 ?? lp.extEnd, 120.0);
 
@@ -315,10 +499,10 @@ export function generateDynamicPreview(form, options = {}) {
     });
     const ladderLead = numOuter * 150.0;
 
-    const sStart = Math.max(0.0, c1 - overrunBefore - ladderLead);
-    const sEnd = Math.min(totalLength, c2 + overrunAfter + ladderLead);
+    const sStart = Math.max(0.0, runS - overrunBefore - ladderLead);
+    const sEnd = Math.min(totalLength, runE + overrunAfter + ladderLead);
 
-    loopExtents[name] = { c1, c2, overrunBefore, overrunAfter, ladderLead, sStart, sEnd, loopOff, ref, sp, sgn };
+    loopExtents[name] = { c1: runS, c2: runE, baseC1, baseC2, overrunBefore, overrunAfter, ladderLead, sStart, sEnd, loopOff, ref, sp, sgn };
   });
 
   const isTrimmed = Boolean(f.enableMainLineTrim || options.isTrimmed || f.isTrimmed);
@@ -431,131 +615,8 @@ export function generateDynamicPreview(form, options = {}) {
   // ---------------------------------------------------------------------------
   // 3. Draw Crossovers (Mathematical mirror of backend crossover/core.py & geometry.py)
   // ---------------------------------------------------------------------------
-  const resolveTrackOffset = (name, fallback) => {
-    if (!name) return fallback;
-    if (trackOffsets[name] != null) return trackOffsets[name];
-    const key = Object.keys(trackOffsets).find((k) => k.toUpperCase() === String(name).toUpperCase());
-    return key ? trackOffsets[key] : fallback;
-  };
-
-  const placedCrossovers = [];
-
-  (f.crossovers || []).forEach((x, idx) => {
-    const xId = (x.id || `C${idx + 1}`).trim();
-    const fromTrack = (x.from || x.fromTrack || x.track1 || 'MAIN_LINE').trim();
-    const otherTracks = Object.keys(trackOffsets).filter((k) => k !== fromTrack);
-    const defaultTo = otherTracks.length > 0 ? otherTracks[0] : 'LOOP_1';
-    const toTrack = (x.to || x.toTrack || x.track2 || defaultTo).trim();
-
-    const fromOff = resolveTrackOffset(fromTrack, 0.0);
-    let toOff = resolveTrackOffset(toTrack, fromOff !== 0.0 ? 0.0 : 5.3);
-    if (Math.abs(toOff - fromOff) < 1e-4) {
-      toOff = fromOff + 5.3;
-    }
-
-    const tc_m = Math.abs(toOff - fromOff);
-    const is85 = String(x.turnout || '').includes('8.5');
-    const n = is85 ? 8.5 : 12.0;
-    const a_m = is85 ? 12.025 : 16.989;
-
-    let ol_m;
-    if (tc_m <= 6.0) {
-      ol_m = tc_m * n + 2.0 * a_m;
-    } else {
-      const b_m = is85 ? 16.486 : 22.912;
-      const r_m = is85 ? 232.26 : 441.36;
-      const fAngle = Math.atan(1.0 / n);
-      const cosF = Math.cos(fAngle);
-      const sinF = Math.sin(fAngle);
-      const tc_mm = tc_m * 1000.0;
-      const r_mm = r_m * 1000.0;
-      const b_mm = b_m * 1000.0;
-      const arg = (r_mm * cosF + b_mm * sinF - tc_mm / 2.0) / r_mm;
-      if (arg >= -1.0 && arg <= 1.0) {
-        const theta = Math.acos(arg);
-        const tanVal = r_mm * Math.tan((theta - fAngle) / 2.0);
-        const x_mm = 2.0 * ((b_mm + tanVal) * cosF + tanVal * Math.cos(theta));
-        ol_m = (x_mm + 2.0 * a_m * 1000.0) / 1000.0;
-      } else {
-        ol_m = tc_m * n + 2.0 * a_m;
-      }
-    }
-
-    const dirStr = String(x.direction || 'FORWARD').toUpperCase();
-    const isReverse = dirStr === 'REVERSE';
-    const sgnDir = isReverse ? -1.0 : 1.0;
-
-    let c1;
-    const rawCh = String(x.chainage ?? x.c1 ?? x.fromChainage ?? '').trim();
-    if (rawCh && rawCh.toUpperCase() !== 'AUTO') {
-      c1 = parseNum(rawCh, mainCenter - ol_m / 2.0);
-    } else {
-      // AUTO placement
-      const targetLoopName = [toTrack, fromTrack].find((t) => loopExtents[t]);
-      const targetLoop = targetLoopName ? loopExtents[targetLoopName] : null;
-
-      // Check if user selected an anchor crossover (e.g. 'C1', 'C2', 'C3')
-      let anchorCrossover = null;
-      if (x.autoAnchor) {
-        anchorCrossover = placedCrossovers.find((c) => c.id === String(x.autoAnchor).trim());
-      }
-
-      if (anchorCrossover) {
-        const sameDir = anchorCrossover.direction === dirStr;
-        // Same direction separation is 13m; opposite direction separation is 54m (Indian Railways standard)
-        const sep = sameDir ? 13.0 : 54.0;
-
-        // Check relationship with anchor on shared track:
-        // If this crossover arrives (toTrack) into the track where anchor departs (fromTrack),
-        // or connects ahead/behind on the shared line:
-        if (dirStr === 'FORWARD' && toTrack === anchorCrossover.fromTrack) {
-          // Arrives on track 13m before the anchor departs (matching Image 2: C5 into Line 3 before C3)
-          c1 = anchorCrossover.c1 - sep - ol_m;
-        } else if (dirStr === 'FORWARD') {
-          c1 = Math.max(anchorCrossover.c1, anchorCrossover.c2) + sep;
-        } else {
-          // REVERSE crossover
-          if (fromTrack === anchorCrossover.toTrack) {
-            c1 = anchorCrossover.c2 - sep;
-          } else {
-            c1 = Math.min(anchorCrossover.c1, anchorCrossover.c2) - sep;
-          }
-        }
-      } else if (targetLoop) {
-        // Snaps directly to target loop running boundary (C1 for FORWARD, C2 for REVERSE)
-        c1 = dirStr === 'FORWARD' ? targetLoop.c1 : targetLoop.c2;
-      } else if (placedCrossovers.length > 0) {
-        const prev = placedCrossovers[placedCrossovers.length - 1];
-        const sameDir = prev.direction === dirStr;
-        const sep = sameDir ? 13.0 : 54.0;
-        if (dirStr === 'FORWARD' && toTrack === prev.fromTrack) {
-          c1 = prev.c1 - sep - ol_m;
-        } else if (dirStr === 'FORWARD') {
-          c1 = Math.max(prev.c1, prev.c2) + sep;
-        } else {
-          c1 = Math.min(prev.c1, prev.c2) - sep;
-        }
-      } else {
-        c1 = dirStr === 'FORWARD' ? Math.max(0.0, mainCenter - 300.0) : Math.min(totalLength, mainCenter + 300.0);
-      }
-    }
-
-    const c2 =
-      x.c2 != null && String(x.c2).trim() !== ''
-        ? parseNum(x.c2, c1 + sgnDir * ol_m)
-        : c1 + sgnDir * ol_m;
-
-    placedCrossovers.push({
-      id: xId,
-      c1,
-      c2,
-      startCh: Math.min(c1, c2),
-      endCh: Math.max(c1, c2),
-      direction: dirStr,
-      fromTrack,
-      toTrack,
-      ol_m,
-    });
+  placedCrossovers.forEach((px) => {
+    const { id: xId, c1, c2, fromOff, toOff, rawTurnout } = px;
 
     // Sample the crossover reverse-curve trajectory
     const numSamples = 24;
@@ -607,7 +668,7 @@ export function generateDynamicPreview(form, options = {}) {
     });
 
     // Turnout type annotation text
-    const tDes = (x.turnout || '1:12').replace(':', ' in ');
+    const tDes = (rawTurnout || '1:12').replace(':', ' in ');
     addText(tDes, midPt[0], midPt[1] + sgnLat * 1.5, 'CROSSOVERS', 0.8, ang, 1, 2);
   });
 
@@ -1100,6 +1161,7 @@ export function generateDynamicPreview(form, options = {}) {
     trackWaypoints,
     crossoverTags,
     crossoverCount: crossoverTags.length,
+    placedCrossovers,
     isDynamic: true,
   };
 }

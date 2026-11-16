@@ -365,6 +365,48 @@ describe('generateDynamicPreview', () => {
     assert.ok(tagC5.x < tagC1.x);
   });
 
+  test('pushes second colliding crossover by 64m when two crossovers point at exact same chainage/point and preserves 120m overrun', () => {
+    const form = {
+      mainLength: 2000,
+      mainCenter: 1000,
+      loops: [
+        {
+          name: 'LOOP_1',
+          side: 'LEFT',
+          spacing: 5.3,
+          c1: 500,
+          c2: 1250,
+          overrunBeforeC1: 120,
+          overrunAfterC2: 120,
+        },
+      ],
+      crossovers: [
+        // C1 placed first at chainage 500.0 FORWARD
+        { id: 'C1', from: 'LOOP_1', to: 'MAIN_LINE', direction: 'FORWARD', chainage: '500.0' },
+        // C2 placed second targeting the exact same chainage 500.0 on shared line
+        { id: 'C2', from: 'LOOP_1', to: 'MAIN_LINE', direction: 'FORWARD', chainage: '500.0' },
+      ],
+    };
+
+    const res = generateDynamicPreview(form);
+    const placed = res.placedCrossovers;
+    assert.strictEqual(placed.length, 2);
+
+    const c1 = placed.find((c) => c.id === 'C1');
+    const c2 = placed.find((c) => c.id === 'C2');
+
+    // First placed crossover remains untouched at 500.0
+    assert.strictEqual(c1.c1, 500.0);
+
+    // Second placed crossover is pushed by exactly 64.0m to 564.0
+    assert.strictEqual(c2.c1, 564.0);
+    // Its end point is shifted by 64m as well (preserving OL)
+    assert.strictEqual(Math.round((c2.c2 - c1.c2) * 1000) / 1000, 64.0);
+
+    // Connected loop CAL label should reflect the loop extent
+    assert.ok(res.svg.includes('LOOP_1'));
+  });
+
   test('trims main lines when enableMainLineTrim is active matching post-generation plan', () => {
     const untrimmedForm = {
       mainLength: 2000,

@@ -32,6 +32,8 @@ NORMAL_SPACING_LIMIT_MM: float = 8000.0
 SAME_DIRECTION_MIN_SEPARATION_M: float = 13.0
 #: Minimum separation for two adjacent crossovers, opposite directions (m).
 OPPOSITE_DIRECTION_MIN_SEPARATION_M: float = 54.0
+#: Distance to push a colliding crossover (m) when two crossovers point at the exact same chainage/point.
+COLLISION_PUSH_SEPARATION_M: float = 64.0
 
 # --- chainage tolerances ------------------------------------------------------
 #: 1 mm -- covers 3-decimal display rounding (e.g. 175.7094 -> 175.709).

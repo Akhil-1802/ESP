@@ -286,6 +286,38 @@ export function getExtendedLoopEnds(form, excludeCrossoverIndex = -1) {
 
   const extents = {};
   const crossovers = form?.crossovers || [];
+  const resolvedXos = [];
+  crossovers.forEach((xo, xoIdx) => {
+    const rawCh = xo.chainage !== undefined && xo.chainage !== null ? String(xo.chainage).trim() : '';
+    let ch = Number(rawCh);
+    const dirStr = String(xo.direction || 'FORWARD').toUpperCase();
+    const isReverse = dirStr === 'REVERSE';
+    const fromTrack = String(xo.from || xo.fromTrack || 'MAIN_LINE').trim();
+    const toTrack = String(xo.to || xo.toTrack || 'LOOP_1').trim();
+
+    if (Number.isFinite(ch) && ch > 0) {
+      let collision = true;
+      let iter = 0;
+      while (collision && iter < 10) {
+        collision = false;
+        iter++;
+        for (const prev of resolvedXos) {
+          const sharesTrack =
+            fromTrack === prev.fromTrack ||
+            fromTrack === prev.toTrack ||
+            toTrack === prev.fromTrack ||
+            toTrack === prev.toTrack;
+          if (!sharesTrack) continue;
+          if (Math.abs(ch - prev.ch) < 1.0) {
+            collision = true;
+            ch += isReverse ? -64.0 : 64.0;
+            break;
+          }
+        }
+      }
+    }
+    resolvedXos.push({ xo, xoIdx, ch, fromTrack, toTrack });
+  });
 
   ['LEFT', 'RIGHT'].forEach((side) => {
     let prevS = null;
@@ -318,12 +350,11 @@ export function getExtendedLoopEnds(form, excludeCrossoverIndex = -1) {
         runE = prevE !== null ? Math.max(c2 + numOuter * ladderStep, prevE + ladderStep) : c2 + numOuter * ladderStep;
       }
 
-      crossovers.forEach((xo, xoIdx) => {
+      resolvedXos.forEach(({ xo, xoIdx, ch, fromTrack, toTrack }) => {
         if (excludeCrossoverIndex >= 0 && xoIdx === excludeCrossoverIndex) return;
-        if (xo.from === name || xo.to === name) {
+        if (fromTrack === name || toTrack === name) {
           const rawCh = xo.chainage !== undefined && xo.chainage !== null ? String(xo.chainage).trim() : '';
           if (!rawCh || rawCh.toUpperCase() === 'AUTO') return;
-          const ch = Number(rawCh);
           // Chainages must be positive and finite (empty strings or '0' do not pull loop start to 0)
           if (!Number.isFinite(ch) || ch <= 0) return;
 

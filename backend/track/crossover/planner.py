@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from common.constants import COLLISION_PUSH_SEPARATION_M
 from common.geometry import Point
 from track.crossover.geometry import (
     _resolve_extents,
@@ -11,6 +12,7 @@ from track.crossover.geometry import (
     build_crossover_geometry,
     compute_crossover_params,
     get_required_separation,
+    srj_positions_on_tracks,
 )
 from track.crossover.models import CrossoverRequest, CrossoverResult
 from track.crossover.normalize import normalize_placement
@@ -175,6 +177,78 @@ class CrossoverPlanner:
             placed_order.append(req.id)
         return resolved
 
+    def _resolve_crossover_collisions(
+        self,
+        requests: Sequence[CrossoverRequest],
+        resolved: dict[str, float],
+        push_m: float = COLLISION_PUSH_SEPARATION_M,
+    ) -> dict[str, float]:
+        """When two crossovers point at the exact same chainage or point on a shared track,
+        keep the earlier placed crossover at its position, and push the second placed crossover
+        starting point by push_m (64.0m) along its line of travel.
+        """
+        resolved = dict(resolved)
+        placed_reqs: list[CrossoverRequest] = []
+
+        for req in requests:
+            ch = resolved.get(req.id)
+            if ch is None:
+                continue
+
+            collision = True
+            iterations = 0
+            while collision and iterations < 10:
+                collision = False
+                iterations += 1
+
+                p_curr = self._params_or_none(req, ch)
+                to_main_curr = (
+                    p_curr["to_main"]
+                    if p_curr is not None
+                    else ch + (-1.0 if req.direction == "REVERSE" else 1.0) * 97.578
+                )
+                curr_srjs = srj_positions_on_tracks(req, ch, to_main_curr)
+
+                for prev in placed_reqs:
+                    shared_tracks = {req.from_track, req.to_track} & {
+                        prev.from_track,
+                        prev.to_track,
+                    }
+                    if not shared_tracks:
+                        continue
+
+                    prev_ch = resolved[prev.id]
+                    p_prev = self._params_or_none(prev, prev_ch)
+                    to_main_prev = (
+                        p_prev["to_main"]
+                        if p_prev is not None
+                        else prev_ch + (-1.0 if prev.direction == "REVERSE" else 1.0) * 97.578
+                    )
+                    prev_srjs = srj_positions_on_tracks(prev, prev_ch, to_main_prev)
+
+                    collides = False
+                    if abs(ch - prev_ch) < 1.0:
+                        collides = True
+                    else:
+                        for trk in shared_tracks:
+                            if trk in curr_srjs and trk in prev_srjs:
+                                if abs(curr_srjs[trk] - prev_srjs[trk]) < 1.0:
+                                    collides = True
+                                    break
+
+                    if collides:
+                        collision = True
+                        if req.direction == "REVERSE":
+                            ch -= push_m
+                        else:
+                            ch += push_m
+                        break
+
+            resolved[req.id] = ch
+            placed_reqs.append(req)
+
+        return resolved
+
     def plan(
         self, requests: Sequence[CrossoverRequest]
     ) -> tuple[list[CrossoverResult], object]:
@@ -185,9 +259,11 @@ class CrossoverPlanner:
             else {r.id: float(r.chainage) for r in requests}
         )
 
+        resolved = self._resolve_crossover_collisions(requests, resolved)
+
         for req in requests:
+            req.chainage = float(resolved[req.id])
             if req.is_auto:
-                req.chainage = float(resolved[req.id])
                 req.position_mode = "AUTO"
 
         params_by_id: dict[str, dict] = {}
