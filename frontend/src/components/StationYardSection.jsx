@@ -31,6 +31,8 @@ export function StationYardSection({
   tracks,
   layers,
   hasGenerated,
+  isAlignmentDatum = false,
+  referenceDistance = null,
 }) {
   const setTop = useFormSetter(set);
   const [open, setOpen] = useState(true);
@@ -42,7 +44,9 @@ export function StationYardSection({
   const stnKmVal = hasKmStn ? String(station.km) : (hasMStn ? '0' : (parsedStn.km || '0'));
   const stnMVal = hasMStn ? String(station.m) : (parsedStn.m || '');
   const stnDisp = formatStartChainage(stnKmVal, stnMVal) || station?.chainage || '0.000';
-  const stnDist = getStationTrackDistance(station, form.startKm, form.startM);
+  const stnDist = Number.isFinite(referenceDistance)
+    ? referenceDistance
+    : getStationTrackDistance(station, form.startKm, form.startM);
 
   const allTracks = tracks || ['MAIN_LINE'];
   const safeLayers = layers && layers.length > 0 ? layers : ['PLATFORM_1'];
@@ -146,61 +150,6 @@ export function StationYardSection({
   const stationCrossovers = (form.crossovers || []).filter(
     (x) => (x.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex,
   );
-
-  const loopEnds = getExtendedLoopEnds(form);
-
-  const addStandardCrossovers = () => {
-    const l1 = stationLoops[0]?.name || 'LOOP_1';
-    const l2 = stationLoops[1]?.name || (tracks.find((t) => t.startsWith('LOOP_') && t !== l1) || 'LOOP_2');
-    const c1Chainage = stationLoops[0]?.c1 || loopEnds[l1]?.c1 || 'AUTO';
-    const c2Chainage = stationLoops[1]?.c2 || loopEnds[l2]?.c2 || 'AUTO';
-    const defaults = [
-      {
-        ...blankCrossover(),
-        from: l1,
-        to: 'MAIN_LINE',
-        chainage: c1Chainage,
-        direction: 'FORWARD',
-        turnout: '1:12',
-        stationIndex,
-      },
-      {
-        ...blankCrossover(),
-        from: 'MAIN_LINE',
-        to: l2,
-        chainage: c2Chainage,
-        direction: 'FORWARD',
-        turnout: '1:12',
-        stationIndex,
-      },
-      {
-        ...blankCrossover(),
-        from: 'MAIN_LINE',
-        to: l1,
-        chainage: 'AUTO',
-        direction: 'FORWARD',
-        turnout: '1:12',
-        autoAnchor: '',
-        stationIndex,
-      },
-      {
-        ...blankCrossover(),
-        from: l2,
-        to: 'MAIN_LINE',
-        chainage: 'AUTO',
-        direction: 'REVERSE',
-        turnout: '1:12',
-        autoAnchor: '',
-        stationIndex,
-      },
-    ];
-    setTop({
-      crossovers: [
-        ...(form.crossovers || []).filter((x) => (x.stationIndex ?? 0) !== stationIndex),
-        ...defaults,
-      ],
-    });
-  };
 
   const addCrossover = () => {
     const defaultFrom = stationLoops[0]?.name || 'MAIN_LINE';
@@ -480,13 +429,13 @@ export function StationYardSection({
           </span>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="rounded-md bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] text-white font-bold text-[11px] px-2 py-0.5 shadow-2xs">
-              Station {stationIndex + 1}
+              {isAlignmentDatum ? 'Yard' : `Station ${stationIndex + 1}`}
             </span>
             <h2 className="text-sm font-bold text-[var(--text-primary)] truncate">
               {stnName}
             </h2>
             <span className="rounded-full bg-[rgba(50,95,244,0.08)] border border-[var(--border)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--accent)]">
-              Datum: {stnDisp} (at {stnDist.toFixed(1)} m)
+              {isAlignmentDatum ? 'Reference' : 'Datum'}: {isAlignmentDatum ? 'Alignment centre' : stnDisp} (at {stnDist.toFixed(1)} m)
             </span>
           </div>
         </div>
@@ -508,7 +457,7 @@ export function StationYardSection({
                   <span>🔄</span> Loops &amp; Additional Lines ({stationLoops.length})
                 </h3>
                 <p className="text-[10.5px] text-slate-500">
-                  Loops are bounded parallel lines (C1 → C2) referenced to {stnName}.
+                  Loops are bounded parallel lines (C1 → C2) referenced to {isAlignmentDatum ? 'the alignment centre' : stnName}.
                 </p>
               </div>
               <button
@@ -521,7 +470,7 @@ export function StationYardSection({
             </div>
 
             {stationLoops.length === 0 ? (
-              <Empty>No loops configured for {stnName}. Click "+ Add loop" to add one.</Empty>
+              <Empty>No loops configured for this yard. Click "+ Add loop" to add one.</Empty>
             ) : (
               stationLoops.map((l, idx) => {
                 const globalLoopIdx = (form.loops || []).indexOf(l);
@@ -533,7 +482,7 @@ export function StationYardSection({
                 return (
                   <ItemCard
                     key={idx}
-                    title={`${l.name?.trim() || `LOOP_${globalLoopIdx + 1}`} · Referenced to ${stnName}`}
+                    title={`${l.name?.trim() || `LOOP_${globalLoopIdx + 1}`} · Referenced to ${isAlignmentDatum ? 'alignment centre' : stnName}`}
                     badge={`${l.side || 'LEFT'} · ${extentLen}m`}
                     subtitle={`[${c1Val} → ${c2Val}] · Spacing: ${l.spacing || 5.3}m`}
                     onRemove={() => removeLoop(l)}
@@ -651,7 +600,7 @@ export function StationYardSection({
             </div>
 
             {stationPlatforms.length === 0 ? (
-              <Empty>No platforms configured for {stnName}. Click "+ Add platform" to add one.</Empty>
+              <Empty>No platforms configured for this yard. Click "+ Add platform" to add one.</Empty>
             ) : (
               stationPlatforms.map((p, idx) => {
                 const globalPlatIdx = (form.platforms || []).indexOf(p);
@@ -739,10 +688,10 @@ export function StationYardSection({
                       <Check
                         checked={p.centerOnTrack !== false}
                         onChange={(v) => updatePlatformAt(p, { centerOnTrack: v })}
-                        label={`Centre on station point (${stnName} at ${stnDisp})`}
+                        label={`Centre on ${isAlignmentDatum ? 'alignment' : 'station'} point (${isAlignmentDatum ? `${stnDist.toFixed(1)} m` : `${stnName} at ${stnDisp}`})`}
                       />
                       <p className="mt-0.5 text-[10.5px] text-slate-400">
-                        Takes {stnName} at {stnDist.toFixed(1)} m as center and builds the {p.length || '550'} m platform around it.
+                        Takes {isAlignmentDatum ? 'the alignment reference' : stnName} at {stnDist.toFixed(1)} m as center and builds the {p.length || '550'} m platform around it.
                       </p>
                     </div>
                   </ItemCard>
@@ -767,14 +716,6 @@ export function StationYardSection({
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={addStandardCrossovers}
-                  className="rounded-lg border border-emerald-600/60 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
-                  title="Populate standard 4 Class B crossovers (C1–C4) for this station"
-                >
-                  + Standard 4 (C1–C4)
-                </button>
-                <button
-                  type="button"
                   onClick={addCrossover}
                   className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
                 >
@@ -796,7 +737,7 @@ export function StationYardSection({
 
             {stationCrossovers.length === 0 ? (
               <Empty>
-                No crossovers configured for {stnName}. Click "+ Standard 4 (C1–C4)" to add the standard set, or "+ Add crossover" for a custom one.
+                No crossovers configured for {stnName}. Click "+ Add crossover" to add one.
               </Empty>
             ) : (
               stationCrossovers.map((x, idx) => {

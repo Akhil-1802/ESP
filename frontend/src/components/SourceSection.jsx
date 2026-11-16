@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { fetchMainCenter, detectTracks } from '../lib/api.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
 import { blankStationMarker } from '../lib/formDefaults.js';
@@ -7,29 +7,22 @@ import { Field, Grid, Section, Text } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { TrackSelectionPanel } from './TrackSelectionPanel.jsx';
 
-export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
+export function SourceSection({
+  form,
+  set,
+  onPreviewKml,
+  onPreviewDirectKml,
+  alignmentState,
+  onAlignmentStateChange,
+}) {
   const setTop = useFormSetter(set);
   const [centreBusy, setCentreBusy] = useState(false);
   const [centreMsg, setCentreMsg] = useState('');
   const [candidateTracks, setCandidateTracks] = useState([]);
   const [confirmedTrackId, setConfirmedTrackId] = useState(null);
+  const requestIdRef = useRef(0);
   const file = form.kmlFile;
   const stationMarkers = form.stationMarkers || [];
-
-  const onStationCountChange = (val) => {
-    const targetCount = Math.max(0, parseInt(val, 10) || 0);
-    const current = [...(form.stationMarkers || [])];
-    if (targetCount === current.length) return;
-    if (targetCount < current.length) {
-      setTop({ stationMarkers: current.slice(0, targetCount) });
-    } else {
-      const added = [];
-      for (let i = current.length; i < targetCount; i++) {
-        added.push(blankStationMarker(i + 1));
-      }
-      setTop({ stationMarkers: [...current, ...added] });
-    }
-  };
 
   const addStationMarker = () => {
     const current = form.stationMarkers || [];
@@ -48,35 +41,52 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
   };
 
   const onFile = async (chosen) => {
-    setTop({ kmlFile: chosen, selectedTrackId: null });
+    const requestId = ++requestIdRef.current;
+    set((f) => ({
+      ...f,
+      kmlFile: chosen,
+      selectedTrackId: null,
+      alignmentPoints: null,
+      mainLength: null,
+      mainCenter: null,
+    }));
     setCentreMsg('');
     setCandidateTracks([]);
     setConfirmedTrackId(null);
 
     if (!chosen) {
-      set((f) => ({ ...f, kmlFile: null, selectedTrackId: null, alignmentPoints: null, mainLength: null, mainCenter: null }));
+      onAlignmentStateChange?.({ status: 'empty', message: '' });
       return;
     }
+    onAlignmentStateChange?.({
+      status: 'processing',
+      message: 'Processing KML alignment…',
+    });
     setCentreBusy(true);
     try {
       // 1. Detect candidate continuous paths from KML
       let tracks = [];
       try {
         const detectRes = await detectTracks({ kmlFile: chosen });
+        if (requestId !== requestIdRef.current) return;
         tracks = detectRes.candidate_tracks || [];
         setCandidateTracks(tracks);
       } catch (err) {
-        console.warn('Track detection failed, falling back to legacy centre:', err);
+        throw new Error(`Could not process KML alignment geometry: ${err.message}`);
       }
 
       // Default to track 0 if candidates exist
       const defaultTrack = tracks.length > 0 ? tracks[0] : null;
+      if (!defaultTrack || !Array.isArray(defaultTrack.pts_utm) || defaultTrack.pts_utm.length < 2) {
+        throw new Error('No usable continuous track alignment was found in this KML.');
+      }
       const defaultTrackId = defaultTrack ? defaultTrack.candidate_id : null;
       setTop({ selectedTrackId: defaultTrackId });
       setConfirmedTrackId(defaultTrackId);
 
       // 2. Fetch center & length for the selected track
       const c = await fetchMainCenter({ kmlFile: chosen, selectedTrackId: defaultTrackId });
+      if (requestId !== requestIdRef.current) return;
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: defaultTrackId,
@@ -87,33 +97,48 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
       setCentreMsg(
         `Track length: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
       );
+      onAlignmentStateChange?.({
+        status: 'ready',
+        message: `Alignment ready · ${c.main_length_m.toFixed(2)} m`,
+      });
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setCentreMsg(err.message);
+      onAlignmentStateChange?.({ status: 'error', message: err.message });
     } finally {
-      setCentreBusy(false);
+      if (requestId === requestIdRef.current) setCentreBusy(false);
     }
   };
 
   const onSelectCandidateTrack = async (cand) => {
     if (!file || !cand) return;
-    setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: cand.pts_utm || form.alignmentPoints });
+    const requestId = ++requestIdRef.current;
+    setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: null, mainLength: null, mainCenter: null });
+    onAlignmentStateChange?.({
+      status: 'processing',
+      message: `Processing ${cand.name || 'selected track'}…`,
+    });
     setCentreBusy(true);
     try {
       const c = await fetchMainCenter({ kmlFile: file, selectedTrackId: cand.candidate_id });
+      if (requestId !== requestIdRef.current) return;
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: cand.candidate_id,
-        alignmentPoints: cand.pts_utm || f.alignmentPoints,
+        alignmentPoints: cand.pts_utm || null,
         mainLength: c.main_length_m,
         mainCenter: c.main_center_m,
       }));
       setCentreMsg(
         `Previewing track ${cand.name}: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
       );
+      onAlignmentStateChange?.({ status: 'ready', message: `Alignment ready · ${c.main_length_m.toFixed(2)} m` });
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setCentreMsg(err.message);
+      onAlignmentStateChange?.({ status: 'error', message: err.message });
     } finally {
-      setCentreBusy(false);
+      if (requestId === requestIdRef.current) setCentreBusy(false);
     }
   };
 
@@ -148,7 +173,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
               {centreBusy ? 'Reading track geometry from KML…' : centreMsg}
             </span>
           )}
-          {file && (
+          {file && alignmentState?.status === 'ready' && (
             <div className="mt-2.5 flex flex-col gap-1.5">
               <div className="flex flex-wrap gap-2">
                 {onPreviewKml && (
@@ -280,19 +305,6 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5">
-                <label htmlFor="station-count-input" className="text-[11px] font-medium text-slate-600">
-                  No. of stations:
-                </label>
-                <input
-                  id="station-count-input"
-                  type="number"
-                  min="0"
-                  value={stationMarkers.length}
-                  onChange={(e) => onStationCountChange(e.target.value)}
-                  className="w-14 rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-500 focus:outline-hidden"
-                />
-              </div>
               <button
                 type="button"
                 onClick={addStationMarker}
@@ -305,7 +317,7 @@ export function SourceSection({ form, set, onPreviewKml, onPreviewDirectKml }) {
 
           {stationMarkers.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-300 bg-white/50 p-2.5 text-center text-[11px] text-slate-500">
-              No alignment stations specified. Enter number of stations or click <strong>+ Add</strong> to place station marker lines along the track.
+              No station references added. The yard continues to use the processed alignment centre. Add a station when you have a known station chainage.
             </div>
           ) : (
             <div className="space-y-2.5">

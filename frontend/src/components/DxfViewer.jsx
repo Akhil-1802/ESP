@@ -5,6 +5,7 @@ import { DxfControls } from './DxfControls.jsx';
 export function DxfViewer({
   result,
   busy,
+  busyMessage = 'Generating drawing…',
   onDownloadDxf,
   onDownloadPng,
   onDownloadJson,
@@ -509,7 +510,7 @@ export function DxfViewer({
         {busy && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2.5 bg-slate-950/70 backdrop-blur-xs text-white">
             <div className="h-7 w-7 animate-spin rounded-full border-3 border-sky-400 border-t-transparent" />
-            <span className="text-xs font-medium tracking-wide">Generating drawing...</span>
+            <span className="text-xs font-medium tracking-wide">{busyMessage}</span>
           </div>
         )}
       </div>

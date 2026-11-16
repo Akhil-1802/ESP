@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CrossoversSection,
-  FobsSection,
   MainTracksSection,
-  PlatformsSection,
-  RobsSection,
   SourceSection,
   StationYardSection,
-  StationsSection,
-  TracksSection,
 } from './components/sections.jsx';
 import {
   blankArm,
@@ -17,7 +11,6 @@ import {
   blankGradient,
   blankLine,
   blankLoop,
-  blankRob,
   blankSiding,
   blankStation,
 } from './lib/formDefaults.js';
@@ -67,6 +60,7 @@ export default function App() {
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ kind: 'idle' });
   const [backendResult, setBackendResult] = useState(null);
+  const [alignmentState, setAlignmentState] = useState({ status: 'empty', message: '' });
   const [hasGeneratedDxf, setHasGeneratedDxf] = useState(false);
   const [isTrimmed, setIsTrimmed] = useState(false);
 
@@ -125,12 +119,19 @@ export default function App() {
   const layers = useMemo(() => platformLayers(form), [form]);
   const config = useMemo(() => buildConfig(form), [form]);
   const configText = useMemo(() => JSON.stringify(config, null, 2), [config]);
-  const busy = status.kind === 'busy';
+  const alignmentBusy = alignmentState.status === 'processing';
+  const busy = status.kind === 'busy' || alignmentBusy;
+  const busyMessage = alignmentBusy ? alignmentState.message || 'Processing KML alignment…' : 'Generating drawing…';
 
   const dynamicResult = useMemo(() => {
+    const hasUsableAlignment = Array.isArray(form.alignmentPoints) && form.alignmentPoints.length >= 2;
+    // A selected KML is not renderable until the backend has returned its
+    // actual alignment.  Otherwise dynamicPreview's demo fallback appears as
+    // a misleading straight line while the upload is still being processed.
+    if (form.kmlFile && !hasUsableAlignment) return null;
+
     const hasContent = Boolean(
-      form.kmlFile ||
-      form.alignmentPoints ||
+      hasUsableAlignment ||
       (form.loops && form.loops.length > 0) ||
       (form.platforms && form.platforms.length > 0) ||
       (form.stations && form.stations.length > 0) ||
@@ -505,52 +506,54 @@ export default function App() {
             >
               <StatusBanner status={status} />
 
-              <SourceSection form={form} set={updateForm} onPreviewKml={onGenerate} onPreviewDirectKml={onPreviewDirectKml} />
+              <SourceSection
+                form={form}
+                set={updateForm}
+                onPreviewKml={onGenerate}
+                onPreviewDirectKml={onPreviewDirectKml}
+                alignmentState={alignmentState}
+                onAlignmentStateChange={setAlignmentState}
+              />
 
               <MainTracksSection form={form} set={updateForm} />
 
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-slate-300">
+                <span className="font-semibold text-emerald-400 block text-[11px] uppercase tracking-wider">
+                  Yard Components
+                </span>
+                <span className="text-[10.5px] text-slate-400 block mt-0.5">
+                  {(form.stationMarkers || []).length > 0
+                    ? `${form.stationMarkers.length} station reference${form.stationMarkers.length > 1 ? 's' : ''} available. Each yard below keeps the same component workflow.`
+                    : 'Using the processed alignment centre as the yard reference. Add a station above when a known station chainage should be the datum.'}
+                </span>
+              </div>
+
               {(form.stationMarkers || []).length > 0 ? (
-                <>
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-slate-300">
-                    <span className="font-semibold text-emerald-400 block text-[11px] uppercase tracking-wider">
-                      Station-Referenced Yard Components
-                    </span>
-                    <span className="text-[10.5px] text-slate-400 block mt-0.5">
-                      {(form.stationMarkers || []).length} station{(form.stationMarkers || []).length > 1 ? 's' : ''} configured. Each section below takes its station as reference for loop lines, platforms, and yard elements.
-                    </span>
-                  </div>
-
-                  {(form.stationMarkers || []).map((stn, idx) => (
-                    <StationYardSection
-                      key={idx}
-                      station={stn}
-                      stationIndex={idx}
-                      form={form}
-                      set={updateForm}
-                      tracks={tracks}
-                      layers={layers}
-                      hasGenerated={hasGeneratedDxf}
-                    />
-                  ))}
-                </>
+                form.stationMarkers.map((stn, idx) => (
+                  <StationYardSection
+                    key={idx}
+                    station={stn}
+                    stationIndex={idx}
+                    form={form}
+                    set={updateForm}
+                    tracks={tracks}
+                    layers={layers}
+                    hasGenerated={hasGeneratedDxf}
+                  />
+                ))
               ) : (
-                <>
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-amber-200/90">
-                    <span className="font-semibold text-amber-300 block text-[11px]">
-                      Single / Standalone Layout Mode
-                    </span>
-                    <span className="text-[10.5px] text-amber-200/70 block mt-0.5">
-                      To configure loop lines and platforms referenced to specific stations, enter <strong>No. of stations</strong> in Section 1 above.
-                    </span>
-                  </div>
-
-                  <TracksSection form={form} set={updateForm} />
-                  <PlatformsSection form={form} set={updateForm} tracks={tracks} />
-                  <CrossoversSection form={form} set={updateForm} tracks={tracks} hasGenerated={hasGeneratedDxf} />
-                  <StationsSection form={form} set={updateForm} layers={layers} />
-                  <FobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
-                  <RobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
-                </>
+                <StationYardSection
+                  key="alignment-yard"
+                  station={{ name: 'Alignment Yard', chainage: String(form.mainCenter ?? 0), showFlag: false }}
+                  stationIndex={0}
+                  form={form}
+                  set={updateForm}
+                  tracks={tracks}
+                  layers={layers}
+                  hasGenerated={hasGeneratedDxf}
+                  isAlignmentDatum
+                  referenceDistance={Number(form.mainCenter) || 0}
+                />
               )}
             </div>
 
@@ -644,6 +647,7 @@ export default function App() {
             key={backendResult ? `${backendResult.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'live-viewer'}
             result={result}
             busy={busy}
+            busyMessage={busyMessage}
             isTrimmed={isTrimmed}
             onToggleTrim={backendResult ? onToggleTrim : null}
             onDownloadDxf={handleDownloadDxf}
