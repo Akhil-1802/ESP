@@ -4,7 +4,7 @@ import { blankCrossover } from '../lib/formDefaults.js';
 import { getExtendedLoopEnds } from '../lib/config.js';
 import { Empty, Field, Grid, ItemCard, Section, Sel, Text } from './fields.jsx';
 
-export function CrossoversSection({ form, set, tracks }) {
+export function CrossoversSection({ form, set, tracks, hasGenerated }) {
   const setTop = useFormSetter(set);
   const trackOpts = [{ value: '', label: 'Select…' }, ...tracks];
 
@@ -19,6 +19,16 @@ export function CrossoversSection({ form, set, tracks }) {
       onAdd={() => setTop({ crossovers: [...form.crossovers, blankCrossover()] })}
       addLabel="+ Add crossover"
     >
+      {!hasGenerated && (
+        <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-2.5 text-xs text-blue-900 shadow-2xs">
+          <div className="flex items-start gap-2">
+            <span className="text-sm select-none" aria-hidden="true">ℹ️</span>
+            <div className="leading-snug">
+              <span className="font-semibold">Crossover chainages:</span> Crossover chainages will be shown after you generate DXF once (chainages require backend calculation).
+            </div>
+          </div>
+        </div>
+      )}
       {form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
       {form.crossovers.map((x, i) => {
           const itemLoopEnds = getExtendedLoopEnds(form, i);

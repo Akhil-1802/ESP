@@ -30,6 +30,7 @@ export function StationYardSection({
   set,
   tracks,
   layers,
+  hasGenerated,
 }) {
   const setTop = useFormSetter(set);
   const [open, setOpen] = useState(true);
@@ -781,6 +782,17 @@ export function StationYardSection({
                 </button>
               </div>
             </div>
+
+            {!hasGenerated && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-2.5 text-xs text-blue-900 shadow-2xs">
+                <div className="flex items-start gap-2">
+                  <span className="text-sm select-none" aria-hidden="true">ℹ️</span>
+                  <div className="leading-snug">
+                    <span className="font-semibold">Crossover chainages:</span> Crossover chainages will be shown after you generate DXF once (chainages require backend calculation).
+                  </div>
+                </div>
+              </div>
+            )}
 
             {stationCrossovers.length === 0 ? (
               <Empty>

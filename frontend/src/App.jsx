@@ -67,6 +67,7 @@ export default function App() {
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ kind: 'idle' });
   const [backendResult, setBackendResult] = useState(null);
+  const [hasGeneratedDxf, setHasGeneratedDxf] = useState(false);
   const [isTrimmed, setIsTrimmed] = useState(false);
 
   // Panel visibility toggles
@@ -259,6 +260,7 @@ export default function App() {
         isTrimmed: trimmedApplied,
         ...preview,
       });
+      setHasGeneratedDxf(true);
       setStatus({
         kind: 'ok',
         filename: trimmedApplied ? `${filename} (Final Plan)` : filename,
@@ -451,8 +453,8 @@ export default function App() {
               }`}
               title={
                 isTrimmed
-                  ? 'Plan is finalized. Click to view full survey extent.'
-                  : 'Finalize the engineering scale plan.'
+                  ? 'Plan is finalized (boundary shown & trimmed up to 50m from main line limits). Click to view full survey extent.'
+                  : 'Finalize Plan: Boundary will be shown and drawing is trimmed up to 50m away from main line limits.'
               }
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -527,6 +529,7 @@ export default function App() {
                       set={updateForm}
                       tracks={tracks}
                       layers={layers}
+                      hasGenerated={hasGeneratedDxf}
                     />
                   ))}
                 </>
@@ -543,7 +546,7 @@ export default function App() {
 
                   <TracksSection form={form} set={updateForm} />
                   <PlatformsSection form={form} set={updateForm} tracks={tracks} />
-                  <CrossoversSection form={form} set={updateForm} tracks={tracks} />
+                  <CrossoversSection form={form} set={updateForm} tracks={tracks} hasGenerated={hasGeneratedDxf} />
                   <StationsSection form={form} set={updateForm} layers={layers} />
                   <FobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
                   <RobsSection form={form} set={updateForm} tracks={tracks} layers={layers} />
@@ -597,8 +600,8 @@ export default function App() {
                   }`}
                   title={
                     isTrimmed
-                      ? 'Plan is finalized. Click to view full survey extent.'
-                      : 'Finalize the engineering scale plan.'
+                      ? 'Plan is finalized (boundary shown & trimmed up to 50m from main line limits). Click to view full survey extent.'
+                      : 'Finalize Plan: Boundary will be shown and drawing is trimmed up to 50m away from main line limits.'
                   }
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -606,6 +609,11 @@ export default function App() {
                   </svg>
                   <span>{isTrimmed ? 'Plan Finalized' : 'Finalize Plan'}</span>
                 </button>
+              )}
+              {backendResult && (
+                <p className="text-[10px] text-slate-500 text-center leading-tight px-1">
+                  Finalize Plan shows the boundary and trims up to 50m away from the main line limits.
+                </p>
               )}
             </div>
           </aside>

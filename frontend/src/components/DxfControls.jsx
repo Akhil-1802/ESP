@@ -272,8 +272,8 @@ export function DxfControls({
                   }`}
                   title={
                     isTrimmed
-                      ? 'Plan is finalized. Click to view full survey extent.'
-                      : 'Finalize the engineering scale plan.'
+                      ? 'Plan is finalized (boundary shown & trimmed up to 50m from main line limits). Click to view full survey extent.'
+                      : 'Finalize Plan: Boundary will be shown and drawing is trimmed up to 50m away from main line limits.'
                   }
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

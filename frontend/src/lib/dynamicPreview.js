@@ -667,7 +667,8 @@ export function generateDynamicPreview(form, options = {}) {
         } else {
           const off = parseNum(fb.offset, 40.0);
           const dir = fb.direction || 'INCREASING';
-          const stnLen = parseNum(f.stations?.[0]?.length, 40.0);
+          const validStn = (f.stations || []).find((s) => s?.platform && platformBoundsMap[String(s.platform).trim()]);
+          const stnLen = parseNum(validStn?.length, 40.0);
           const edge = mainCenter + (dir === 'INCREASING' ? stnLen / 2.0 : -stnLen / 2.0);
           // Backend: arm_towards_station is non-zero ONLY when arm points toward the station
           const towardsStation = (dir === 'INCREASING' && armSide === 'LEFT') || (dir === 'DECREASING' && armSide === 'RIGHT');
@@ -770,19 +771,21 @@ export function generateDynamicPreview(form, options = {}) {
 
   // Station Buildings (Mathematical mirror of backend station building flush to platform)
   (f.stations || []).forEach((stn, idx) => {
+    const platName = String(stn?.platform || '').trim();
+    if (!platName || !platformBoundsMap[platName]) {
+      return;
+    }
+    const platBound = platformBoundsMap[platName];
     const sLen = parseNum(stn.length, 40.0);
     const sWidth = parseNum(stn.width, 10.0);
     const sName = stn.name || 'STATION BUILDING';
 
-    const platName = stn.platform || Object.keys(platformBoundsMap)[0];
-    const platBound = platformBoundsMap[platName] || {
-      nearOff: 1.68,
-      farOff: 8.68,
-      isRight: false,
-      centerCh: mainCenter,
-    };
-    const sgn = platBound.isRight ? -1 : 1;
-    const bNear = platBound.farOff;
+    // Respect the user's "Side of platform" selection ('LEFT' or 'RIGHT')
+    const isLeftSide = String(stn?.side || 'RIGHT').toUpperCase() === 'LEFT';
+    const sgn = isLeftSide ? 1 : -1;
+    const topEdge = Math.max(platBound.nearOff, platBound.farOff);
+    const bottomEdge = Math.min(platBound.nearOff, platBound.farOff);
+    const bNear = isLeftSide ? topEdge : bottomEdge;
     const bFar = bNear + sgn * sWidth;
 
     const centerCh = parseNum(stn.chainage, platBound.centerCh || mainCenter);
@@ -853,7 +856,8 @@ export function generateDynamicPreview(form, options = {}) {
     } else {
       const off = parseNum(fb.offset, 40.0);
       const dir = fb.direction || 'INCREASING';
-      const stnLen = parseNum(f.stations?.[0]?.length, 40.0);
+      const validStn = (f.stations || []).find((s) => s?.platform && platformBoundsMap[String(s.platform).trim()]);
+      const stnLen = parseNum(validStn?.length, 40.0);
       const edge = mainCenter + (dir === 'INCREASING' ? stnLen / 2.0 : -stnLen / 2.0);
 
       // Check if any arm goes towards station (backend resolve_fob_chainage)

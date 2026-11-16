@@ -60,6 +60,7 @@ describe('generateDynamicPreview', () => {
       ],
       stations: [
         {
+          platform: 'PLATFORM_1',
           name: 'CENTRAL STATION',
           length: 40,
           width: 10,
@@ -74,6 +75,71 @@ describe('generateDynamicPreview', () => {
     assert.ok(res.layers.includes('STATION-FLAG'));
     assert.ok(res.svg.includes('HIGH LEVEL PASSENGER PLATFORM'));
     assert.ok(res.svg.includes('CENTRAL STATION'));
+  });
+
+  test('does not place station building when platform input is not selected', () => {
+    const form = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      platforms: [
+        {
+          name: 'PLATFORM_1',
+          track: 'LOOP_1',
+          side: 'LEFT',
+          length: 550,
+          width: 6,
+          chainage: 800,
+        },
+      ],
+      stations: [
+        {
+          platform: '', // No platform selected yet
+          name: 'STATION BUILDING',
+          length: 40,
+          width: 10,
+        },
+      ],
+    };
+    const res = generateDynamicPreview(form);
+
+    assert.ok(res.layers.includes('PLATFORM_1'));
+    assert.ok(!res.layers.includes('STATION-BUILDING'));
+    assert.ok(!res.layers.includes('STATION-FLAG'));
+    assert.ok(!res.svg.includes('STATION-BUILDING'));
+  });
+
+  test('respects station building side (LEFT vs RIGHT) on platform', () => {
+    const baseForm = {
+      mainLength: 1600,
+      mainCenter: 800,
+      loops: [{ name: 'LOOP_1', spacing: 5.3, side: 'LEFT' }],
+      platforms: [
+        {
+          name: 'PLATFORM_1',
+          track: 'LOOP_1',
+          side: 'LEFT',
+          length: 550,
+          width: 6,
+          chainage: 800,
+        },
+      ],
+    };
+
+    const resLeft = generateDynamicPreview({
+      ...baseForm,
+      stations: [{ platform: 'PLATFORM_1', side: 'LEFT', length: 40, width: 10, chainage: 800 }],
+    });
+
+    const resRight = generateDynamicPreview({
+      ...baseForm,
+      stations: [{ platform: 'PLATFORM_1', side: 'RIGHT', length: 40, width: 10, chainage: 800 }],
+    });
+
+    assert.ok(resLeft.layers.includes('STATION-BUILDING'));
+    assert.ok(resRight.layers.includes('STATION-BUILDING'));
+    // The SVGs must be different because the building polygon and flag are placed on different sides
+    assert.notEqual(resLeft.svg, resRight.svg);
   });
 
   test('renders FOB deck connecting platforms and FOB stairs widening', () => {
