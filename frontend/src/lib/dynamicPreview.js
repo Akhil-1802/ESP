@@ -360,20 +360,25 @@ export function generateDynamicPreview(form, options = {}) {
       }
 
       if (anchorCrossover) {
+        // Match the backend spacing datum: compare SRJ positions on a shared
+        // track, then solve this crossover's START chainage from that endpoint.
+        // Using min/max footprint chainages here incorrectly includes OL and
+        // makes opposite-direction AUTO spacing vary with turnout length.
         const sameDir = anchorCrossover.direction === dirStr;
-        // Same direction separation is 13m; opposite direction separation is 54m (Indian Railways standard)
         const sep = sameDir ? 13.0 : 54.0;
-
-        if (dirStr === 'FORWARD' && toTrack === anchorCrossover.fromTrack) {
-          c1 = anchorCrossover.c1 - sep - ol_m;
-        } else if (dirStr === 'FORWARD') {
-          c1 = Math.max(anchorCrossover.c1, anchorCrossover.c2) + sep;
+        const anchorSrjs = {
+          [anchorCrossover.fromTrack]: anchorCrossover.c1,
+          [anchorCrossover.toTrack]: anchorCrossover.c2,
+        };
+        const sharedTrack = [fromTrack, toTrack].find((track) =>
+          Object.prototype.hasOwnProperty.call(anchorSrjs, track),
+        );
+        if (sharedTrack) {
+          const targetSrj = anchorSrjs[sharedTrack] + (isReverse ? -sep : sep);
+          const candidateEndpointOffset = sharedTrack === fromTrack ? 0.0 : sgnDir * ol_m;
+          c1 = targetSrj - candidateEndpointOffset;
         } else {
-          if (fromTrack === anchorCrossover.toTrack) {
-            c1 = anchorCrossover.c2 - sep;
-          } else {
-            c1 = Math.min(anchorCrossover.c1, anchorCrossover.c2) - sep;
-          }
+          c1 = dirStr === 'FORWARD' ? anchorCrossover.c2 + sep : anchorCrossover.c1 - sep;
         }
       } else if (targetLoop) {
         c1 = dirStr === 'FORWARD' ? targetLoop.c1 : targetLoop.c2;
@@ -381,12 +386,16 @@ export function generateDynamicPreview(form, options = {}) {
         const prev = placedCrossovers[placedCrossovers.length - 1];
         const sameDir = prev.direction === dirStr;
         const sep = sameDir ? 13.0 : 54.0;
-        if (dirStr === 'FORWARD' && toTrack === prev.fromTrack) {
-          c1 = prev.c1 - sep - ol_m;
-        } else if (dirStr === 'FORWARD') {
-          c1 = Math.max(prev.c1, prev.c2) + sep;
+        const prevSrjs = { [prev.fromTrack]: prev.c1, [prev.toTrack]: prev.c2 };
+        const sharedTrack = [fromTrack, toTrack].find((track) =>
+          Object.prototype.hasOwnProperty.call(prevSrjs, track),
+        );
+        if (sharedTrack) {
+          const targetSrj = prevSrjs[sharedTrack] + (isReverse ? -sep : sep);
+          const candidateEndpointOffset = sharedTrack === fromTrack ? 0.0 : sgnDir * ol_m;
+          c1 = targetSrj - candidateEndpointOffset;
         } else {
-          c1 = Math.min(prev.c1, prev.c2) - sep;
+          c1 = dirStr === 'FORWARD' ? prev.c2 + sep : prev.c1 - sep;
         }
       } else {
         c1 = dirStr === 'FORWARD' ? Math.max(0.0, mainCenter - 300.0) : Math.min(totalLength, mainCenter + 300.0);
