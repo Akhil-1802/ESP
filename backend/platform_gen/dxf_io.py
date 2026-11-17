@@ -21,6 +21,8 @@ from platform_gen.models import PlatformResult
 
 
 def _add_label(doc: Drawing, label, layer: str, color: int):
+    if 'ESP_LABEL' not in doc.appids:
+        doc.appids.new('ESP_LABEL')
     if doc.dxfversion >= "AC1015":
         pos = _resolve_text_insert(
             doc, label.text, label.height, label.rotation, label.position, anchor="middle-center"
@@ -36,11 +38,12 @@ def _add_label(doc: Drawing, label, layer: str, color: int):
             },
         )
         mtext.set_location(pos, attachment_point=5)
+        mtext.set_xdata('ESP_LABEL', [(1000, 'PLATFORM')])
         return mtext
     pos = _resolve_text_insert(
         doc, label.text.replace("\\P", " "), label.height, label.rotation, label.position
     )
-    return doc.modelspace().add_text(
+    text = doc.modelspace().add_text(
         label.text.replace("\\P", " "),
         dxfattribs={
             "layer": layer,
@@ -51,6 +54,8 @@ def _add_label(doc: Drawing, label, layer: str, color: int):
             "insert": (pos[0], pos[1], pos[2] if len(tuple(pos)) >= 3 else 0),
         },
     )
+    text.set_xdata('ESP_LABEL', [(1000, 'PLATFORM')])
+    return text
 
 
 def write_platform(doc: Drawing, result: PlatformResult, cfg: PlatformConfig) -> None:

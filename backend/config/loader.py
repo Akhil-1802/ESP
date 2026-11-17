@@ -75,6 +75,7 @@ class ESPConfig:
     station_markers: list = None
     selected_track_id: str | int | None = None
     enable_main_line_trim: bool = False
+    align_final_plan_to_x_axis: bool = False
 
     def __post_init__(self):
         if self.loops is None:
@@ -357,4 +358,5 @@ def load_config_from_json(filename: str) -> ESPConfig:
         station_markers=data.get("station_markers") or [],
         selected_track_id=data.get("selected_track_id", data.get("selected_line_id")),
         enable_main_line_trim=bool(data.get("enable_main_line_trim", False)),
+        align_final_plan_to_x_axis=bool(data.get("align_final_plan_to_x_axis", False)),
     )

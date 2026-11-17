@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import math
 
 import ezdxf
 import pytest
@@ -98,6 +99,24 @@ def test_draw_chainage_annotation_negative_side():
     draw_chainage_annotation(doc, (100.0, 0.0), (1.0, 0.0), -120.5, "FM")
     texts = [e for e in doc.modelspace() if e.dxftype() == "TEXT"]
     assert texts[0].dxf.text == "FM AT CH -120.50 m"
+
+
+@pytest.mark.parametrize('degrees', [-150, -45, 0, 30, 110, 180])
+@pytest.mark.parametrize('side', ['LEFT', 'RIGHT'])
+def test_chainage_text_parallel_to_own_leader_with_gap(degrees, side):
+    doc = ezdxf.new()
+    angle = math.radians(degrees)
+    tangent = (math.cos(angle), math.sin(angle))
+    draw_chainage_annotation(doc, (100, 200), tangent, 42, 'SRJ', side=side)
+    line = doc.modelspace().query('LINE')[0]
+    text = doc.modelspace().query('TEXT')[0]
+    direction = (line.dxf.end-line.dxf.start).normalize()
+    rot = math.radians(text.dxf.rotation)
+    assert abs(math.cos(rot)*direction.y-math.sin(rot)*direction.x) < 1e-8
+    delta = text.dxf.align_point-line.dxf.end
+    gap = abs(delta.x*direction.y-delta.y*direction.x)
+    assert gap >= CHAINAGE_TEXT_SIDE_M-1e-8
+    assert abs(delta.dot(direction)) < 1e-8
 
 
 def test_parallel_markers_share_one_chainage():

@@ -390,7 +390,7 @@ class PlatformStep(PipelineStep):
                 if widenings:
                     platform_cfg.fob_widenings = widenings
 
-            result, doc = PlatformGenerator(platform_cfg).build()
+            result, doc = PlatformGenerator(platform_cfg, track_points=tracks).build()
             _write_platform(doc, result, platform_cfg)
             outline = [(p[0], p[1]) for p in result.outline]
             stair_outlines = [

@@ -13,6 +13,12 @@ from typing import Sequence
 
 import ezdxf
 
+from common.constants import (
+    LAND_BOUNDARY_COLOR,
+    LAND_BOUNDARY_DASH_M,
+    LAND_BOUNDARY_GAP_M,
+    LAND_BOUNDARY_LINETYPE,
+)
 from common.dxf import ensure_layer
 from common.geometry import Point, nearest_point_on_alignment, point_at_chainage
 from track.generator import _offset_alignment
@@ -200,20 +206,50 @@ class BoundaryStep(PipelineStep):
             except Exception:
                 pass
 
-        # 8. Add green dashed lines to LAND_BOUNDARY layer (color=3, linetype="5")
-        ensure_layer(doc, "LAND_BOUNDARY", color=3, linetype="5")
+        # 8. Store real dashes in the DXF, rather than relying on preview styling.
+        global_scale = float(doc.header.get("$LTSCALE", 1.0))
+        if not math.isfinite(global_scale) or global_scale <= 0.0:
+            global_scale = 1.0
+        # Compensate in this dedicated linetype, so the effective dash/gap is
+        # always 8m/5m. R12 does not export per-entity linetype scales.
+        pattern = [(LAND_BOUNDARY_DASH_M + LAND_BOUNDARY_GAP_M) / global_scale,
+                   LAND_BOUNDARY_DASH_M / global_scale, -LAND_BOUNDARY_GAP_M / global_scale]
+        if LAND_BOUNDARY_LINETYPE not in doc.linetypes:
+            doc.linetypes.add(LAND_BOUNDARY_LINETYPE, pattern=pattern,
+                              description="Land boundary: 8m dash, 5m gap")
+        else:
+            doc.linetypes.get(LAND_BOUNDARY_LINETYPE).setup_pattern(pattern)
+        ensure_layer(doc, "LAND_BOUNDARY", color=LAND_BOUNDARY_COLOR,
+                     linetype=LAND_BOUNDARY_LINETYPE)
+        layer = doc.layers.get("LAND_BOUNDARY")
+        # ensure_layer does not reset an existing layer's colour. Clear any
+        # true-colour override, which CAD would otherwise prefer to ACI green.
+        layer.dxf.color = LAND_BOUNDARY_COLOR
+        layer.dxf.discard("true_color")
+        layer.dxf.discard("color_name")
+        layer.dxf.discard("transparency")
+        layer.on()
+        layer.thaw()
+        attrs = {
+            "layer": "LAND_BOUNDARY",
+            "color": LAND_BOUNDARY_COLOR,
+            "linetype": LAND_BOUNDARY_LINETYPE,
+            "ltscale": 1.0,
+            # Continue the pattern across short surveyed polyline segments.
+            "flags": 128,
+        }
         for b_pts in (left_boundary_pts, right_boundary_pts):
             try:
                 if doc.dxfversion >= "AC1015":
                     doc.modelspace().add_lwpolyline(
                         b_pts,
                         close=False,
-                        dxfattribs={"layer": "LAND_BOUNDARY", "color": 3, "linetype": "5"},
+                        dxfattribs=attrs,
                     )
                 else:
                     doc.modelspace().add_polyline2d(
                         b_pts,
-                        dxfattribs={"layer": "LAND_BOUNDARY", "color": 3, "linetype": "5"},
+                        dxfattribs=attrs,
                     )
             except Exception as exc:
                 print(f"   ! Failed to write land boundary line ({exc})")

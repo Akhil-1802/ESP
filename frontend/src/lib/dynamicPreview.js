@@ -8,6 +8,8 @@
 
 import { esc, polylinePathD, r3 } from './dxfPathUtils.js';
 import { BG_DARK, getLayerStyle } from './dxfPreview.js';
+import { formatStartChainage, getStationTrackDistance, parseKmM } from './config.js';
+import { isBlank } from './formUtils.js';
 
 /**
  * Sampling step along track alignment in metres.
@@ -142,19 +144,16 @@ export function generateDynamicPreview(form, options = {}) {
   const mainLen = parseNum(f.mainLength, 1600.0);
   const align = buildAlignmentHelper(alignPts, mainLen);
   const totalLength = align.totalLength;
+  const stationMarkers = f.stationMarkers || [];
+  const stationDistance = (marker) => {
+    if (!marker || [marker.km, marker.m, marker.chainage].every(isBlank)) return null;
+    const kmM = isBlank(marker.km) && isBlank(marker.m) ? parseKmM(marker.chainage) : marker;
+    return getStationTrackDistance(kmM, f.startKm, f.startM);
+  };
   let baseCenter = parseNum(f.mainCenter, totalLength / 2.0);
-  if (Array.isArray(f.stationMarkers) && f.stationMarkers.length > 0) {
-    const sm = f.stationMarkers[0];
-    const km = parseNum(sm?.km, 0.0);
-    const m = parseNum(sm?.m, 0.0);
-    const stnCh = km * 1000.0 + m;
-    const startKm = parseNum(f.startKm, 0.0);
-    const startM = parseNum(f.startM, 0.0);
-    const startCh = startKm * 1000.0 + startM;
-    const stnD = stnCh >= startCh ? stnCh - startCh : stnCh;
-    if (stnD > 0 && stnD < totalLength) {
-      baseCenter = stnD;
-    }
+  const firstStationDistance = stationDistance(stationMarkers[0]);
+  if (firstStationDistance != null && firstStationDistance <= totalLength) {
+    baseCenter = firstStationDistance;
   }
   const mainCenter = baseCenter;
 
@@ -687,12 +686,17 @@ export function generateDynamicPreview(form, options = {}) {
   const platformBoundsMap = {};
 
   (f.platforms || []).forEach((p, idx) => {
-    const layerName = (p.name || `PLATFORM_${idx + 1}`).trim();
+    // References from the form and backend use IDs, independent of display names.
+    const layerName = `PLATFORM_${idx + 1}`;
     const pType = String(p.type || 'SIDE').toUpperCase();
     const pLen = parseNum(p.length, 550.0);
     const pWidth = parseNum(p.width, 7.0);
     const pClr = parseNum(p.clearance, 1.68);
-    const centerCh = parseNum(p.chainage, mainCenter);
+    const stationIndex = p.stationIndex ?? p.station_index ?? (stationMarkers.length === 1 ? 0 : null);
+    const referenceDistance = stationIndex == null ? null : stationDistance(stationMarkers[stationIndex]);
+    const centerCh = p.centerOnTrack === false
+      ? parseNum(p.startChainage, 0.0) + pLen / 2.0
+      : referenceDistance ?? parseNum(p.chainage, mainCenter);
 
     let nearOff, farOff, isRight, trackOff;
     if (pType === 'ISLAND') {
@@ -858,7 +862,9 @@ export function generateDynamicPreview(form, options = {}) {
     const bNear = isLeftSide ? topEdge : bottomEdge;
     const bFar = bNear + sgn * sWidth;
 
-    const centerCh = parseNum(stn.chainage, platBound.centerCh || mainCenter);
+    // The backend centres the footprint on the selected platform. Station
+    // chainage is a kilometre annotation, not a local placement in metres.
+    const centerCh = (platBound.s0 + platBound.s1) / 2.0;
     const s0 = Math.max(0.0, centerCh - sLen / 2.0);
     const s1 = Math.min(totalLength, centerCh + sLen / 2.0);
 
@@ -889,7 +895,21 @@ export function generateDynamicPreview(form, options = {}) {
     const clEnd = align.offsetAt(centerCh, bFar + sgn * 15.0);
     addLine(clStart, clEnd, 'STATION-CENTER', '6 3');
     const clTextPt = align.offsetAt(centerCh, bFar + sgn * 18.0);
-    addText(`C/L OF ${sName} CH:${(centerCh / 1000).toFixed(3)} KM`, clTextPt[0], clTextPt[1], 'STATION-CENTER', 0.9, bAng, 1, 2);
+    addText(`C/L OF ${sName} CH:0.00 KM`, clTextPt[0], clTextPt[1], 'STATION-CENTER', 0.9, bAng, 1, 2);
+    const stationIndex = stn.stationIndex ?? stn.station_index;
+    const marker = stationIndex == null ? null : stationMarkers[stationIndex];
+    let stationChainage = isBlank(stn.chainage) ? stn.station_chainage : stn.chainage;
+    if (isBlank(stationChainage) && marker) {
+      stationChainage = isBlank(marker.km) && isBlank(marker.m)
+        ? marker.chainage
+        : formatStartChainage(marker.km, marker.m);
+    }
+    if (!isBlank(stationChainage)) {
+      const rawKm = String(stationChainage).trim();
+      const kmLabel = Number.isFinite(Number(rawKm)) ? Number(rawKm).toFixed(3) : rawKm;
+      const kmTextPt = align.offsetAt(centerCh, bFar + sgn * 20.0);
+      addText(`KM: ${kmLabel}`, kmTextPt[0], kmTextPt[1], 'STATION-CENTER', 0.9, bAng, 1, 2);
+    }
 
     // Station Flag with double-headed arrow
     const fBase = align.offsetAt(centerCh, bFar);

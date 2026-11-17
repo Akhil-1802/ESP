@@ -6,6 +6,7 @@ import ezdxf
 import pytest
 
 from config.loader import ESPConfig
+from common.constants import LAND_BOUNDARY_LINETYPE
 from pipeline.orchestrator import ESPGenerator
 from track.specs import CrossoverSpec, LoopSpec
 from track.turnouts import select_turnout
@@ -16,6 +17,53 @@ def _create_source_dxf(path, length=2000.0, layer="MAIN_TRACK"):
     doc.layers.add(layer, color=1)
     doc.modelspace().add_line((0.0, 0.0), (length, 0.0), dxfattribs={"layer": layer})
     doc.saveas(str(path))
+
+
+@pytest.mark.parametrize("version", ["R12", "R2010"])
+@pytest.mark.parametrize("global_scale", [0.01, 100.0])
+def test_boundary_restores_green_dashes_on_existing_layer(tmp_path, version, global_scale):
+    """Saved CAD properties survive regeneration, inherited colours and scales."""
+    out = tmp_path / "boundary.dxf"
+    doc = ezdxf.new(version)
+    doc.header["$LTSCALE"] = global_scale
+    layer = doc.layers.new("LAND_BOUNDARY", dxfattribs={"color": 1})
+    if doc.dxfversion >= "AC1018":
+        layer.rgb = (255, 0, 0)
+    layer.off()
+    layer.freeze()
+    doc.linetypes.add(LAND_BOUNDARY_LINETYPE, pattern=[0.2, 0.1, -0.1])
+    doc.modelspace().add_line((0, 80), (100, 80), dxfattribs={"layer": "LAND_BOUNDARY"})
+    doc.modelspace().add_line((0, 0), (100, 0), dxfattribs={"layer": "MAIN_LINE", "color": 1})
+    doc.saveas(out)
+
+    gen = ESPGenerator(ESPConfig(source_path=str(out), output_dxf=str(out),
+                                track_source_layer="MAIN_LINE", enable_main_line_trim=True))
+    # Short segments require continuous linetype generation across vertices.
+    tracks = {"MAIN_LINE": [(float(x), 0.0) for x in range(101)]}
+    gen._generate_land_boundary(tracks)
+    gen._generate_land_boundary(tracks)
+
+    saved = ezdxf.readfile(out)
+    layer = saved.layers.get("LAND_BOUNDARY")
+    assert layer.dxf.color == 3
+    assert not layer.dxf.hasattr("true_color")
+    assert not layer.is_off()
+    assert not layer.is_frozen()
+    assert layer.dxf.linetype == LAND_BOUNDARY_LINETYPE
+    pattern = saved.linetypes.get(LAND_BOUNDARY_LINETYPE).simplified_line_pattern()
+    assert tuple(part * saved.header["$LTSCALE"] for part in pattern) == pytest.approx((8.0, 5.0))
+    boundaries = [e for e in saved.modelspace() if e.dxf.layer == "LAND_BOUNDARY"]
+    assert len(boundaries) == 2
+    assert {e.dxftype() for e in boundaries} == ({"POLYLINE"} if version == "R12" else {"LWPOLYLINE"})
+    for entity in boundaries:
+        assert entity.dxf.color == 3
+        assert not entity.dxf.hasattr("true_color")
+        assert entity.dxf.linetype == LAND_BOUNDARY_LINETYPE
+        assert entity.dxf.flags & 128
+        assert entity.dxf.ltscale == 1.0
+    assert saved.header["$LTSCALE"] == global_scale
+    assert next(e for e in saved.modelspace() if e.dxf.layer == "MAIN_LINE").dxf.color == 1
+    assert not saved.audit().has_errors
 
 
 def test_land_boundary_with_station(tmp_path):
@@ -84,11 +132,15 @@ def test_land_boundary_with_station(tmp_path):
     doc = ezdxf.readfile(str(out))
     assert "LAND_BOUNDARY" in doc.layers
     assert doc.layers.get("LAND_BOUNDARY").dxf.color == 3
-    assert doc.layers.get("LAND_BOUNDARY").dxf.linetype == "5"
-    assert "5" in doc.linetypes
+    assert doc.layers.get("LAND_BOUNDARY").dxf.linetype == LAND_BOUNDARY_LINETYPE
+    assert doc.linetypes.get(LAND_BOUNDARY_LINETYPE).simplified_line_pattern() == (8.0, 5.0)
 
     b_lines = [e for e in doc.modelspace() if e.dxf.layer == "LAND_BOUNDARY"]
     assert len(b_lines) == 2
+    for boundary in b_lines:
+        assert boundary.dxf.color == 3
+        assert boundary.dxf.linetype == LAND_BOUNDARY_LINETYPE
+        assert boundary.dxf.flags & 128
 
     left_b = [e for e in b_lines if list(e.get_points())[0][1] > 0][0]
     right_b = [e for e in b_lines if list(e.get_points())[0][1] < 0][0]

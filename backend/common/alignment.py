@@ -324,3 +324,73 @@ def find_straight_window(
             f"{preferred_start + window_length / 2.0:.3f} m"
         )
     return min(valid)[1]
+
+
+def validate_straight_interval(
+    points: Sequence[Point],
+    start_chainage: float,
+    end_chainage: float,
+    tolerance_degrees: float = 1.0,
+    track_name: str = "track",
+) -> dict[str, float]:
+    """Validate one fixed platform interval without moving its requested centre.
+
+    Survey alignments often contain many short segments with harmless bearing
+    noise.  Measure their perpendicular deviation from the interval chord
+    instead of requiring every segment to exactly match the first segment.
+    """
+    if len(points) < 2:
+        raise ValueError(f"Track {track_name!r} needs at least 2 vertices")
+    chainages = cumulative_chainages(points)
+    total = chainages[-1]
+    start = float(start_chainage)
+    end = float(end_chainage)
+    if start < -1e-6 or end > total + 1e-6 or end <= start:
+        raise ValueError(
+            f"Platform interval [{start:.3f}, {end:.3f}] m on {track_name} "
+            f"is outside track extent [0, {total:.3f}] m"
+        )
+    start = max(0.0, start)
+    end = min(total, end)
+    start_point = point_at_chainage(points, start).point
+    end_point = point_at_chainage(points, end).point
+    interval_points = [start_point]
+    interval_points.extend(
+        point for point, chainage in zip(points, chainages)
+        if start < chainage < end
+    )
+    interval_points.append(end_point)
+
+    dx = end_point[0] - start_point[0]
+    dy = end_point[1] - start_point[1]
+    chord = math.hypot(dx, dy)
+    if chord <= 1e-9:
+        raise ValueError(
+            f"Platform interval [{start:.3f}, {end:.3f}] m on {track_name} "
+            "has coincident endpoints"
+        )
+    max_deviation = max(
+        abs(dx * (point[1] - start_point[1]) - dy * (point[0] - start_point[0])) / chord
+        for point in interval_points
+    )
+    length = end - start
+    tolerance = max(0.0, float(tolerance_degrees))
+    # Equivalent sagitta allowance for a gentle change of bearing, plus a
+    # small survey-coordinate floor for dense KML polylines.
+    allowed_deviation = max(0.25, length * math.tan(math.radians(tolerance)) / 8.0)
+    report = {
+        "start_chainage": start,
+        "end_chainage": end,
+        "length": length,
+        "chord_length": chord,
+        "max_deviation": max_deviation,
+        "allowed_deviation": allowed_deviation,
+    }
+    if max_deviation > allowed_deviation + 1e-9:
+        raise ValueError(
+            f"Platform on {track_name} cannot use fixed interval "
+            f"[{start:.3f}, {end:.3f}] m (centre {(start + end) / 2.0:.3f} m): "
+            f"maximum alignment deviation is {max_deviation:.3f} m; "
+            f"allowed is {allowed_deviation:.3f} m at {tolerance:.3f} deg tolerance"
+        )
+    return report

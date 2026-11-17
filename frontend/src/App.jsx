@@ -454,8 +454,8 @@ export default function App() {
               }`}
               title={
                 isTrimmed
-                  ? 'Plan is finalized (boundary shown & trimmed up to 50m from main line limits). Click to view full survey extent.'
-                  : 'Finalize Plan: Boundary will be shown and drawing is trimmed up to 50m away from main line limits.'
+                  ? 'Plan finalized with boundary, trimming and X-axis alignment. Click to regenerate the full plan.'
+                  : 'Finalize Plan: show the boundary, trim the drawing and align the ESP with the X-axis.'
               }
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -603,8 +603,8 @@ export default function App() {
                   }`}
                   title={
                     isTrimmed
-                      ? 'Plan is finalized (boundary shown & trimmed up to 50m from main line limits). Click to view full survey extent.'
-                      : 'Finalize Plan: Boundary will be shown and drawing is trimmed up to 50m away from main line limits.'
+                      ? 'Plan finalized with boundary, trimming and X-axis alignment. Click to regenerate the full plan.'
+                      : 'Finalize Plan: show the boundary, trim the drawing and align the ESP with the X-axis.'
                   }
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -615,7 +615,7 @@ export default function App() {
               )}
               {backendResult && (
                 <p className="text-[10px] text-slate-500 text-center leading-tight px-1">
-                  Finalize Plan shows the boundary and trims up to 50m away from the main line limits.
+                  Finalize Plan shows the boundary, trims the drawing and aligns the ESP with the X-axis.
                 </p>
               )}
             </div>

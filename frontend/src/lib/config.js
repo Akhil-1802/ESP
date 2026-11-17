@@ -868,6 +868,7 @@ export function buildConfig(form) {
     direct_kml: Boolean(f.directKml),
     selected_track_id: f.selectedTrackId != null ? f.selectedTrackId : null,
     enable_main_line_trim: Boolean(f.enableMainLineTrim),
+    align_final_plan_to_x_axis: Boolean(f.enableMainLineTrim),
     start_chainage: startChStr,
     start_km: startKmVal,
     start_m: startMVal,

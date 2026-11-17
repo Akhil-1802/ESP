@@ -46,6 +46,63 @@ def _angle_diff_deg(v1: tuple[float, float], v2: tuple[float, float]) -> float:
     return math.degrees(math.acos(dot))
 
 
+def _remove_short_transverse_steps(
+    segments: list[dict[str, Any]],
+    transformer_inv: Transformer,
+    max_step_m: float = 1.5,
+) -> list[dict[str, Any]]:
+    """Remove CAD-only 90-degree micro-steps from an ordered polyline handle.
+
+    Some CAD-to-KML exports split one nominal alignment into 5 m chords and
+    insert exact 1 m transverse connectors.  The railway line cannot traverse
+    such a 90-degree connector; treating it as a loose endpoint gap creates an
+    artificial diagonal spike.  Omit only the tightly constrained pattern and
+    carry its translation into subsequent chords so the alignment stays
+    continuous without smoothing genuine curves.
+    """
+    if len(segments) < 3:
+        return segments
+
+    correction_x = 0.0
+    correction_y = 0.0
+    cleaned: list[dict[str, Any]] = []
+    for index, segment in enumerate(segments):
+        points = segment["m_pts"]
+        vector = (
+            points[-1][0] - points[0][0],
+            points[-1][1] - points[0][1],
+        )
+        length = math.hypot(vector[0], vector[1])
+        is_transverse_step = False
+        if 0 < index < len(segments) - 1 and length <= max_step_m:
+            prev_vector = _tangent_vector(segments[index - 1]["m_pts"], at_start=False)
+            next_vector = _tangent_vector(segments[index + 1]["m_pts"], at_start=True)
+            step_vector = _tangent_vector(points, at_start=True)
+            entry = _angle_diff_deg(prev_vector, step_vector)
+            exit_angle = _angle_diff_deg(step_vector, next_vector)
+            through = _angle_diff_deg(prev_vector, next_vector)
+            is_transverse_step = (
+                80.0 <= entry <= 100.0
+                and 80.0 <= exit_angle <= 100.0
+                and through <= 2.0
+            )
+
+        if is_transverse_step:
+            correction_x += vector[0]
+            correction_y += vector[1]
+            continue
+
+        if correction_x or correction_y:
+            shifted = [
+                (point[0] - correction_x, point[1] - correction_y)
+                for point in points
+            ]
+            shifted_wgs = [transformer_inv.transform(point[0], point[1]) for point in shifted]
+            segment = {**segment, "m_pts": shifted, "wgs84_pts": shifted_wgs}
+        cleaned.append(segment)
+    return cleaned
+
+
 def detect_kml_tracks(
     kml_path: str,
     min_track_length_m: float = 50.0,
@@ -146,14 +203,23 @@ def detect_kml_tracks(
     hemisphere = "north" if center_lat >= 0 else "south"
     crs_to = f"+proj=utm +zone={utm_zone} +{hemisphere} +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
     transformer_fwd = Transformer.from_crs("EPSG:4326", crs_to, always_xy=True)
+    transformer_inv = Transformer.from_crs(crs_to, "EPSG:4326", always_xy=True)
 
-    # 4. Convert all items to metric coordinates (do NOT drop small curve segments)
+    # 4. Convert all items to metric coordinates.  CAD exports commonly split
+    # one polyline into many short LineStrings; even a 1 m connector is part of
+    # the alignment and must not be discarded.  Dropping it makes the chaining
+    # pass bridge directly to the following 5 m chord, producing a visible
+    # paired spike in the reconstructed track.
+    has_cad_handles_raw = any(
+        "[" in item["name"] and "]" in item["name"] for item in raw_items
+    )
+    min_segment_length = 0.01 if has_cad_handles_raw else 1.5
     metric_segments: list[dict[str, Any]] = []
     for item in raw_items:
         m_pts = [transformer_fwd.transform(lon, lat) for lon, lat in item["wgs84_pts"]]
         geom = LineString(m_pts)
         seg_len = float(geom.length)
-        if seg_len >= 1.5:  # Retain curve chords down to 1.5 meters
+        if seg_len >= min_segment_length:
             metric_segments.append({
                 "id": len(metric_segments),
                 "name": item["name"],
@@ -170,6 +236,10 @@ def detect_kml_tracks(
         for seg in metric_segments:
             base_name = seg["name"].split(" (")[0].strip()
             by_handle[base_name].append(seg)
+        for handle_name, segments in list(by_handle.items()):
+            by_handle[handle_name] = _remove_short_transverse_steps(
+                segments, transformer_inv
+            )
     else:
         for seg in metric_segments:
             by_handle["all"].append(seg)

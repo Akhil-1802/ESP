@@ -179,6 +179,39 @@ def test_convert_kml_with_selected_track_id(tmp_path):
     assert polylines[0].dxf.layer == "MAIN_TRACK"
 
 
+def test_cad_track_removes_transverse_micro_step_without_spike(tmp_path):
+    """A 1 m transverse CAD step is normalized instead of bridged diagonally."""
+    kml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><name>Polyline [ABC]:0</name><LineString><coordinates>
+    77.000000,28.000000,0 77.000051,28.000000,0
+  </coordinates></LineString></Placemark>
+  <Placemark><name>Polyline [ABC]:0</name><LineString><coordinates>
+    77.000051,28.000000,0 77.000051,28.000009,0
+  </coordinates></LineString></Placemark>
+  <Placemark><name>Polyline [ABC]:0</name><LineString><coordinates>
+    77.000051,28.000009,0 77.000102,28.000009,0
+  </coordinates></LineString></Placemark>
+</Document></kml>"""
+    kml_file = tmp_path / "short_connector.kml"
+    kml_file.write_text(kml_content, encoding="utf-8")
+
+    tracks = detect_kml_tracks(
+        str(kml_file), min_track_length_m=1.0, endpoint_tol_m=1.5
+    )
+
+    assert len(tracks) == 1
+    assert tracks[0]["segment_count"] == 2
+    points = tracks[0]["pts_utm"]
+    assert len(points) == 3
+    first = (points[1][0] - points[0][0], points[1][1] - points[0][1])
+    second = (points[2][0] - points[1][0], points[2][1] - points[1][1])
+    first_len = (first[0] ** 2 + first[1] ** 2) ** 0.5
+    second_len = (second[0] ** 2 + second[1] ** 2) ** 0.5
+    dot = (first[0] * second[0] + first[1] * second[1]) / (first_len * second_len)
+    assert dot > 0.9999
+
+
 def test_detect_tracks_on_user_doc_kml():
     user_kml = Path(r"C:\Users\parah\.gemini\antigravity\brain\1c9d275d-04c4-45c6-82d6-3bab6582ca32\.user_uploaded\media_1793787730264_19e4539d.kml")
     if not user_kml.is_file():

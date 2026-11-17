@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ezdxf
 import pytest
+import math
 
 from common.dxf import draw_arrow_dimension
 from fob.config import FOBConfig
@@ -16,6 +17,74 @@ from platform_gen.track import Track
 def _make_track(length=1000.0, name="MAIN_LINE"):
     pts = [(0.0, 0.0), (length, 0.0)]
     return Track(name=name, points=pts)
+
+
+@pytest.mark.parametrize('angle', [-25, 12, 145])
+def test_platform_caption_parallel_to_platform_on_generation(angle):
+    from platform_gen.dxf_io import write_platform
+    a = math.radians(angle)
+    track = Track(name='MAIN_LINE', points=[(0, 0), (1000*math.cos(a), 1000*math.sin(a))])
+    cfg = PlatformConfig(source_dxf='', output_dxf='', track_layer='MAIN_LINE',
+                         platform_type=PlatformType.SIDE, side=PlatformSide.LEFT,
+                         platform_width=7, clearance=1.68, platform_length=550,
+                         center_on_track=True, center_chainage=500)
+    result = _side_platform(track, cfg)
+    doc = ezdxf.new('R2010')
+    write_platform(doc, result, cfg)
+    caption = doc.modelspace().query('MTEXT')[0]
+    assert math.sin(math.radians(caption.get_rotation()-angle)) == pytest.approx(0, abs=1e-8)
+    assert caption.has_xdata('ESP_LABEL')
+
+
+def test_station_centered_platform_keeps_fixed_chainage_with_survey_noise():
+    track = Track(
+        name="LOOP_1",
+        points=[
+            (0.0, 0.0),
+            (250.0, 0.04),
+            (500.0, -0.03),
+            (750.0, 0.05),
+            (1000.0, 0.0),
+        ],
+    )
+    cfg = PlatformConfig(
+        source_dxf="", output_dxf="", track_layer="LOOP_1",
+        platform_type=PlatformType.SIDE, side=PlatformSide.LEFT,
+        platform_width=8.5, clearance=1.68, platform_length=550.0,
+        center_on_track=True, center_chainage=500.0,
+    )
+
+    result = _side_platform(track, cfg)
+
+    assert result.computed_length == pytest.approx(550.0)
+    assert cfg.resolved_start_chainage(track.length) == pytest.approx(225.0, abs=0.01)
+    assert cfg.resolved_end_chainage(track.length) == pytest.approx(775.0, abs=0.01)
+
+
+def test_platform_generator_prefers_canonical_pipeline_track(tmp_path):
+    source = tmp_path / "tracks.dxf"
+    doc = ezdxf.new("R2010")
+    doc.layers.add("LOOP_1")
+    # Deliberately curved drawing entity: the pipeline's canonical track below
+    # is the authoritative geometry and must be used instead.
+    doc.modelspace().add_lwpolyline(
+        [(0.0, 0.0), (250.0, 80.0), (500.0, 0.0), (750.0, -80.0), (1000.0, 0.0)],
+        dxfattribs={"layer": "LOOP_1"},
+    )
+    doc.saveas(source)
+    cfg = PlatformConfig(
+        source_dxf=str(source), output_dxf=str(tmp_path / "out.dxf"),
+        track_layer="LOOP_1", platform_type=PlatformType.SIDE,
+        side=PlatformSide.LEFT, platform_width=8.5, clearance=1.68,
+        platform_length=550.0, center_on_track=True, center_chainage=500.0,
+    )
+
+    result, _ = PlatformGenerator(
+        cfg,
+        track_points={"LOOP_1": [(0.0, 0.0), (1000.0, 0.0)]},
+    ).build()
+
+    assert result.computed_length == pytest.approx(550.0)
 
 
 def test_platform_width_dimension_without_stairs():

@@ -2,6 +2,20 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateDynamicPreview } from './dynamicPreview.js';
 
+function outlineBounds(result, layer) {
+  const group = result.svg.match(new RegExp(`<g data-layer="${layer}"[^>]*>([\\s\\S]*?)</g>`));
+  assert.ok(group, `Expected ${layer} geometry`);
+  return [...group[1].matchAll(/<path d="([^"]+)"/g)].map(([, d]) => {
+    const points = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map(([, x, y]) => [Number(x), Number(y)]);
+    return {
+      x0: Math.min(...points.map(([x]) => x)),
+      x1: Math.max(...points.map(([x]) => x)),
+      y0: Math.min(...points.map(([, y]) => y)),
+      y1: Math.max(...points.map(([, y]) => y)),
+    };
+  });
+}
+
 describe('generateDynamicPreview', () => {
   test('renders strictly single baseline MAIN_LINE without extra lines when form has minimal data', () => {
     const form = {
@@ -75,6 +89,93 @@ describe('generateDynamicPreview', () => {
     assert.ok(res.layers.includes('STATION-FLAG'));
     assert.ok(res.svg.includes('HIGH LEVEL PASSENGER PLATFORM'));
     assert.ok(res.svg.includes('CENTRAL STATION'));
+  });
+
+  test('centres a default-size station at its platform instead of treating 4 KM as 4 metres', () => {
+    const result = generateDynamicPreview({
+      mainLength: 10000,
+      stationMarkers: [{ km: '4', m: '' }],
+      platforms: [{ track: 'MAIN_LINE', stationIndex: 0 }],
+      stations: [{ platform: 'PLATFORM_1', chainage: '4', side: 'LEFT', length: '', width: '' }],
+    });
+
+    assert.deepEqual(outlineBounds(result, 'STATION-BUILDING')[0], {
+      x0: 3980, x1: 4020, y0: 8.68, y1: 18.68,
+    });
+    assert.ok(result.svg.includes('KM: 4.000'));
+  });
+
+  test('uses kilometre-plus-metre station references relative to a nonzero alignment datum', () => {
+    const form = {
+      mainLength: 3000,
+      startKm: '3',
+      startM: '500',
+      stationMarkers: [{ chainage: '4+250' }],
+      platforms: [{ track: 'MAIN_LINE', stationIndex: 0 }],
+      stations: [{ platform: 'PLATFORM_1', chainage: '4+250', stationIndex: 0 }],
+    };
+    const result = generateDynamicPreview(form);
+    assert.equal(outlineBounds(result, 'STATION-BUILDING')[0].x0, 730);
+    assert.equal(outlineBounds(result, 'STATION-BUILDING')[0].x1, 770);
+    assert.ok(result.svg.includes('KM: 4+250'));
+
+    const decimal = generateDynamicPreview({
+      ...form,
+      stationMarkers: [{ km: '4.25', m: '' }],
+      stations: [{ ...form.stations[0], chainage: '4.25' }],
+    });
+    assert.deepEqual(outlineBounds(decimal, 'STATION-BUILDING'), outlineBounds(result, 'STATION-BUILDING'));
+    assert.ok(decimal.svg.includes('KM: 4.250'));
+  });
+
+  test('keeps platform IDs separate from duplicate display names and places each station at its own yard', () => {
+    const form = {
+      mainLength: 10000,
+      stationMarkers: [{ km: '4' }, { km: '7', m: '500' }],
+      platforms: [
+        { name: 'PASSENGER PLATFORM', track: 'MAIN_LINE', stationIndex: 0 },
+        { name: 'PASSENGER PLATFORM', track: 'MAIN_LINE', stationIndex: 1 },
+      ],
+      stations: [
+        { platform: 'PLATFORM_1', stationIndex: 0 },
+        { platform: 'PLATFORM_2', stationIndex: 1 },
+      ],
+    };
+    const result = generateDynamicPreview(form);
+    assert.ok(result.layers.includes('PLATFORM_1'));
+    assert.ok(result.layers.includes('PLATFORM_2'));
+    assert.deepEqual(outlineBounds(result, 'STATION-BUILDING').map(({ x0, x1 }) => [x0, x1]), [
+      [3980, 4020], [7480, 7520],
+    ]);
+    assert.ok(result.svg.includes('KM: 7+500'));
+
+    const moved = generateDynamicPreview({ ...form, stationMarkers: [{ km: '4' }, { km: '8' }] });
+    assert.deepEqual(outlineBounds(moved, 'STATION-BUILDING').map(({ x0, x1 }) => [x0, x1]), [
+      [3980, 4020], [7980, 8020],
+    ]);
+  });
+
+  test('updates building dimensions, side and annotation while remaining centred on the platform', () => {
+    const form = {
+      mainLength: 2000,
+      stationMarkers: [{ km: '1' }],
+      platforms: [{ track: 'MAIN_LINE', name: 'CUSTOM PLATFORM' }],
+      stations: [{ platform: 'PLATFORM_1', side: 'LEFT', chainage: '1' }],
+    };
+    const before = generateDynamicPreview(form);
+    const annotated = generateDynamicPreview({
+      ...form, stations: [{ ...form.stations[0], chainage: '1.25' }],
+    });
+    assert.deepEqual(outlineBounds(annotated, 'STATION-BUILDING'), outlineBounds(before, 'STATION-BUILDING'));
+    assert.ok(annotated.svg.includes('KM: 1.250'));
+
+    const resized = generateDynamicPreview({
+      ...form, stations: [{ ...form.stations[0], length: '60', width: '12', side: 'RIGHT', name: 'NEW BUILDING' }],
+    });
+    assert.deepEqual(outlineBounds(resized, 'STATION-BUILDING')[0], {
+      x0: 970, x1: 1030, y0: -10.32, y1: 1.68,
+    });
+    assert.ok(resized.svg.includes('NEW BUILDING'));
   });
 
   test('does not place station building when platform input is not selected', () => {

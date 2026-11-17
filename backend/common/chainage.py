@@ -23,11 +23,9 @@ from common.dxf import (
     ensure_layer as _ensure_layer,
     ensure_text_style as _style,
     estimate_text_aabb as _aabb,
-    resolve_text_insert as _resolve,
 )
 from common.geometry import (
     Point,
-    readable_angle_deg,
 )
 
 #: DXF layer + colour for every station-relative chainage label (red).
@@ -184,7 +182,7 @@ def draw_chainage_annotation(
             return 0
         label = format_chainage_label(tag, relative_m)
         try:
-            ang = readable_angle_deg(90.0)
+            ang = math.degrees(math.atan2(ny, nx)) % 180.0
         except Exception:
             ang = 90.0
         try:
@@ -195,6 +193,12 @@ def draw_chainage_annotation(
             side_m = float(CHAINAGE_TEXT_SIDE_M)
         except (TypeError, ValueError):
             side_m = 0.3
+
+        # When readability reverses the text baseline, its glyphs grow towards
+        # the line. Include their height in the offset to retain clear space.
+        ux, uy = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        if tx*uy - ty*ux < 0:
+            side_m += float(height)
 
         if is_right:
             insert = (tip[0] - nx * lift_m - tx * side_m,
@@ -207,13 +211,20 @@ def draw_chainage_annotation(
             halign = 2
             anchor = "right-baseline"
 
+        # Anchor at the tip and let text run inward along its own leader.
+        # A readable angle may reverse the baseline relative to the outward ray.
+        forward = math.cos(math.radians(ang))*nx + math.sin(math.radians(ang))*ny
+        halign = 2 if forward >= 0 else 0
+        anchor = "right-baseline" if halign == 2 else "left-baseline"
+
         try:
             style = _style(doc)
         except Exception:
             style = "Standard"
         try:
-            pos = _resolve(doc, label, float(height), float(ang), insert,
-                           anchor=anchor)
+            # Keep the perpendicular gap tied to the leader. A world-axis
+            # collision shift would detach the caption from its marker line.
+            pos = insert
         except Exception:
             pos = insert
         try:
@@ -276,6 +287,8 @@ def draw_chainage_annotation(
                     halign_other = 2
                     anc_other = "right-baseline"
                 px_o, py_o = float(ins_other[0]), float(ins_other[1])
+                halign_other = halign
+                anc_other = anchor
                 try:
                     msp.add_text(
                         other_label,

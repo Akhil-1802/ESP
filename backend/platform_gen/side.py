@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import List
+import math
 
 from common.geometry import (
     Point,
@@ -11,6 +12,7 @@ from common.geometry import (
     offset_point,
     point_at_chainage,
     rectangle_from_two_offsets,
+    validate_straight_interval,
 )
 from platform_gen.config import PlatformConfig
 from platform_gen.models import DimensionSpec, LabelSpec, PlatformResult, StairSpec, _order_outward
@@ -139,7 +141,15 @@ def side_platform(track: Track, cfg: PlatformConfig) -> PlatformResult:
         )
         stairs = [left_stair, right_stair]
 
-    if cfg.center_on_track:
+    if cfg.center_on_track and cfg.center_chainage is not None:
+        validate_straight_interval(
+            track.points,
+            start_chainage,
+            end_chainage,
+            cfg.straight_tolerance_degrees,
+            cfg.track_layer or track.name,
+        )
+    elif cfg.center_on_track:
         start_chainage = find_straight_window(
             track.points,
             end_chainage - start_chainage,
@@ -238,7 +248,9 @@ def side_platform(track: Track, cfg: PlatformConfig) -> PlatformResult:
         label_lines.append(cfg.tag)
 
     labels = [
-        LabelSpec(label_position, "\\P".join(label_lines), cfg.text_height)
+        LabelSpec(label_position, "\\P".join(label_lines), cfg.text_height,
+                  rotation=(math.degrees(math.atan2(near[-1][1]-near[0][1],
+                                                    near[-1][0]-near[0][0])) + 90) % 180 - 90)
     ]
 
     return PlatformResult(

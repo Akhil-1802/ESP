@@ -19,6 +19,23 @@ const DXF = [
   '0', 'ENDSEC', '0', 'EOF', '',
 ].join('\n');
 
+function boundaryDxf(lineType = 'ESP_LAND_BOUNDARY_DASHED', globalScale = 1, entityScale = 1) {
+  return [
+    '0', 'SECTION', '2', 'HEADER', '9', '$LTSCALE', '40', String(globalScale), '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'TABLES',
+    '0', 'TABLE', '2', 'LTYPE', '70', '1',
+    '0', 'LTYPE', '2', 'ESP_LAND_BOUNDARY_DASHED', '70', '0',
+    '3', 'Land boundary: 8m dash, 5m gap', '72', '65', '73', '2', '40', '13',
+    '49', '8', '74', '0', '49', '-5', '74', '0',
+    '0', 'ENDTAB', '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'ENTITIES',
+    '0', 'LWPOLYLINE', '8', 'LAND_BOUNDARY', '62', '3',
+    ...(lineType ? ['6', lineType] : []), '48', String(entityScale),
+    '90', '2', '70', '128', '10', '0', '20', '70', '10', '1000', '20', '70',
+    '0', 'ENDSEC', '0', 'EOF', '',
+  ].join('\n');
+}
+
 describe('dxfToSvg', () => {
   it('flattens LINE / LWPOLYLINE / CIRCLE / TEXT into one SVG', () => {
     const out = dxfToSvg(DXF);
@@ -37,6 +54,31 @@ describe('dxfToSvg', () => {
     assert.equal(getLayerStyle('MAIN_LINE').category, 'track');
     assert.equal(getLayerStyle('PLATFORM_1').color, '#ff0000');
     assert.equal(getLayerStyle('TURNOUT').color, '#ff0000');
+  });
+
+  it('renders green boundary dashes from the DXF linetype definition', () => {
+    const out = dxfToSvg(boundaryDxf());
+    assert.ok(out.svg.includes('data-layer="LAND_BOUNDARY"'));
+    assert.ok(out.svg.includes(`stroke="${getLayerStyle('LAND_BOUNDARY').color}"`));
+    assert.equal(getLayerStyle('LAND_BOUNDARY').color, '#22c55e');
+    assert.ok(out.svg.includes('stroke-dasharray="8 5"'));
+  });
+
+  it('honours a continuous boundary instead of masking an old solid DXF with preview dashes', () => {
+    const out = dxfToSvg(boundaryDxf('CONTINUOUS'));
+    assert.ok(!out.svg.includes('stroke-dasharray'));
+    assert.ok(out.svg.includes('stroke="#22c55e"'));
+  });
+
+  it('combines global and entity linetype scales when previewing exported dashes', () => {
+    const compensated = dxfToSvg(boundaryDxf('ESP_LAND_BOUNDARY_DASHED', 100, 0.01));
+    assert.ok(compensated.svg.includes('stroke-dasharray="8 5"'));
+    const scaled = dxfToSvg(boundaryDxf('ESP_LAND_BOUNDARY_DASHED', 2, 3));
+    assert.ok(scaled.svg.includes('stroke-dasharray="48 30"'));
+  });
+
+  it('retains the default dashed boundary style for previews without explicit DXF linetypes', () => {
+    assert.ok(dxfToSvg(boundaryDxf('')).svg.includes('stroke-dasharray="8 5"'));
   });
 
   it('rejects input with no drawable entities', () => {

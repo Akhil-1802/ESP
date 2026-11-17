@@ -1,6 +1,7 @@
 """Island platform geometry generation."""
 
 from __future__ import annotations
+import math
 
 from common.geometry import (
     find_straight_window,
@@ -9,6 +10,7 @@ from common.geometry import (
     point_at_chainage,
     point_side,
     rectangle_from_two_offsets,
+    validate_straight_interval,
 )
 from platform_gen.config import PlatformConfig
 from platform_gen.models import DimensionSpec, LabelSpec, PlatformResult, _order_outward
@@ -19,7 +21,15 @@ def island_platform(track1: Track, track2: Track, cfg: PlatformConfig) -> Platfo
     """Generate geometry for an island platform between two tracks."""
     end_chainage = cfg.resolved_end_chainage(track1.length)
     start_chainage = cfg.resolved_start_chainage(track1.length)
-    if cfg.center_on_track:
+    if cfg.center_on_track and cfg.center_chainage is not None:
+        validate_straight_interval(
+            track1.points,
+            start_chainage,
+            end_chainage,
+            cfg.straight_tolerance_degrees,
+            cfg.track_layer or track1.name,
+        )
+    elif cfg.center_on_track:
         start_chainage = find_straight_window(
             track1.points,
             end_chainage - start_chainage,
@@ -100,7 +110,10 @@ def island_platform(track1: Track, track2: Track, cfg: PlatformConfig) -> Platfo
     if cfg.tag:
         label_lines.append(cfg.tag)
 
-    labels = [LabelSpec(label_position, "\\P".join(label_lines), cfg.text_height)]
+    label_angle = (math.degrees(math.atan2(edge1[-1][1]-edge1[0][1],
+                                          edge1[-1][0]-edge1[0][0])) + 90) % 180 - 90
+    labels = [LabelSpec(label_position, "\\P".join(label_lines), cfg.text_height,
+                        rotation=label_angle)]
 
     return PlatformResult(
         outline=outline, near_edge=edge1, far_edge=edge2,

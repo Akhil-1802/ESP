@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from config.loader import ESPConfig
+from common.final_plan import align_final_plan
 from platform_gen.kml_io import convert_kml_to_dxf
 
 from .steps import (
@@ -162,6 +163,9 @@ class ESPGenerator(
             self._generate_land_boundary(tracks)
         except Exception as exc:
             print(f"   ! Land boundary skipped ({exc})")
+
+        if getattr(self.config, "align_final_plan_to_x_axis", False):
+            align_final_plan(self.config.output_dxf)
 
         print("\n" + "=" * 50)
         print(f"✅ Complete DXF written: {Path(self.config.output_dxf).absolute()}")

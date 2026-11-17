@@ -201,9 +201,23 @@ export function dxfToSvg(input, options = {}) {
     const style = group.style;
     const color = style.color;
     const strokeWidth = style.width || '1.5';
-    const entityDash = e.lineType && (String(e.lineType).toUpperCase().includes('DOT') || String(e.lineType).toUpperCase().includes('DASH') || String(e.lineType).trim() === '5')
-      ? (String(e.lineType).toUpperCase().includes('DOT') ? '1 2' : (String(e.lineType).trim() === '5' ? '5 5' : '4 3'))
-      : (style.dash || '');
+    const lineType = String(e.lineType || '').trim().toUpperCase();
+    const pattern = dxf.tables?.lineType?.lineTypes?.[e.lineType]?.pattern;
+    let entityDash = style.dash || '';
+    if (lineType === 'CONTINUOUS') {
+      // An explicit DXF linetype takes precedence over decorative layer styles.
+      entityDash = '';
+    } else if (pattern?.length && pattern.every((part) => Number.isFinite(Number(part)))) {
+      const scale = Number(e.lineTypeScale ?? 1) * Number(dxf.header?.$LTSCALE ?? 1);
+      const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+      entityDash = pattern.map((part) => r3(Math.abs(Number(part)) * safeScale)).join(' ');
+    } else if (lineType.includes('DOT')) {
+      entityDash = '1 2';
+    } else if (lineType.includes('DASH')) {
+      entityDash = '4 3';
+    } else if (lineType === '5') {
+      entityDash = '5 5';
+    }
     const dashAttr = entityDash ? `stroke-dasharray="${entityDash}" ` : '';
     const opacityAttr = style.opacity ? `opacity="${style.opacity}" ` : '';
 

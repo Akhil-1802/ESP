@@ -96,6 +96,10 @@ DEFAULT_FOB_DIRECTION: str = "INCREASING"
 
 # --- DXF drawing ----------------------------------------------------------------------
 DEFAULT_COLOR: int = 1  # AutoCAD Color Index: red
+LAND_BOUNDARY_COLOR: int = 3  # AutoCAD Color Index: green
+LAND_BOUNDARY_LINETYPE: str = "ESP_LAND_BOUNDARY_DASHED"
+LAND_BOUNDARY_DASH_M: float = 8.0
+LAND_BOUNDARY_GAP_M: float = 5.0
 #: Single shared text style for EVERY annotation (track labels, SRJ tags,
 #: T.C / arrow dimensions, overrun labels, platform + station texts):
 #: Arial TrueType for all lettering -- letters and numbers alike.
