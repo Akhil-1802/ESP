@@ -40,7 +40,11 @@ class TrackStep(PipelineStep):
             start_km=getattr(self.config, "start_km", None),
             start_m=getattr(self.config, "start_m", None),
         )
-        return TrackGenerator(track_config).run()
+        document = self._active_document()
+        tracks = TrackGenerator(track_config).run(document=document, save=document is None)
+        if document is not None:
+            self.context.tracks = tracks
+        return tracks
 
     def _collect_main_line_srj_chainages(self, tracks: dict) -> list[float]:
         """Collect MAIN-datum chainages of every SRJ located on a MAIN LINE track."""
@@ -97,7 +101,7 @@ class TrackStep(PipelineStep):
         # 3. From output DXF (layer "SRJ"): fallback if in-memory results are not present
         if not chainages:
             try:
-                doc = ezdxf.readfile(self.config.output_dxf)
+                doc = self._load_document()
                 for entity in doc.modelspace():
                     try:
                         if str(getattr(entity.dxf, "layer", "")).upper() == "SRJ":
@@ -237,7 +241,7 @@ class TrackStep(PipelineStep):
                 break
 
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception as exc:
             print(f"   ! Main line trim DXF read skipped ({exc})")
             return None
@@ -305,7 +309,7 @@ class TrackStep(PipelineStep):
             pass
 
         try:
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
         except Exception as exc:
             print(f"   ! Main line trim DXF save skipped ({exc})")
 

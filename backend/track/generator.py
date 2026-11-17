@@ -252,9 +252,9 @@ class TrackGenerator:
     def __init__(self, config: TrackGenerationConfig):
         self.config = config
 
-    def build_tracks(self, quiet: bool = False) -> BuiltTracks:
+    def build_tracks(self, quiet: bool = False, document=None) -> BuiltTracks:
         """Build every track centreline from the source DXF (no drawing)."""
-        source_doc = ezdxf.readfile(self.config.source_dxf)
+        source_doc = document if document is not None else ezdxf.readfile(self.config.source_dxf)
         main = _source_points(source_doc, self.config.source_layer)
         tracks: dict[str, List[Point]] = {"MAIN_LINE": main}
         main_extents: dict[str, tuple[float, float]] = {
@@ -442,16 +442,16 @@ class TrackGenerator:
             overrun_jobs=overrun_jobs,
         )
 
-    def run(self) -> dict[str, List[Point]]:
+    def run(self, document=None, save: bool = True) -> dict[str, List[Point]]:
         """Build tracks, draw them to DXF, and return track centrelines."""
-        built = self.build_tracks() #Pure mathematical coordinate engine
+        doc = document if document is not None else ezdxf.readfile(self.config.source_dxf)
+        built = self.build_tracks(document=doc) #Pure mathematical coordinate engine
         tracks, loop_results, overrun_jobs = (
             built.tracks,
             built.loop_results,
             built.overrun_jobs,
         )
 
-        doc = ezdxf.readfile(self.config.source_dxf)
         _remove_source_alignment_entities(doc, self.config.source_layer) #delete the dxf things which were present before so that it only draw the new thing will make it cleaner. 
 
         draw_tracks(
@@ -463,5 +463,6 @@ class TrackGenerator:
         )
 
         Path(self.config.output_dxf).parent.mkdir(parents=True, exist_ok=True)
-        doc.saveas(self.config.output_dxf)
+        if save:
+            doc.saveas(self.config.output_dxf)
         return tracks

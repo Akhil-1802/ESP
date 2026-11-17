@@ -17,7 +17,7 @@ class CalLabelStep(PipelineStep):
     def _generate_cal_labels(self, tracks: dict) -> None:
         """Draw per-line CAL labels just above each LOOP/MAIN line."""
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception:
             return
         try:
@@ -65,7 +65,7 @@ class CalLabelStep(PipelineStep):
                         continue
         except Exception:
             pass
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
         for _name, (_label, _length) in summary.items():
             print(f"   OK {_label}")
         print(f"   ✓ CAL labels: {len(summary)}")

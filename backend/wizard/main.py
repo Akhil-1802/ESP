@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from platform_gen.kml_io import convert_kml_to_dxf
+from platform_gen.kml_io import build_kml_document
 
 from .convert import (
     _build_crossovers,
@@ -53,9 +53,8 @@ def wizard_main_center(
     """MAIN midpoint chainage of the uploaded KML."""
     from cli.main import _main_center
 
-    converted = workdir / f"{kml_path.stem}_converted.dxf"
-    convert_kml_to_dxf(str(kml_path), str(converted), selected_track_id=selected_track_id)
-    return _main_center(str(converted), layer)
+    document = build_kml_document(str(kml_path), selected_track_id=selected_track_id)
+    return _main_center(str(kml_path), layer, document=document)
 
 
 def wizard_to_config_dict(spec: dict, main_center: float | None = None) -> dict:

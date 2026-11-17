@@ -26,3 +26,7 @@ class GenerationContext:
     loop_trim_extents: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     loop_full_lines: Dict[str, list] = field(default_factory=dict)
     main_line_trim_range: Tuple[float, float] | None = None
+    document: Any = None
+    in_memory: bool = False
+    timings: Dict[str, float] = field(default_factory=dict)
+    polygon_cache: Dict[str, tuple] = field(default_factory=dict)

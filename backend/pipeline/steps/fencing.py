@@ -182,7 +182,7 @@ class FencingStep(PipelineStep):
         """Draw fencing for all recorded SIDE platforms."""
         if not self._fencing_jobs:
             return
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
         exclusions = self._station_footprints(doc)
         setups = []
         for _layer, far_edge, outline, ext in self._fencing_jobs:
@@ -203,7 +203,7 @@ class FencingStep(PipelineStep):
                 break
         for _layer, far_edge, outline, ext, _setup in setups:
             self._draw_fencing(doc, far_edge, outline, exclusions, ext, common)
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
 
 class FencingMixin(FencingStep):

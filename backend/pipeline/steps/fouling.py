@@ -18,12 +18,12 @@ class FoulingStep(PipelineStep):
     def _generate_fouling_marks(self, tracks: dict) -> None:
         """Automatic Fouling Marks: no user input, purely from geometry."""
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception:
             return
         self._wipe_layers(doc, {"FM", "FOULING_MARK", "FOULING"})
-        doc.saveas(self.config.output_dxf)
-        doc = ezdxf.readfile(self.config.output_dxf)
+        self._save_document(doc)
+        doc = self._load_document()
         try:
             extents = self._loop_main_extents()
             fm_tracks = dict(tracks)
@@ -71,14 +71,14 @@ class FoulingStep(PipelineStep):
             return
         self._fouling_marks = list(marks)
         if not marks:
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
             return
         try:
             count = _draw_fouling_marks(doc, marks)
         except Exception as exc:
             print(f"   ! Fouling-mark drawing skipped ({exc})")
             return
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
         for mark in marks:
             print(
                 f"   OK FM ({mark.track}@"

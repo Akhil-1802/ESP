@@ -76,6 +76,7 @@ def apply_loop_overrun_cuts(
     loops_spec: list,
     additional_lines_spec: list,
     ranges: Dict[str, Tuple[float, float, float, float]],
+    document=None,
 ) -> Tuple[dict, dict, dict, dict]:
     """Trim bounded loops at crossover SRJs into running + overrun.
 
@@ -237,7 +238,7 @@ def apply_loop_overrun_cuts(
         return {}, {}, {}, {}
 
     try:
-        doc = ezdxf.readfile(doc_path)
+        doc = document if document is not None else ezdxf.readfile(doc_path)
     except Exception as exc:
         print(f"   ! Loop overrun redraw skipped ({exc})")
         return {}, {}, {}, {}
@@ -317,7 +318,8 @@ def apply_loop_overrun_cuts(
             pass
 
     try:
-        doc.saveas(doc_path)
+        if document is None:
+            doc.saveas(doc_path)
     except Exception as exc:
         print(f"   ! Loop overrun redraw save skipped ({exc})")
 

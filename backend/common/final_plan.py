@@ -57,13 +57,13 @@ def _horizontal_labels(layout):
         visit(entity)
 
 
-def align_final_plan(path: str) -> float:
+def align_final_plan(path: str, document=None) -> float:
     """Rotate all modelspace entities together; return the applied radians.
 
     Fit the displayed MAIN_LINE, after trimming. Integrating along segments
     makes the fit independent of vertex spacing. Keep its first point fixed.
     """
-    doc = ezdxf.readfile(path)
+    doc = document if document is not None else ezdxf.readfile(path)
     mains = list(doc.modelspace().query('LWPOLYLINE[layer=="MAIN_LINE"]'))
     if not mains:
         raise ValueError("Cannot align final plan: MAIN_LINE polyline is missing")
@@ -103,5 +103,6 @@ def align_final_plan(path: str) -> float:
         except (AttributeError, NotImplementedError) as exc:
             raise ValueError(f"Cannot align DXF entity {entity.dxftype()}") from exc
     _horizontal_labels(doc.modelspace())
-    doc.saveas(path)
+    if document is None:
+        doc.saveas(path)
     return -angle

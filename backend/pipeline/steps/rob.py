@@ -26,7 +26,7 @@ class RobStep(PipelineStep):
         if not getattr(self.config, "robs", None):
             return
 
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
 
         # Wipe existing layers for ROBs
         targets = {cfg.output_layer for cfg in self.config.robs}
@@ -142,7 +142,7 @@ class RobStep(PipelineStep):
             cfg._top_offset = top_span
             cfg._bottom_offset = bot_span
 
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
     def _resolve_platform_bounds(
         self,
@@ -198,19 +198,21 @@ class RobStep(PipelineStep):
 
     def _platform_polygons(self, doc, layer: str) -> List[List[Point]]:
         """Extract platform polygons from a DXF layer."""
-        polygons: List[List[Point]] = []
-        for entity in doc.modelspace():
-            if entity.dxf.layer != layer or entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
-                continue
-            if hasattr(entity, "get_points"):
-                pts = [(float(p[0]), float(p[1])) for p in entity.get_points()]
-            elif hasattr(entity, "vertices"):
-                pts = [(float(v.dxf.location[0]), float(v.dxf.location[1])) for v in entity.vertices]
-            else:
-                pts = []
-            if len(pts) >= 3:
-                polygons.append(pts)
-        return polygons
+        def extract():
+            polygons: List[List[Point]] = []
+            for entity in doc.modelspace():
+                if entity.dxf.layer != layer or entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
+                    continue
+                if hasattr(entity, "get_points"):
+                    pts = [(float(p[0]), float(p[1])) for p in entity.get_points()]
+                elif hasattr(entity, "vertices"):
+                    pts = [(float(v.dxf.location[0]), float(v.dxf.location[1])) for v in entity.vertices]
+                else:
+                    pts = []
+                if len(pts) >= 3:
+                    polygons.append(pts)
+            return polygons
+        return self._cached_polygons(doc, layer, extract)
 
 
 class RobMixin(RobStep):

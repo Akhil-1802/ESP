@@ -264,7 +264,7 @@ class GradientStep(PipelineStep):
         if not gradients:
             return
 
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
 
         # Wipe existing gradient layer
         layer_name = "GRADIENT"
@@ -700,7 +700,7 @@ class GradientStep(PipelineStep):
                 dxfattribs={"layer": layer_name, "color": 1},
             )
 
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
 
 class GradientMixin(GradientStep):

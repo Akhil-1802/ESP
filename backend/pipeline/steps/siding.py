@@ -54,7 +54,7 @@ class SidingStep(PipelineStep):
             self._siding_results = []
             return
         self._siding_results = []
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
         targets = {f"SIDING_{number}" for number, _ in enumerate(self.config.sidings, 1)}
         targets.update(
             layer.dxf.name
@@ -159,7 +159,7 @@ class SidingStep(PipelineStep):
                 f"total={result.total_length_m:.1f}m "
                 f"tip=({result.tip[0]:.2f}, {result.tip[1]:.2f})"
             )
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
 
 class SidingMixin(SidingStep):

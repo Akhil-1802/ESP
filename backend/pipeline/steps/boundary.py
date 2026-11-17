@@ -107,14 +107,14 @@ class BoundaryStep(PipelineStep):
         if not getattr(self.config, "enable_main_line_trim", False):
             # Land boundary is not shown before the Done button is clicked
             try:
-                doc = ezdxf.readfile(self.config.output_dxf)
+                doc = self._load_document()
                 removed = False
                 for entity in list(doc.modelspace()):
                     if str(getattr(entity.dxf, "layer", "")).strip().upper() == "LAND_BOUNDARY":
                         doc.modelspace().delete_entity(entity)
                         removed = True
                 if removed:
-                    doc.saveas(self.config.output_dxf)
+                    self._save_document(doc)
             except Exception:
                 pass
             return
@@ -126,7 +126,7 @@ class BoundaryStep(PipelineStep):
         cleaned_main = [(float(p[0]), float(p[1])) for p in main_pts]
 
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception as exc:
             print(f"   ! Land boundary DXF read skipped ({exc})")
             return
@@ -255,7 +255,7 @@ class BoundaryStep(PipelineStep):
                 print(f"   ! Failed to write land boundary line ({exc})")
 
         try:
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
             print(
                 f"   ✓ Land boundary written (LEFT: {dist_left:.1f}m {'(station+40m)' if has_station_left else '(entity+70m)'}, "
                 f"RIGHT: {dist_right:.1f}m {'(station+40m)' if has_station_right else '(entity+70m)'})"

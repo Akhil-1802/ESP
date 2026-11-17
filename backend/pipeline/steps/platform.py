@@ -86,14 +86,16 @@ class PlatformStep(PipelineStep):
 
     def _platform_polygons(self, doc, layer: str):
         """Extract platform polygons from a DXF layer."""
-        polygons = []
-        for entity in doc.modelspace():
-            if entity.dxf.layer != layer or entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
-                continue
-            points = _extract_points(entity)
-            if len(points) >= 3:
-                polygons.append(points)
-        return sorted(polygons, key=_polygon_area, reverse=True)
+        def extract():
+            polygons = []
+            for entity in doc.modelspace():
+                if entity.dxf.layer != layer or entity.dxftype() not in ("LWPOLYLINE", "POLYLINE"):
+                    continue
+                points = _extract_points(entity)
+                if len(points) >= 3:
+                    polygons.append(points)
+            return sorted(polygons, key=_polygon_area, reverse=True)
+        return self._cached_polygons(doc, layer, extract)
 
     def _check_platform_overlap(self, doc, outline, platform_layer: str) -> None:
         """Verify that a new platform doesn't overlap existing platforms."""
@@ -178,7 +180,7 @@ class PlatformStep(PipelineStep):
         main_pts = (tracks or {}).get("MAIN_LINE")
         if not main_pts and hasattr(self, "config") and getattr(self.config, "output_dxf", None):
             try:
-                doc = ezdxf.readfile(self.config.output_dxf)
+                doc = self._load_document()
                 main_pts = Track.from_dxf(doc, layer_name="MAIN_LINE").points
             except Exception:
                 main_pts = None
@@ -238,7 +240,7 @@ class PlatformStep(PipelineStep):
         target_pts = (tracks or {}).get(track_layer)
         if not target_pts and hasattr(self, "config") and getattr(self.config, "output_dxf", None):
             try:
-                doc = ezdxf.readfile(self.config.output_dxf)
+                doc = self._load_document()
                 target_pts = Track.from_dxf(doc, layer_name=track_layer).points
             except Exception:
                 target_pts = None
@@ -390,7 +392,7 @@ class PlatformStep(PipelineStep):
                 if widenings:
                     platform_cfg.fob_widenings = widenings
 
-            result, doc = PlatformGenerator(platform_cfg, track_points=tracks).build()
+            result, doc = PlatformGenerator(platform_cfg, track_points=tracks).build(document=self._load_document() if self._active_document() is not None else None)
             _write_platform(doc, result, platform_cfg)
             outline = [(p[0], p[1]) for p in result.outline]
             stair_outlines = [
@@ -414,11 +416,11 @@ class PlatformStep(PipelineStep):
                 self._fencing_jobs.append(
                     (platform_cfg.output_layer, result.far_edge, outline, 0.0)
                 )
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
             self.platform_layers.append(platform_cfg.output_layer)
 
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
             for entity in list(doc.modelspace()):
                 try:
                     if entity.dxf.layer == "TRACK_LABELS":
@@ -430,7 +432,7 @@ class PlatformStep(PipelineStep):
                 if name.upper() == "MAIN_LINE":
                     display = "MAIN LINE"
                 _add_track_label(doc, display, points, "TRACK_LABELS", color=1, height=1.0)
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
         except Exception:
             pass
 

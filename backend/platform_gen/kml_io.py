@@ -8,6 +8,8 @@ import xml.etree.ElementTree as ET
 
 import ezdxf
 
+from common.cache import BoundedCache, file_digest
+
 try:
     from pyproj import Transformer
     from shapely.geometry import LineString
@@ -74,14 +76,12 @@ def _align_to_x_axis(points_list):
     return rotated_list, rotation_angle, origin
 
 
-def convert_kml_to_dxf(
+def _load_kml_points(
     kml_path: str,
-    dxf_path: str,
-    layer_name: str = "MAIN_TRACK",
     align_horizontal: bool = True,
     selected_track_id: int | str | None = None,
-) -> str:
-    """Convert KML file containing LineString(s) to a DXF file with LWPOLYLINE.
+):
+    """Extract immutable, projected track coordinates from KML LineStrings.
 
     If selected_track_id is specified (e.g. 0, 1 or 'path_0'), the exact candidate
     path is extracted from track detection without destructive unions or snapping.
@@ -118,22 +118,13 @@ def convert_kml_to_dxf(
         chosen = candidates[track_idx]
         pts_utm = chosen["pts_utm"]
 
-        doc = ezdxf.new("R2010")
-        msp = doc.modelspace()
-        doc.layers.add(layer_name, color=1)
 
         points_to_write = [pts_utm]
         if align_horizontal:
             points_to_write, rot_angle, rot_origin = _align_to_x_axis(points_to_write)
             print(f"   Selected track '{chosen['name']}' ({chosen['length_m']:.1f} m) aligned to horizontal (rotated by {math.degrees(rot_angle):.1f} deg)")
 
-        for pts in points_to_write:
-            msp.add_lwpolyline(pts, dxfattribs={"layer": layer_name, "color": 1})
-
-        out = Path(dxf_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        doc.saveas(str(out))
-        return str(out)
+        return tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write)
     if Transformer is None:
         raise ImportError("pyproj and shapely are required for KML conversion")
 
@@ -192,9 +183,6 @@ def convert_kml_to_dxf(
         multi = unary_union(snapped_lines)
         merged = linemerge(multi)
 
-    doc = ezdxf.new("R2010")
-    msp = doc.modelspace()
-    doc.layers.add(layer_name, color=1)
 
     points_to_write = []
     if merged.geom_type == "LineString":
@@ -207,9 +195,36 @@ def convert_kml_to_dxf(
         points_to_write, rot_angle, rot_origin = _align_to_x_axis(points_to_write)
         print(f"   Track aligned to horizontal (rotated by {math.degrees(rot_angle):.1f} deg)")
 
-    for pts in points_to_write:
-        msp.add_lwpolyline(pts, dxfattribs={"layer": layer_name, "color": 1})
+    return tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write)
 
+
+# A small immutable-coordinate cache, shared across uploads with identical bytes.
+_KML_POINTS_CACHE = BoundedCache(max_bytes=8 * 1024 * 1024, max_entries=4, ttl=600)
+
+
+def build_kml_document(kml_path: str, layer_name: str = "MAIN_TRACK", align_horizontal: bool = True,
+                       selected_track_id: int | str | None = None):
+    """Parse/project unchanged KML once; return a fresh, isolated drawing each time."""
+    selection = None if selected_track_id is None else str(selected_track_id)
+    key = (file_digest(kml_path), bool(align_horizontal), selection)
+    with _KML_POINTS_CACHE.single_flight(key):
+        points = _KML_POINTS_CACHE.get(key)
+        hit = points is not None
+        if points is None:
+            points = _load_kml_points(kml_path, align_horizontal, selected_track_id)
+            _KML_POINTS_CACHE.put(key, points, sum(len(line) for line in points) * 128)
+    doc = ezdxf.new("R2010")
+    doc.layers.add(layer_name, color=1)
+    for line in points:
+        doc.modelspace().add_lwpolyline(line, dxfattribs={"layer": layer_name, "color": 1})
+    doc._esp_kml_cache_hit = hit
+    return doc
+
+
+def convert_kml_to_dxf(kml_path: str, dxf_path: str, layer_name: str = "MAIN_TRACK",
+                       align_horizontal: bool = True, selected_track_id: int | str | None = None) -> str:
+    """Standalone compatibility wrapper around the in-memory KML converter."""
+    doc = build_kml_document(kml_path, layer_name, align_horizontal, selected_track_id)
     out = Path(dxf_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     doc.saveas(str(out))

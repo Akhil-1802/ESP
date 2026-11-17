@@ -106,7 +106,7 @@ class StationStep(PipelineStep):
         if not self.config.stations:
             return
 
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
 
         try:
             platform_text_layers = {}
@@ -332,7 +332,7 @@ class StationStep(PipelineStep):
             except Exception as exc:
                 print(f"   ! Station flag skipped ({exc})")
 
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
 
 class StationMixin(StationStep):

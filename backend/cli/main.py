@@ -34,9 +34,9 @@ def _get_dxf_layers(path: str) -> list[str]:
     return sorted({e.dxf.layer for e in doc.modelspace() if e.dxftype() in ("LINE", "LWPOLYLINE", "POLYLINE", "SPLINE")})
 
 
-def _main_center(source_dxf: str, layer: str) -> float:
+def _main_center(source_dxf: str, layer: str, document=None) -> float:
     """Centre chainage of the MAIN track (half its length)."""
-    doc = ezdxf.readfile(source_dxf)
+    doc = document if document is not None else ezdxf.readfile(source_dxf)
     best: list = []
     best_len = 0.0
     for entity in doc.modelspace():

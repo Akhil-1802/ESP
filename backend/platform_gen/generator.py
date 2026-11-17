@@ -36,8 +36,8 @@ class PlatformGenerator:
             return Track(name=layer, points=points)
         return Track.from_dxf(doc, layer_name=layer, handle=handle, name=name)
 
-    def build(self) -> Tuple[PlatformResult, "ezdxf.document.Drawing"]:
-        doc = ezdxf.readfile(self.cfg.source_dxf)
+    def build(self, document=None) -> Tuple[PlatformResult, "ezdxf.document.Drawing"]:
+        doc = document if document is not None else ezdxf.readfile(self.cfg.source_dxf)
         track1 = self._track(
             doc, self.cfg.track_layer, self.cfg.track_handle, "track1"
         )

@@ -148,7 +148,7 @@ class ChainageStep(PipelineStep):
     def _generate_station_chainage_labels(self, tracks: dict) -> None:
         """Add station-relative chainage leaders + labels (additive only)."""
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception as exc:
             print(f"   ! Station chainage labels skipped ({exc})")
             return
@@ -577,7 +577,7 @@ class ChainageStep(PipelineStep):
                     continue
 
         try:
-            doc.saveas(self.config.output_dxf)
+            self._save_document(doc)
         except Exception as exc:
             print(f"   ! Station chainage labels save skipped ({exc})")
             return
@@ -605,7 +605,7 @@ class ChainageStep(PipelineStep):
                 return
 
         try:
-            doc = ezdxf.readfile(self.config.output_dxf)
+            doc = self._load_document()
         except Exception:
             return
 
@@ -803,7 +803,7 @@ class ChainageStep(PipelineStep):
         except Exception as exc:
             print(f"   ! Station marker lines skipped ({exc})")
 
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
         print(f"   ✓ Alignment interval chainages: {len(distances_to_mark)} markers (start {start_ch_m:.1f} m to {start_ch_m + total_len:.1f} m)")
 
     def _parse_alignment_station_markers(

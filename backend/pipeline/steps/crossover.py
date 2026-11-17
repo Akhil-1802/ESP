@@ -299,7 +299,7 @@ class CrossoverStep(PipelineStep):
                 + f"\nNo crossover geometry was generated until the conflict is resolved ({self.config.output_dxf} holds tracks/platforms only)."
             )
 
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
 
         for entity in list(doc.modelspace()):
             if entity.dxf.layer in ("CROSSOVERS", "CROSSOVER_FROM_MARKER", "CROSSOVER_TO_MARKER", "SRJ"):
@@ -396,7 +396,7 @@ class CrossoverStep(PipelineStep):
                 f"[{res.turnout_type}] OL={res.ol_mm:.0f}mm"
             )
 
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
         self._apply_loop_overrun_cuts(tracks)
 
     def _apply_loop_overrun_cuts(self, tracks: dict) -> dict[str, tuple]:
@@ -410,6 +410,7 @@ class CrossoverStep(PipelineStep):
             loops_spec=self.config.loops,
             additional_lines_spec=self.config.additional_lines,
             ranges=ranges,
+            document=self._load_document() if self._active_document() is not None else None,
         )
         self._loop_cuts = cuts
         self._loop_trim_extents = trim_extents

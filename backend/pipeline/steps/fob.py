@@ -25,7 +25,7 @@ class FobStep(PipelineStep):
         """Generate basic FOB decks (needs platforms already in place)."""
         if not getattr(self.config, "fobs", None):
             return
-        doc = ezdxf.readfile(self.config.output_dxf)
+        doc = self._load_document()
         targets = {cfg.output_layer for cfg in self.config.fobs}
         targets.update(
             getattr(cfg, "dimension_layer", "") or f"{cfg.output_layer}-DIM"
@@ -124,7 +124,7 @@ class FobStep(PipelineStep):
                 f"{', '.join(cfg.platforms)}) width={cfg.width:g}m "
                 f"[{cfg.output_layer}]"
             )
-        doc.saveas(self.config.output_dxf)
+        self._save_document(doc)
 
 
 class FobMixin(FobStep):
