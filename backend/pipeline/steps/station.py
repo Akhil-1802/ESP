@@ -131,6 +131,8 @@ class StationStep(PipelineStep):
                 request.platform_side,
             ) #calculate the exact 4-corner rectangular footprint of the Station Building so it sits flush against the rear edge of the passenger platform
             self._check_station_overlap(doc, building.outline, request.platform_layer)
+            if hasattr(self, "_key_plan_building_results"):
+                self._key_plan_building_results.append((request, building))
 
             layer = "STATION-BUILDING"
             if layer not in doc.layers:

@@ -62,6 +62,12 @@ class ESPGenerator(
         self._main_line_trim_range: tuple[float, float] | None = None
         self.context = None
         self.timings: dict[str, float] = {}
+        self.key_plan_snapshot = None
+        self._key_plan_platform_results = []
+        self._key_plan_building_results = []
+        self._key_plan_fob_outlines = []
+        self._key_plan_original_tracks = {}
+        self._cal_summary = {}
 
     def _run_stage(self, name, action, *args, **kwargs):
         start = perf_counter()
@@ -92,6 +98,11 @@ class ESPGenerator(
         """Save once by default; disk checkpoints remain for diagnostic comparisons."""
         self.context = GenerationContext(config=self.config, source_dxf=self.source_dxf, in_memory=in_memory)
         self.timings = self.context.timings
+        self.key_plan_snapshot = None
+        self._key_plan_platform_results = []
+        self._key_plan_building_results = []
+        self._key_plan_fob_outlines = []
+        self._cal_summary = {}
         start = perf_counter()
         try:
             return self._run_pipeline()
@@ -102,6 +113,10 @@ class ESPGenerator(
             self.context.document = None
             self.context.polygon_cache.clear()
             self.context.tracks.clear()
+            self._key_plan_original_tracks.clear()
+            self._key_plan_platform_results.clear()
+            self._key_plan_building_results.clear()
+            self._key_plan_fob_outlines.clear()
 
     def _run_pipeline(self) -> str:
         """Execute the complete generation workflow: tracks -> platforms -> crossovers -> stations -> sidings."""
@@ -115,6 +130,8 @@ class ESPGenerator(
         # Step 2: Generate tracks
         print("🛤️  Generating tracks...")
         tracks = self._run_stage("tracks", self.build_tracks)
+        if self.config.enable_main_line_trim and self.config.align_final_plan_to_x_axis:
+            self._key_plan_original_tracks = {name: list(points) for name, points in tracks.items()}
         print(f"   ✓ Generated {len(tracks)} track(s)")
 
         # Step 3: Generate platforms
@@ -203,6 +220,12 @@ class ESPGenerator(
             print(f"   ! Land boundary skipped ({exc})")
 
         if getattr(self.config, "align_final_plan_to_x_axis", False):
+            if getattr(self.config, "enable_main_line_trim", False):
+                from key_plan.snapshot import capture_snapshot
+                self.key_plan_snapshot = self._run_stage(
+                    "key_plan_snapshot", capture_snapshot, self, tracks, self._load_document(),
+                    self._key_plan_original_tracks["MAIN_LINE"],
+                )
             self._run_stage("rotation", align_final_plan, self.config.output_dxf,
                             document=self._load_document() if self.context.in_memory else None)
 

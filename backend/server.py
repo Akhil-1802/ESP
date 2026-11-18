@@ -17,6 +17,7 @@ from uuid import uuid4
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from common.constants import LOOP_HALF_LENGTH_M
 from common.cache import BoundedCache, file_digest
@@ -24,6 +25,7 @@ from config.loader import load_config_from_json
 from pipeline.orchestrator import ESPGenerator
 from platform_gen.kml_io import convert_kml_direct
 from platform_gen.track_detector import detect_kml_tracks
+from key_plan import KeyPlanOptions, generate_key_plan
 from wizard import wizard_main_center, wizard_needs_center, wizard_to_config_dict
 
 BACKEND_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
@@ -31,7 +33,13 @@ BACKEND_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DXF_MEDIA_TYPE = "image/vnd.dxf"
 # Successful artifacts only: bounded per process, automatically lost on restart.
 _DXF_CACHE = BoundedCache(max_bytes=8 * 1024 * 1024, max_entries=8, ttl=300)
-_GENERATION_CACHE_VERSION = "in-memory-v1"
+_GENERATION_CACHE_VERSION = "key-plan-snapshot-v1"
+_KEY_PLAN_SNAPSHOTS = BoundedCache(max_bytes=4 * 1024 * 1024, max_entries=32, ttl=600)
+
+
+class KeyPlanRequest(BaseModel):
+    generation_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]+$")
+    options: KeyPlanOptions = Field(default_factory=KeyPlanOptions)
 
 # Retention TTL for generated files in output directory (10 minutes)
 OUTPUT_FILE_TTL_SECONDS: float = 600.0
@@ -104,7 +112,7 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Server-Timing", "X-ESP-Cache"],
+    expose_headers=["Server-Timing", "X-ESP-Cache", "X-ESP-Generation-ID", "Content-Disposition"],
 )
 
 
@@ -135,7 +143,7 @@ def _persist_output(dxf_path: Path, download_name: str) -> Path:
         return candidate
 
 
-def _generate_or_cached(esp_config, payload: dict) -> tuple[bool, dict[str, float]]:
+def _generate_or_cached(esp_config, payload: dict):
     """Reuse exact successful exports; paths/names are request-local, not geometry."""
     start = time.perf_counter()
     drawing_config = {k: v for k, v in payload.items() if k not in ("source_path", "output_dxf")}
@@ -147,23 +155,28 @@ def _generate_or_cached(esp_config, payload: dict) -> tuple[bool, dict[str, floa
     with _DXF_CACHE.single_flight(key):
         cached = _DXF_CACHE.get(key)
         if cached is not None:
-            output.write_bytes(cached)
+            artifact, snapshot = cached
+            output.write_bytes(artifact)
             timings = {"cache": time.perf_counter() - start}
             print(f"   [cache] DXF export: hit ({timings['cache']:.3f}s)")
-            return True, timings
+            return True, timings, snapshot
         generator = ESPGenerator(esp_config)
         generator.run()
+        snapshot = json.dumps(generator.key_plan_snapshot, allow_nan=False).encode() if generator.key_plan_snapshot else None
         # Preserve the API's existing missing-output error; never cache failures.
         if output.is_file() and output.stat().st_size <= _DXF_CACHE.max_bytes:
             artifact = output.read_bytes()
-            _DXF_CACHE.put(key, artifact, len(artifact))
+            _DXF_CACHE.put(key, (artifact, snapshot), len(artifact) + len(snapshot or b""))
         print("   [cache] DXF export: miss")
-        return False, generator.timings
+        return False, generator.timings, snapshot
 
 
 def _read_json_upload(upload: UploadFile, field: str) -> dict:
     try:
         data = json.loads(upload.file.read().decode("utf-8"))
+        # converts the json formatted string into dictionary
+        #UTF-8 : converts the raw binary bytes into a readable python string , it uses Unicode transformation format 
+        
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(422, f"{field} file is not valid JSON: {exc}") from exc
     if not isinstance(data, dict):
@@ -177,7 +190,7 @@ def _save_kml_upload(upload: UploadFile, workdir: Path, field: str = "kml") -> P
         raise HTTPException(422, f"{field} file must be a .kml file.")
     local_source = workdir / name
     with local_source.open("wb") as stream:
-        shutil.copyfileobj(upload.file, stream)
+        shutil.copyfileobj(upload.file, stream) #It uses chunk streaming(defaulting to small buffer sizes)
     return local_source
 
 
@@ -196,7 +209,7 @@ def _execute_config_dict(payload: dict, workdir: Path, download_name: str) -> Fi
         raise HTTPException(500, f"config load failed: {exc}") from exc
 
     try:
-        cache_hit, timings = _generate_or_cached(esp_config, payload)
+        cache_hit, timings, snapshot = _generate_or_cached(esp_config, payload)
     except UnicodeError as exc:
         shutil.rmtree(workdir, ignore_errors=True)
         raise HTTPException(500, f"server output encoding failed: {exc}") from exc
@@ -214,15 +227,40 @@ def _execute_config_dict(payload: dict, workdir: Path, download_name: str) -> Fi
 
     saved_path = _persist_output(dxf_path, download_name)
     shutil.rmtree(workdir, ignore_errors=True)
+    headers = {
+        "X-ESP-Cache": "hit" if cache_hit else "miss",
+        "Server-Timing": ", ".join(f"{name};dur={seconds * 1000:.2f}" for name, seconds in timings.items()),
+    }
+    if snapshot is not None:
+        generation_id = uuid4().hex
+        _KEY_PLAN_SNAPSHOTS.put(generation_id, snapshot, len(snapshot))
+        if _KEY_PLAN_SNAPSHOTS.get(generation_id) is not None:
+            headers["X-ESP-Generation-ID"] = generation_id
     return FileResponse(
         path=str(saved_path),
         media_type=DXF_MEDIA_TYPE,
         filename=saved_path.name,
-        headers={
-            "X-ESP-Cache": "hit" if cache_hit else "miss",
-            "Server-Timing": ", ".join(f"{name};dur={seconds * 1000:.2f}" for name, seconds in timings.items()),
-        },
+        headers=headers,
     )
+
+
+@app.post("/key-plan")
+def key_plan(request: KeyPlanRequest) -> FileResponse:
+    """Create a schematic from the exact finalized generation, without replanning."""
+    snapshot = _KEY_PLAN_SNAPSHOTS.get(request.generation_id)
+    if snapshot is None:
+        raise HTTPException(410, "Finalized design has expired or is unavailable. Finalize the ESP again, then generate the key plan.")
+    workdir = Path(tempfile.mkdtemp(prefix="esp_key_plan_"))
+    try:
+        doc = generate_key_plan(json.loads(snapshot), request.options)
+        path = workdir / "ESP_key_plan.dxf"
+        doc.saveas(path)
+        saved = _persist_output(path, path.name)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(422, f"Key plan cannot be laid out: {exc}") from exc
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    return FileResponse(str(saved), media_type=DXF_MEDIA_TYPE, filename=saved.name)
 
 
 @app.post("/detect-tracks")
@@ -278,17 +316,17 @@ def generate(
     kml: UploadFile = File(...),
 ) -> FileResponse:
     """Generate the ESP DXF from an uploaded config JSON + KML file."""
-    config_data = _read_json_upload(config, "config")
+    config_data = _read_json_upload(config, "config") #got the dict from the config file
     print(f"{config_data=}")
 
-    workdir = Path(tempfile.mkdtemp(prefix="esp_"))
-    local_source = _save_kml_upload(kml, workdir)
+    workdir = Path(tempfile.mkdtemp(prefix="esp_")) #created a temp file
+    local_source = _save_kml_upload(kml, workdir) #save the kml file and return the path
 
-    download_name = Path(str(config_data.get("output_dxf") or "ESP_output.dxf").strip() or "ESP_output.dxf").name
+    download_name = Path(str(config_data.get("output_dxf") or "ESP_output.dxf").strip() or "ESP_output.dxf").name #output path
 
     # Check for direct 1:1 KML replication mode
     if config_data.get("direct_kml") or config_data.get("kml_mode") == "direct":
-        out_file = workdir / download_name
+        out_file = workdir / download_name 
         try:
             convert_kml_direct(str(local_source), str(out_file))
         except Exception as exc:

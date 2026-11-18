@@ -77,6 +77,10 @@ export const FORCE_STROKE_COLOR = '#ff0000';
 
 export function getLayerStyle(layer) {
   const name = String(layer ?? '').trim();
+  if (name.toUpperCase().startsWith('KEY_PLAN_')) {
+    const category = name.includes('PLATFORM') ? 'platform' : name.includes('TEXT') ? 'text' : name.includes('STATION') ? 'station' : 'track';
+    return { color: '#ff0000', width: name.includes('TRACK') ? '1.2' : '0.8', category, label: name };
+  }
   const applyOverride = (style) => {
     if (name.toUpperCase().includes('BOUNDARY') || name.toUpperCase().includes('LAND')) {
       return { ...style, color: '#22c55e' };
@@ -523,6 +527,17 @@ export function dxfToSvg(input, options = {}) {
     throw new Error('No drawable entities found in this DXF.');
   }
 
+  if (options.keyPlan) {
+    // Fit the schematic's frame, not conservative arbitrary-DXF text bounds.
+    const frame = entities.filter((e) => e.layer === 'KEY_PLAN_FRAME').flatMap((e) => vertsOf(e.vertices));
+    if (frame.length) {
+      bounds.x0 = Math.min(...frame.map((p) => p[0]));
+      bounds.x1 = Math.max(...frame.map((p) => p[0]));
+      bounds.y0 = Math.min(...frame.map((p) => p[1]));
+      bounds.y1 = Math.max(...frame.map((p) => p[1]));
+    }
+  }
+
   const padX = Math.max((bounds.x1 - bounds.x0) * 0.05, 5.0);
   const padY = Math.max((bounds.y1 - bounds.y0) * 0.05, 5.0);
   const x0 = bounds.x0 - padX;
@@ -553,7 +568,7 @@ export function dxfToSvg(input, options = {}) {
     .join('\n');
 
   const crossoverTags = [];
-  crossoverCurves.forEach((curve, idx) => {
+  (options.keyPlan ? [] : crossoverCurves).forEach((curve, idx) => {
     const pts = curve.pts;
     const halfLen = curve.length / 2;
     let travelled = 0;
@@ -613,6 +628,7 @@ export function dxfToSvg(input, options = {}) {
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${r3(w)}" height="${r3(h)}" viewBox="${r3(x0)} ${r3(y0)} ${r3(w)} ${r3(h)}" preserveAspectRatio="xMidYMid meet">`,
     `<style>`,
+    ...(options.keyPlan ? ['.cad-text text { font-family: Arial, sans-serif !important; font-weight: 400 !important; stroke: none !important; }'] : []),
     `  .cad-geom line, .cad-geom path, .cad-geom circle { vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }`,
     `  .cad-text text { font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }`,
     `  .crossover-badge-bg { fill: #0f172a; stroke: #38bdf8; stroke-width: 0.35px; vector-effect: non-scaling-stroke; }`,

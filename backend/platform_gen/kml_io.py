@@ -22,6 +22,15 @@ from platform_gen.track_detector import detect_kml_tracks
 JOIN_TOLERANCE_M = 0.01
 
 
+class _ProjectedLines(tuple):
+    """Immutable coordinate sequences with the schematic's survey north reference."""
+
+    def __new__(cls, lines, north_angle):
+        value = super().__new__(cls, lines)
+        value.north_angle = north_angle
+        return value
+
+
 def _calculate_track_angle(points):
     """Calculate the angle of the track from start to end point.
     Returns the angle in radians."""
@@ -120,11 +129,12 @@ def _load_kml_points(
 
 
         points_to_write = [pts_utm]
+        north_angle = 90.0 - math.degrees(_calculate_track_angle(pts_utm)) if align_horizontal else 90.0
         if align_horizontal:
             points_to_write, rot_angle, rot_origin = _align_to_x_axis(points_to_write)
             print(f"   Selected track '{chosen['name']}' ({chosen['length_m']:.1f} m) aligned to horizontal (rotated by {math.degrees(rot_angle):.1f} deg)")
 
-        return tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write)
+        return _ProjectedLines(tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write), north_angle)
     if Transformer is None:
         raise ImportError("pyproj and shapely are required for KML conversion")
 
@@ -191,11 +201,12 @@ def _load_kml_points(
         longest = max(merged.geoms, key=lambda g: g.length)
         points_to_write.append(list(longest.coords))
 
+    north_angle = 90.0 - math.degrees(_calculate_track_angle(points_to_write[0])) if align_horizontal and points_to_write else 90.0
     if align_horizontal:
         points_to_write, rot_angle, rot_origin = _align_to_x_axis(points_to_write)
         print(f"   Track aligned to horizontal (rotated by {math.degrees(rot_angle):.1f} deg)")
 
-    return tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write)
+    return _ProjectedLines(tuple(tuple((float(x), float(y)) for x, y in pts) for pts in points_to_write), north_angle)
 
 
 # A small immutable-coordinate cache, shared across uploads with identical bytes.
@@ -218,6 +229,7 @@ def build_kml_document(kml_path: str, layer_name: str = "MAIN_TRACK", align_hori
     for line in points:
         doc.modelspace().add_lwpolyline(line, dxfattribs={"layer": layer_name, "color": 1})
     doc._esp_kml_cache_hit = hit
+    doc._esp_north_angle_deg = getattr(points, "north_angle", None)
     return doc
 
 

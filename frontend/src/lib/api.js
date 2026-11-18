@@ -49,7 +49,27 @@ export async function generateDxf({ config, kmlFile, apiBase = API_BASE }) {  co
   }
   const blob = await res.blob();
   const fallback = String(config.output_dxf || 'ESP_output.dxf').split(/[\\/]/).pop();
-  return { blob, filename: downloadName(res, fallback) };
+  return { blob, filename: downloadName(res, fallback), generationId: res.headers.get('X-ESP-Generation-ID') };
+}
+
+export async function generateKeyPlan({ generationId, options, apiBase = API_BASE }) {
+  let res;
+  try {
+    res = await fetch(`${apiBase}/key-plan`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation_id: generationId, options }),
+    });
+  } catch {
+    throw new Error('Cannot reach the backend to generate the key plan.');
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const message = typeof data.detail === 'string' ? data.detail : 'Check the key-plan container dimensions and captions.';
+    const error = new Error(message);
+    error.status = res.status;
+    throw error;
+  }
+  return { blob: await res.blob(), filename: downloadName(res, 'ESP_key_plan.dxf') };
 }
 
 export async function convertKmlDirect({ kmlFile, apiBase = API_BASE }) {

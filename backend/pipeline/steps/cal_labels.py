@@ -65,6 +65,7 @@ class CalLabelStep(PipelineStep):
                         continue
         except Exception:
             pass
+        self._cal_summary = summary
         self._save_document(doc)
         for _name, (_label, _length) in summary.items():
             print(f"   OK {_label}")

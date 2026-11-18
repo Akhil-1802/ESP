@@ -18,6 +18,7 @@ import { DxfViewer } from './components/DxfViewer.jsx';
 import { JsonViewer } from './components/JsonViewer.jsx';
 import { StatusBanner } from './components/StatusBanner.jsx';
 import { QuickGuideModal } from './components/QuickGuideModal.jsx';
+import { KeyPlanSection } from './components/KeyPlanSection.jsx';
 import {
   buildConfig,
   fillCentredChainages,
@@ -28,7 +29,7 @@ import {
   trackOptions,
   validateForm,
 } from './lib/config.js';
-import { downloadBlob, fetchMainCenter, generateDxf, convertKmlDirect } from './lib/api.js';
+import { downloadBlob, fetchMainCenter, generateDxf, convertKmlDirect, generateKeyPlan } from './lib/api.js';
 import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
 import { generateDynamicPreview } from './lib/dynamicPreview.js';
 
@@ -63,6 +64,12 @@ export default function App() {
   const [alignmentState, setAlignmentState] = useState({ status: 'empty', message: '' });
   const [hasGeneratedDxf, setHasGeneratedDxf] = useState(false);
   const [isTrimmed, setIsTrimmed] = useState(false);
+  const [keyPlanResult, setKeyPlanResult] = useState(null);
+  const [activeView, setActiveView] = useState('esp');
+  const [keyPlanOptions, setKeyPlanOptions] = useState({ width: '420', height: '150',
+    left_destination: '', right_destination: '', station_caption: '', north_angle: '' });
+  const designRevision = useRef(0);
+  const keyPlanRevision = useRef(0);
 
   // Panel visibility toggles
   const [leftOpen, setLeftOpen] = useState(true);
@@ -121,7 +128,7 @@ export default function App() {
   const configText = useMemo(() => JSON.stringify(config, null, 2), [config]);
   const alignmentBusy = alignmentState.status === 'processing';
   const busy = status.kind === 'busy' || alignmentBusy;
-  const busyMessage = alignmentBusy ? alignmentState.message || 'Processing KML alignment…' : 'Generating drawing…';
+  const busyMessage = alignmentBusy ? alignmentState.message || 'Processing KML alignment…' : status.message || 'Generating drawing…';
 
   const dynamicResult = useMemo(() => {
     const hasUsableAlignment = Array.isArray(form.alignmentPoints) && form.alignmentPoints.length >= 2;
@@ -162,14 +169,60 @@ export default function App() {
     }
   }, [form, configText, isTrimmed]);
 
-  const result = backendResult || dynamicResult;
+  const result = activeView === 'key-plan' && keyPlanResult ? keyPlanResult : backendResult || dynamicResult;
+  const keyPlanReady = Boolean(backendResult?.isTrimmed && backendResult?.generationId);
 
   const updateForm = (updater) => {
+    designRevision.current += 1;
+    keyPlanRevision.current += 1;
     setBackendResult(null);
+    setKeyPlanResult(null);
+    setActiveView('esp');
+    setStatus({ kind: 'idle' });
     setForm(updater);
   };
 
+  const updateKeyPlanOptions = (next) => {
+    keyPlanRevision.current += 1;
+    setKeyPlanOptions(next);
+    setKeyPlanResult(null);
+    setActiveView('esp');
+    setStatus({ kind: 'idle' });
+  };
+
+  const onGenerateKeyPlan = async () => {
+    if (!keyPlanReady) return;
+    const width = Number(keyPlanOptions.width), height = Number(keyPlanOptions.height);
+    const northAngle = keyPlanOptions.north_angle === '' ? null : Number(keyPlanOptions.north_angle);
+    if (!Number.isFinite(width) || width < 210 || width > 1680 ||
+        !Number.isFinite(height) || height < 100 || height > 1200 ||
+        (northAngle !== null && (!Number.isFinite(northAngle) || Math.abs(northAngle) > 360))) {
+      setStatus({ kind: 'error', messages: ['Key plan: width must be 210–1680 mm, height 100–1200 mm, and north angle between −360° and 360°.'] });
+      return;
+    }
+    const revision = ++keyPlanRevision.current;
+    setStatus({ kind: 'busy', message: 'Generating key plan…' });
+    try {
+      const options = { ...keyPlanOptions, width, height, north_angle: northAngle };
+      const { blob, filename } = await generateKeyPlan({ generationId: backendResult.generationId, options });
+      const preview = dxfToSvg(await blob.arrayBuffer(), { keyPlan: true });
+      if (revision !== keyPlanRevision.current) return;
+      setKeyPlanResult({ ...preview, blob, filename, fitWholePlan: true,
+        json: JSON.stringify({ generation_id: backendResult.generationId, options }, null, 2) });
+      setActiveView('key-plan');
+      setStatus({ kind: 'ok', filename });
+    } catch (err) {
+      if (revision !== keyPlanRevision.current) return;
+      if (err.status === 410) setBackendResult((prev) => prev ? { ...prev, generationId: null } : prev);
+      setStatus({ kind: 'error', messages: [err.message] });
+    }
+  };
+
   const onPreviewDirectKml = async () => {
+    const revision = ++designRevision.current;
+    keyPlanRevision.current += 1;
+    setKeyPlanResult(null);
+    setActiveView('esp');
     if (!form.kmlFile) {
       setStatus({ kind: 'error', messages: ['KML file: upload the track alignment (.kml).'] });
       sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -184,6 +237,8 @@ export default function App() {
       } catch {
         preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
       }
+      if (revision !== designRevision.current) return;
+      setIsTrimmed(false);
       setBackendResult({
         blob,
         filename,
@@ -192,12 +247,17 @@ export default function App() {
       });
       setStatus({ kind: 'ok', filename });
     } catch (err) {
+      if (revision !== designRevision.current) return;
       setStatus({ kind: 'error', messages: [err.message] });
       sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const onGenerate = async (overrides = {}) => {
+    const revision = ++designRevision.current;
+    keyPlanRevision.current += 1;
+    setKeyPlanResult(null);
+    setActiveView('esp');
     let working = { ...form, ...overrides };
     if (overrides.enableMainLineTrim !== undefined) {
       working.enableMainLineTrim = overrides.enableMainLineTrim;
@@ -217,9 +277,11 @@ export default function App() {
       setStatus({ kind: 'busy' });
       try {
         const c = await fetchMainCenter({ kmlFile: working.kmlFile, selectedTrackId: working.selectedTrackId });
+        if (revision !== designRevision.current) return;
         working = fillFobCentres(fillCentredChainages(working, c), c);
         setForm(working);
       } catch (err) {
+        if (revision !== designRevision.current) return;
         setStatus({ kind: 'error', messages: [err.message] });
         sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
         return;
@@ -234,7 +296,7 @@ export default function App() {
     const finalConfig = buildConfig(working);
     setStatus({ kind: 'busy' });
     try {
-      const { blob, filename } = await generateDxf({ config: finalConfig, kmlFile: working.kmlFile });
+      const { blob, filename, generationId } = await generateDxf({ config: finalConfig, kmlFile: working.kmlFile });
       const crossoverLabels =
         Array.isArray(working.crossovers) && working.crossovers.length > 0
           ? working.crossovers.map((c, i) => c.id || `C${i + 1}`)
@@ -247,6 +309,7 @@ export default function App() {
       } catch {
         preview = { ...preview, error: 'Preview unavailable for this file — download the DXF instead.' };
       }
+      if (revision !== designRevision.current) return;
       const trimmedApplied = Boolean(finalConfig.enable_main_line_trim);
       setIsTrimmed(trimmedApplied);
       setForm((prev) => ({
@@ -257,6 +320,7 @@ export default function App() {
       setBackendResult({
         blob,
         filename,
+        generationId,
         json: JSON.stringify(finalConfig, null, 2),
         isTrimmed: trimmedApplied,
         ...preview,
@@ -267,6 +331,7 @@ export default function App() {
         filename: trimmedApplied ? `${filename} (Final Plan)` : filename,
       });
     } catch (err) {
+      if (revision !== designRevision.current) return;
       setStatus({ kind: 'error', messages: [err.message] });
       sidebarRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -278,6 +343,10 @@ export default function App() {
   };
 
   const onLoadDemo = async () => {
+    const revision = ++designRevision.current;
+    keyPlanRevision.current += 1;
+    setKeyPlanResult(null);
+    setActiveView('esp');
     setStatus({ kind: 'busy' });
     try {
       const res = await fetch('/sample_esp.dxf');
@@ -285,6 +354,8 @@ export default function App() {
       const buf = await res.arrayBuffer();
       const preview = dxfToSvg(buf);
       const blob = new Blob([buf], { type: 'application/dxf' });
+      if (revision !== designRevision.current) return;
+      setIsTrimmed(false);
       setBackendResult({
         blob,
         filename: 'ESP_sample.dxf',
@@ -294,6 +365,7 @@ export default function App() {
       });
       setStatus({ kind: 'ok', filename: 'ESP_sample.dxf (Demo)' });
     } catch (err) {
+      if (revision !== designRevision.current) return;
       setStatus({ kind: 'error', messages: [err.message] });
     }
   };
@@ -422,7 +494,7 @@ export default function App() {
           {/* Primary Generate Button */}
           <button
             type="button"
-            onClick={onGenerate}
+            onClick={() => onGenerate()}
             disabled={busy}
             className="flex h-7.5 items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] hover:from-[var(--accent-strong)] hover:to-[var(--accent-strong)] px-3 text-xs font-semibold text-white shadow-sm shadow-[rgba(50,95,244,0.25)] disabled:opacity-50 transition-all cursor-pointer"
           >
@@ -555,6 +627,10 @@ export default function App() {
                   referenceDistance={Number(form.mainCenter) || 0}
                 />
               )}
+              <KeyPlanSection options={keyPlanOptions} onChange={updateKeyPlanOptions}
+                ready={keyPlanReady} finalized={Boolean(backendResult?.isTrimmed)} busy={busy}
+                onGenerate={onGenerateKeyPlan}
+                onRefinalize={() => onGenerate({ enableMainLineTrim: true })} />
             </div>
 
             {/* Drag handle: resize the inputs sidebar */}
@@ -643,13 +719,23 @@ export default function App() {
         {/* PANEL 2: CENTER VIEWPORT (Big DXF Viewer)                   */}
         {/* ============================================================ */}
         <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-white">
+          {backendResult && <div className="flex shrink-0 gap-2 border-b border-[var(--border)] px-3 py-2" role="tablist" aria-label="Drawing views">
+            <button type="button" role="tab" aria-selected={activeView === 'esp'} onClick={() => setActiveView('esp')}
+              className={`rounded px-3 py-1 text-xs font-semibold ${activeView === 'esp' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)]'}`}>
+              {backendResult.isTrimmed ? 'Final ESP' : 'ESP'}
+            </button>
+            <button type="button" role="tab" disabled={!keyPlanResult} aria-selected={activeView === 'key-plan'} onClick={() => setActiveView('key-plan')}
+              className={`rounded px-3 py-1 text-xs font-semibold disabled:opacity-40 ${activeView === 'key-plan' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)]'}`}>
+              Key Plan
+            </button>
+          </div>}
           <DxfViewer
-            key={backendResult ? `${backendResult.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'live-viewer'}
+            key={backendResult ? `${activeView}-${result.filename}-${isTrimmed ? 'trimmed' : 'full'}` : 'live-viewer'}
             result={result}
             busy={busy}
             busyMessage={busyMessage}
             isTrimmed={isTrimmed}
-            onToggleTrim={backendResult ? onToggleTrim : null}
+            onToggleTrim={backendResult && activeView === 'esp' ? onToggleTrim : null}
             onDownloadDxf={handleDownloadDxf}
             onDownloadPng={downloadResultPng}
             onDownloadJson={downloadJson}

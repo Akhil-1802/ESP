@@ -117,7 +117,9 @@ class FobStep(PipelineStep):
             cfg.reference_chainage = fob_ch
             cfg.fob_chainage = fob_ch
 
-            _generate_fob_deck(doc, tracks, extents, polygons, cfg)
+            outline = _generate_fob_deck(doc, tracks, extents, polygons, cfg)
+            if hasattr(self, "_key_plan_fob_outlines"):
+                self._key_plan_fob_outlines.append((cfg, outline))
             print(
                 f"   OK FOB {number} ({cfg.reference_track}@"
                 f"{fob_ch:.3f}m -> "

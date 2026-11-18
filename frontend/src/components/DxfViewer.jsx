@@ -76,12 +76,15 @@ export function DxfViewer({
     const fitY = result.y0 - (fitH - result.h) / 2;
 
     // Zoom into track parts by default (3.8x zoom eliminates huge blank spaces)
-    const zoom = 3.8;
+    const zoom = result.fitWholePlan ? 1 : 3.8;
     const nextW = fitW / zoom;
     const nextH = fitH / zoom;
     let centerX = fitX + fitW / 2;
     let centerY = fitY + fitH / 2;
-    if (result.featureFocus?.hasFeatures && Number.isFinite(result.featureFocus.x)) {
+    if (result.fitWholePlan) {
+      centerX = fitX + fitW / 2;
+      centerY = fitY + fitH / 2;
+    } else if (result.featureFocus?.hasFeatures && Number.isFinite(result.featureFocus.x)) {
       centerX = result.featureFocus.x;
       centerY = result.featureFocus.y;
     } else if (result.trackMidpoint && Number.isFinite(result.trackMidpoint.x)) {
@@ -149,11 +152,12 @@ export function DxfViewer({
     setCustomViewBox(null);
     if (result && result.w && result.h) {
       const timer = setTimeout(() => {
-        focusTrackInfo(3.8);
+        if (result.fitWholePlan) fitToView();
+        else focusTrackInfo(3.8);
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [result?.svg, result?.blob, focusTrackInfo]);
+  }, [result?.svg, result?.blob, focusTrackInfo, fitToView]);
 
   // Window resize observer to keep aspect ratio matching
   useEffect(() => {

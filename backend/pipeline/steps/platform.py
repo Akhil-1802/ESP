@@ -409,6 +409,8 @@ class PlatformStep(PipelineStep):
             self._platform_footprints.append(
                 (platform_cfg.output_layer, outline, stair_outlines)
             )
+            if hasattr(self, "_key_plan_platform_results"):
+                self._key_plan_platform_results.append((request, result))
             if (
                 platform_cfg.platform_type == _PlatformType.SIDE
                 and getattr(result, "far_edge", None)
