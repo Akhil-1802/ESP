@@ -38,7 +38,16 @@ def _horizontal_labels(layout):
                 layer == 'STATION' and text.strip().upper().startswith(('CH:', 'CH.'))
             ):
                 return
-        if kind == 'INSERT' and (entity.attribs or contains_text(entity.block(), set())):
+        if kind == 'DIMENSION' and layer == 'TRACK_CENTERS':
+            # Dimension text lives in its rendered geometry block, not in an
+            # INSERT visited below. Rebuild it in the final world coordinates
+            # and persist the same policy for subsequent CAD regeneration.
+            entity.dxf.text_rotation = 0
+            entity.dxf.horizontal_direction = 0
+            override = entity.override()
+            override.update({'dimtih': 1, 'dimtoh': 1})
+            override.render()
+        elif kind == 'INSERT' and (entity.attribs or contains_text(entity.block(), set())):
             # Resolve each instance in world coordinates; shared block definitions
             # cannot give horizontal labels to differently rotated references.
             for child in entity.explode(target_layout=layout):
@@ -103,6 +112,8 @@ def align_final_plan(path: str, document=None) -> float:
         except (AttributeError, NotImplementedError) as exc:
             raise ValueError(f"Cannot align DXF entity {entity.dxftype()}") from exc
     _horizontal_labels(doc.modelspace())
+    from track.cal_layout import finalize_cal_leaders
+    finalize_cal_leaders(doc)
     if document is None:
         doc.saveas(path)
     return -angle

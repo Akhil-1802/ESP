@@ -110,8 +110,7 @@ export function TrackSelectionPanel({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectTrack && onSelectTrack(cand);
-                      onConfirmMainLine && onConfirmMainLine(cand);
+                      if (onConfirmMainLine) onConfirmMainLine(cand);
                     }}
                     className={`rounded-md px-3 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer ${
                       isConfirmed

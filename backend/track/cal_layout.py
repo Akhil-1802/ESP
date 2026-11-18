@@ -171,6 +171,11 @@ def _draw_cal_row(
                     "layer": CAL_LAYER,
                     "color": CAL_COLOR,
                     "has_arrowhead": 1,
+                    # The third vertex already supplies the landing beside the
+                    # text; a native hook would add another, differently
+                    # oriented segment when the final plan is rotated.
+                    "has_hookline": 0,
+                    "horizontal_direction": (tx, ty, 0),
                 },
             )
             if txt_entity is not None:
@@ -194,6 +199,28 @@ def _draw_cal_row(
         return True
     except Exception:
         return False
+
+
+def finalize_cal_leaders(doc) -> None:
+    """Match CAL landings to horizontal text after the final plan rotation."""
+    for leader in doc.modelspace().query(f'LEADER[layer=="{CAL_LAYER}"]'):
+        text = doc.entitydb.get(leader.dxf.get("annotation_handle", "0"))
+        if text is None or text.dxftype() != "TEXT" or len(leader.vertices) != 3:
+            continue
+        tip, elbow, landing = leader.vertices
+        run = landing - elbow
+        length = run.magnitude
+        if length < 1e-9:
+            continue
+        # CAL text is middle-centred. Recover the existing half-width + gap
+        # along its original landing rather than estimating the font again.
+        centre = text.dxf.align_point
+        clearance = (centre - landing).dot(run / length)
+        landing = centre.replace(x=centre.x - clearance)
+        elbow = landing.replace(x=landing.x - length)
+        leader.set_vertices([tip, elbow, landing])
+        leader.dxf.horizontal_direction = (1, 0, 0)
+        leader.dxf.has_hookline = 0
 
 
 def _draw_cal_callout(
@@ -270,4 +297,5 @@ __all__ = [
     "_draw_cal_callout",
     "_draw_cal_row",
     "_draw_cal_text_only",
+    "finalize_cal_leaders",
 ]

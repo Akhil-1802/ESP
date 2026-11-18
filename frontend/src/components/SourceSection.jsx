@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { fetchMainCenter, detectTracks } from '../lib/api.js';
+import { getTrackCentre, loadKmlAlignment } from '../lib/kmlAlignment.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
 import { blankStationMarker } from '../lib/formDefaults.js';
 import { isBlank } from '../lib/formUtils.js';
@@ -53,6 +53,7 @@ export function SourceSection({
     setCentreMsg('');
     setCandidateTracks([]);
     setConfirmedTrackId(null);
+    setCentreBusy(false);
 
     if (!chosen) {
       onAlignmentStateChange?.({ status: 'empty', message: '' });
@@ -64,33 +65,15 @@ export function SourceSection({
     });
     setCentreBusy(true);
     try {
-      // 1. Detect candidate continuous paths from KML
-      let tracks = [];
-      try {
-        const detectRes = await detectTracks({ kmlFile: chosen });
-        if (requestId !== requestIdRef.current) return;
-        tracks = detectRes.candidate_tracks || [];
-        setCandidateTracks(tracks);
-      } catch (err) {
-        throw new Error(`Could not process KML alignment geometry: ${err.message}`);
-      }
-
-      // Default to track 0 if candidates exist
-      const defaultTrack = tracks.length > 0 ? tracks[0] : null;
-      if (!defaultTrack || !Array.isArray(defaultTrack.pts_utm) || defaultTrack.pts_utm.length < 2) {
-        throw new Error('No usable continuous track alignment was found in this KML.');
-      }
-      const defaultTrackId = defaultTrack ? defaultTrack.candidate_id : null;
-      setTop({ selectedTrackId: defaultTrackId });
-      setConfirmedTrackId(defaultTrackId);
-
-      // 2. Fetch center & length for the selected track
-      const c = await fetchMainCenter({ kmlFile: chosen, selectedTrackId: defaultTrackId });
+      const { tracks, track: defaultTrack, centre: c } = await loadKmlAlignment(chosen);
       if (requestId !== requestIdRef.current) return;
+      setCandidateTracks(tracks);
+      const defaultTrackId = defaultTrack.candidate_id;
+      setConfirmedTrackId(defaultTrackId);
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: defaultTrackId,
-        alignmentPoints: defaultTrack?.pts_utm || null,
+        alignmentPoints: defaultTrack.pts_utm,
         mainLength: c.main_length_m,
         mainCenter: c.main_center_m,
       }));
@@ -110,9 +93,9 @@ export function SourceSection({
     }
   };
 
-  const onSelectCandidateTrack = async (cand) => {
+  const onSelectCandidateTrack = (cand) => {
     if (!file || !cand) return;
-    const requestId = ++requestIdRef.current;
+    ++requestIdRef.current;
     setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: null, mainLength: null, mainCenter: null });
     onAlignmentStateChange?.({
       status: 'processing',
@@ -120,8 +103,7 @@ export function SourceSection({
     });
     setCentreBusy(true);
     try {
-      const c = await fetchMainCenter({ kmlFile: file, selectedTrackId: cand.candidate_id });
-      if (requestId !== requestIdRef.current) return;
+      const c = getTrackCentre(cand);
       set((f) => ({
         ...fillFobCentres(fillCentredChainages(f, c), c),
         selectedTrackId: cand.candidate_id,
@@ -133,21 +115,22 @@ export function SourceSection({
         `Previewing track ${cand.name}: ${c.main_length_m.toFixed(2)} m (MAIN centre: ${c.main_center_m.toFixed(2)} m)`,
       );
       onAlignmentStateChange?.({ status: 'ready', message: `Alignment ready · ${c.main_length_m.toFixed(2)} m` });
+      return c;
     } catch (err) {
-      if (requestId !== requestIdRef.current) return;
       setCentreMsg(err.message);
       onAlignmentStateChange?.({ status: 'error', message: err.message });
     } finally {
-      if (requestId === requestIdRef.current) setCentreBusy(false);
+      setCentreBusy(false);
     }
   };
 
   const onConfirmCandidateMainLine = (cand) => {
     if (!cand) return;
+    const centre = onSelectCandidateTrack(cand);
+    if (!centre) return;
     setConfirmedTrackId(cand.candidate_id);
-    setTop({ selectedTrackId: cand.candidate_id, alignmentPoints: cand.pts_utm || form.alignmentPoints });
     setCentreMsg(
-      `✓ Confirmed Main Line: ${cand.name} (${cand.length_m.toFixed(2)} m). Ready for ESP generation.`,
+      `✓ Confirmed Main Line: ${cand.name} (${centre.main_length_m.toFixed(2)} m). Ready for ESP generation.`,
     );
   };
 

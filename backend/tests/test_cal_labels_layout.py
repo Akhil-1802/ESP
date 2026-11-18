@@ -288,6 +288,7 @@ def test_no_duplicate_arrowheads_on_leaders():
     assert len(polylines) == 0
 
     for ldr in leaders:
+        assert len([e for e in ldr.virtual_entities() if e.dxftype() == "LINE"]) == 2
         v = list(ldr.vertices)
         seg_len = math.hypot(v[0][0] - v[1][0], v[0][1] - v[1][1])
         assert seg_len >= 4.0
