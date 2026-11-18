@@ -33,7 +33,7 @@ BACKEND_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DXF_MEDIA_TYPE = "image/vnd.dxf"
 # Successful artifacts only: bounded per process, automatically lost on restart.
 _DXF_CACHE = BoundedCache(max_bytes=8 * 1024 * 1024, max_entries=8, ttl=300)
-_GENERATION_CACHE_VERSION = "key-plan-snapshot-v1"
+_GENERATION_CACHE_VERSION = "key-plan-overruns-directions-v2"
 _KEY_PLAN_SNAPSHOTS = BoundedCache(max_bytes=4 * 1024 * 1024, max_entries=32, ttl=600)
 
 

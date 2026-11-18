@@ -3,7 +3,7 @@ import { Field, Grid, Section, Text, Num } from './fields.jsx';
 export function KeyPlanSection({ options, onChange, ready, finalized, busy, onGenerate, onRefinalize }) {
   const change = (key) => (event) => onChange({ ...options, [key]: event.target.value });
   return (
-    <Section title="Key Plan" hint="Create a schematic from the current finalized ESP. Sizes and spacing adapt to the container.">
+    <Section title="Key Plan" hint="Create a schematic from the finalized ESP, including overrun lines, dead ends and UP/DN track directions. Sizes and spacing adapt to the container.">
       <Grid>
         <Field label="Container width (mm)">
           <Num aria-label="Key plan width" min="210" max="1680" value={options.width} onChange={change('width')} />

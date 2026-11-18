@@ -46,11 +46,14 @@ def build_scene(snapshot, options):
                 return cx, cy
         raise ValueError(f"Key-plan labels overlap near {text[:60]}. Increase width or shorten captions.")
 
-    def arrow(x0, y0, x1, y1, size):
-        line([(x0, y0), (x1, y1)], "KEY_PLAN_SYMBOL")
+    def arrow(x0, y0, x1, y1, size, layer="KEY_PLAN_SYMBOL", both=False):
+        line([(x0, y0), (x1, y1)], layer)
         a = math.atan2(y1-y0, x1-x0)
         polygon([(x1, y1), (x1-size*math.cos(a-.35), y1-size*math.sin(a-.35)),
                  (x1-size*math.cos(a+.35), y1-size*math.sin(a+.35))], "KEY_PLAN_ARROW")
+        if both:
+            polygon([(x0, y0), (x0+size*math.cos(a-.35), y0+size*math.sin(a-.35)),
+                     (x0+size*math.cos(a+.35), y0+size*math.sin(a+.35))], "KEY_PLAN_ARROW")
 
     rectangle(w*.005, h*.015, w*.995, h*.985, "KEY_PLAN_FRAME")
     rectangle(w*.009, h*.025, w*.991, h*.975, "KEY_PLAN_FRAME")
@@ -67,11 +70,6 @@ def build_scene(snapshot, options):
         x0, x1 = sorted((n.x(track["start"]), n.x(track["end"])))
         line([(x0, y), (x1, y)])
         scene.tracks.append(dict(**track, x0=x0, x1=x1, y=y))
-        if track.get("direction"):
-            direction = track["direction"].upper()
-            ax = x0+(x1-x0)*.04
-            bx = ax+(x1-x0)*.05
-            arrow(bx if direction == "UP" else ax, y, ax if direction == "UP" else bx, y, font*1.2)
 
     platform_boxes = []
     for platform in snapshot["platforms"]:
@@ -118,12 +116,47 @@ def build_scene(snapshot, options):
         for x, y in ((x0, y0), (x1, y1)):
             r = font*.22
             polygon([(x-r, y), (x, y+r), (x+r, y), (x, y-r)], "KEY_PLAN_SRJ")
-        position = label(f"{crossover['id']} {crossover['turnout']}", (x0+x1)/2,
+        position = label(crossover['turnout'], (x0+x1)/2,
               (y0+y1)/2+font, w*.17, font*.72, alternate_y=(y0+y1)/2-font,
               avoid_obstacles=True)
-        if abs(position[0]-(x0+x1)/2) > font:
+        if position and abs(position[0]-(x0+x1)/2) > font:
             line([((x0+x1)/2, (y0+y1)/2), (position[0], position[1]-font*.6)], "KEY_PLAN_CALLOUT")
         scene.crossovers.append(dict(**crossover, x0=x0, x1=x1, y0=y0, y1=y1))
+
+    for overrun in snapshot.get("overruns", []):
+        track = next((t for t in scene.tracks if t["name"] == overrun["track"]), None)
+        if track is None:
+            raise ValueError(f"Missing track for overrun {overrun['track']}.")
+        sx, tx, y = n.x(overrun["srj_chainage"]), n.x(overrun["tip_chainage"]), track["y"]
+        if abs(tx-sx) < 1e-8:
+            raise ValueError(f"Overrun on {overrun['track']} has no visible chainage extent.")
+        line([(sx, y), (tx, y)], "KEY_PLAN_OVERRUN")
+        exterior = 1 if tx > sx else -1
+        bar, cap, r = font*.65, font*.5, font*.22
+        line([(tx+exterior*cap, y+bar), (tx, y+bar), (tx, y-bar),
+              (tx+exterior*cap, y-bar)], "KEY_PLAN_DEAD_END")
+        polygon([(sx-r, y), (sx, y+r), (sx+r, y), (sx, y-r)], "KEY_PLAN_SRJ")
+        scene.overruns.append(dict(**overrun, x_srj=sx, x_tip=tx, y=y))
+
+    # Key-plan drafting convention from the reference: DN points right and UP
+    # left, repeated outside the yard at both ends of each main line.
+    for track in scene.tracks:
+        direction = track.get("direction", "").upper()
+        if direction not in ("UP", "DN", "UP/DN", "BOTH"):
+            continue
+        two_way = direction in ("UP/DN", "BOTH")
+        markers = [("DN", track["y"]+font*1.7), ("UP", track["y"]-font*1.7)] if two_way else [(direction, track["y"])]
+        for side, ax, bx in (("left", w*.025, w*.10), ("right", w*.90, w*.975)):
+            for designation, y in markers:
+                tail, head = (bx, ax) if designation == "UP" else (ax, bx)
+                arrow(tail, y, head, y, min(font*.8, (bx-ax)*.15), layer="KEY_PLAN_DIRECTION")
+                caption = f"{designation} MAIN LINE"
+                rows = [caption] if len(caption)*font*.72*.75 <= w*.10 else [designation, "MAIN LINE"]
+                for index, row in enumerate(rows):
+                    label(row, (ax+bx)/2, y+font*(.85+(len(rows)-1-index)*1.1),
+                          w*.10, font*.72, move=False, layer="KEY_PLAN_DIRECTION_TEXT")
+                scene.directions.append(dict(track=track["name"], direction=designation, side=side,
+                                             x_tail=tail, x_head=head, y=y))
 
     for building in snapshot["buildings"]:
         platform = next((p for p in scene.platforms if p["name"] == building["platform"]), None)
@@ -169,9 +202,12 @@ def build_scene(snapshot, options):
             rows = textwrap.wrap(f"TO {text}", width=max(10, int(w*.12/(font*.75))))
             if len(rows) > 3:
                 raise ValueError("Destination caption is too long. Shorten it or widen the container.")
+            direction_top = max((t["y"]+t["height"]*.65 for t in scene.texts
+                                 if t["layer"] == "KEY_PLAN_DIRECTION_TEXT"), default=h*.48)
+            arrow_y = max(h*.53, direction_top+font*2)
             for i, row in enumerate(rows):
-                label(row, x, h*.61-i*font*1.5, w*.12, font*.8, move=False)
-            arrow(x-direction*w*.04, h*.53, x+direction*w*.04, h*.53, font*1.3)
+                label(row, x, arrow_y+font*(2+(len(rows)-1-i)*1.5), w*.12, font*.8, move=False)
+            arrow(x-direction*w*.04, arrow_y, x+direction*w*.04, arrow_y, font*1.3)
     angle = options.north_angle if options.north_angle is not None else snapshot.get("north_angle")
     if angle is not None:
         a = math.radians(angle)

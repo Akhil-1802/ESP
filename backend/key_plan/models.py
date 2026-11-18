@@ -14,4 +14,6 @@ class Scene:
     tracks: list = field(default_factory=list)
     platforms: list = field(default_factory=list)
     crossovers: list = field(default_factory=list)
+    overruns: list = field(default_factory=list)
+    directions: list = field(default_factory=list)
 

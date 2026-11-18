@@ -4,6 +4,8 @@ import math
 
 from common.geometry import nearest_point_on_alignment, point_at_chainage, polyline_length
 from track.cal_calc import assign_line_numbers
+from track.directions import resolved_main_directions
+from track.overrun_metadata import resolved_overruns
 
 
 def _start_chainage(config):
@@ -36,7 +38,13 @@ def capture_snapshot(generator, tracks, doc, main):
         return [min(values), max(values)]
 
     result = dict(version=1, tracks=[], platforms=[], crossovers=[], stations=[],
-                  buildings=[], bridges=[], north_angle=getattr(doc, "_esp_north_angle_deg", None))
+                  buildings=[], bridges=[], overruns=[], north_angle=getattr(doc, "_esp_north_angle_deg", None))
+    directions = resolved_main_directions(generator.config, tracks)
+    for overrun in resolved_overruns(doc):
+        if overrun["track"] in tracks and overrun["length_m"] > 1e-6:
+            result["overruns"].append(dict(track=overrun["track"], at_start=overrun["at_start"],
+                srj_chainage=ch(overrun["srj"]), tip_chainage=ch(overrun["tip"]),
+                length_m=overrun["length_m"]))
     labels = getattr(generator, "_cal_summary", {})
     numbered = {name: (kind, number) for name, kind, number in assign_line_numbers(tracks)}
     for name, points in tracks.items():
@@ -50,12 +58,18 @@ def capture_snapshot(generator, tracks, doc, main):
         kind, number = numbered.get(name, ("TRACK", len(result["tracks"]) + 1))
         label = labels.get(name)
         start, end = span(visible)
+        for overrun in result["overruns"]:
+            if overrun["track"] == name:
+                if overrun["at_start"]:
+                    start = max(start, overrun["srj_chainage"])
+                else:
+                    end = min(end, overrun["srj_chainage"])
         result["tracks"].append(dict(
             name=name, kind=kind, number=number, offset=lateral(midpoint),
             start=start, end=end,
             label=label[0] if label else name.replace("_", " "),
             length_m=float(label[1]) if label else polyline_length(points),
-            direction=(getattr(generator.config, "main_directions", None) or {}).get(name, ""),
+            direction=directions.get(name, ""),
         ))
     for request, platform in getattr(generator, "_key_plan_platform_results", []):
         cfg = request.config
@@ -111,6 +125,7 @@ def capture_snapshot(generator, tracks, doc, main):
     bounds += [v for p in result["platforms"] for v in (p["start"], p["end"])]
     bounds += [v for c in result["crossovers"] for v in (c["start"], c["end"])]
     bounds += [s["chainage"] for s in result["stations"] + result["buildings"] + result["bridges"]]
+    bounds += [value for overrun in result["overruns"] for value in (overrun["srj_chainage"], overrun["tip_chainage"])]
     result.update(start=min(bounds), end=max(bounds), start_chainage_m=start_m)
     if not math.isfinite(result["end"] - result["start"]) or result["end"] <= result["start"]:
         raise ValueError("Key plan requires a nonzero finite yard extent.")

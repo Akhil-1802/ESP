@@ -19,7 +19,8 @@ from common.dxf import (
     estimate_text_aabb as _aabb,
     resolve_text_insert as _resolve_text_insert,
 )
-from common.geometry import polyline_length as _polyline_length, readable_angle_deg as _readable
+from common.geometry import point_at_chainage, polyline_length as _polyline_length, readable_angle_deg as _readable
+from track.overrun_metadata import attach_overrun
 
 from .splines import _line_center, _segment_mid, _unit_vec
 
@@ -266,7 +267,7 @@ def _overrun_cal_label(
     outward_left: bool,
     length: float,
     layer: str = "OVER_RUN",
-) -> None:
+):
     """`OVER RUN LINE, CAL=xx.xx` text at ``mid`` along ``tangent``."""
     tx, ty = _unit_vec(tangent)
     nx, ny = (-ty, tx) if outward_left else (ty, -tx)
@@ -288,7 +289,7 @@ def _overrun_cal_label(
             0,
         ),
     )
-    doc.modelspace().add_text(
+    entity = doc.modelspace().add_text(
         label,
         height=1.0,
         dxfattribs={
@@ -299,6 +300,7 @@ def _overrun_cal_label(
             "insert": (ov_insert[0], ov_insert[1], 0),
         },
     )
+    return entity
 
 
 def draw_srj_overrun_stub(
@@ -307,6 +309,7 @@ def draw_srj_overrun_stub(
     at_start: bool,
     outward_left: bool,
     layer: str = "OVER_RUN",
+    track_name: str | None = None,
 ) -> None:
     """Draw one SRJ cut-off stub as an OVER RUN LINE.
 
@@ -333,7 +336,10 @@ def draw_srj_overrun_stub(
         exterior = (tangent[0], tangent[1])
     _dead_end_marker(doc, tip, tangent, exterior, layer)
     mid, mtan = _line_center(pts)
-    _overrun_cal_label(doc, mid, mtan, outward_left, _polyline_length(pts), layer)
+    label = _overrun_cal_label(doc, mid, mtan, outward_left, _polyline_length(pts), layer)
+    if track_name is not None:
+        attach_overrun(label, track_name, pts[-1] if at_start else pts[0],
+                       tip, _polyline_length(pts), at_start)
 
 
 def _annotate_overrun(doc, loop, loop_points: Sequence[Point], c1: float, c2: float, eff_c1: float, eff_c2: float) -> None:
@@ -370,4 +376,8 @@ def _annotate_overrun(doc, loop, loop_points: Sequence[Point], c1: float, c2: fl
     for tip, tangent, exterior, main_a, main_b, ext_len, is_start in jobs:
         _dead_end_marker(doc, tip, tangent, exterior, layer)
         mid, mtan = _segment_mid(loop_points, eff_c1, main_a, main_b)
-        _overrun_cal_label(doc, mid, mtan, outward_left, ext_len, layer)
+        label = _overrun_cal_label(doc, mid, mtan, outward_left, ext_len, layer)
+        local_anchor = ext_len if is_start else _polyline_length(loop_points) - ext_len
+        anchor = point_at_chainage(loop_points, local_anchor).point
+        if getattr(loop, "name", None):
+            attach_overrun(label, loop.name, anchor, tip, ext_len, is_start)

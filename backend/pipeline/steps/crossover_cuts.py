@@ -287,12 +287,12 @@ def apply_loop_overrun_cuts(
         ov_e = float(ov_e_val) if ov_e_val is not None else float(DEFAULT_OVERRUN_M)
         if start_stub is not None and len(start_stub) >= 2 and ov_s > 0:
             try:
-                _draw_stub(doc, start_stub, True, outward_left)
+                _draw_stub(doc, start_stub, True, outward_left, track_name=name)
             except Exception:
                 pass
         if end_stub is not None and len(end_stub) >= 2 and ov_e > 0:
             try:
-                _draw_stub(doc, end_stub, False, outward_left)
+                _draw_stub(doc, end_stub, False, outward_left, track_name=name)
             except Exception:
                 pass
 

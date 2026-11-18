@@ -9,6 +9,20 @@ The default standalone schematic is 420 × 150 mm and is marked **NOT TO SCALE**
 The original ESP remains a separate drawing in metres. Increasing width changes
 chainage-to-X mapping; increasing height changes track levels, platform thickness,
 gaps, symbols and text. Actual lengths and platform widths remain in labels.
+Overrun lines appear separately from the running tracks, with an SRJ anchor
+and dead-end stop. Overrun captions and crossover IDs (C1, C2, etc.) are omitted
+from the drawing; turnout ratios such as 1:12 remain visible. Actual overrun
+lengths and crossover IDs remain in the snapshot. Configured overruns and
+overruns created or moved by crossover/SRJ placement use the finalized ESP
+anchors, including clipped extensions at alignment ends. Zero-length/disabled
+overruns are omitted. Their tips are included when fitting the complete frame.
+
+Main lines show **UP MAIN LINE** / **DN MAIN LINE** captions and direction arrows
+in the left and right margins, outside the yard. The key-plan reference convention
+is **DN →** and **UP ←**. A single unspecified main line shows DN above and UP
+below the centreline at both ends. Set individual directions in the main-track inputs,
+then finalize again to refresh them in the key plan.
+
 The displayed boundary is explicitly schematic. North is a survey orientation
 reference, with an optional angle override measured counterclockwise from right.
 
@@ -16,7 +30,10 @@ reference, with an optional angle override measured counterclockwise from right.
 
 `ESPGenerator` captures plain resolved geometry before final rotation and context
 cleanup: displayed track extents, CAL lengths, actual crossover endpoint chainages,
-platform/building results and bridges. The snapshot uses the original MAIN datum,
+platform/building results, bridges, overrun anchors/lengths and resolved main-line
+directions. Overrun CAL labels carry their host track and anchors as DXF XDATA,
+so redraws, SRJ cuts and disk checkpoints retain the final engineering data.
+The snapshot uses the original MAIN datum,
 so trimming does not reset chainages. Bridge positions come from generated geometry,
 so bounded-loop reference chainages are not misinterpreted as local MAIN distances.
 Generation caches store the snapshot with the successful DXF bytes, including

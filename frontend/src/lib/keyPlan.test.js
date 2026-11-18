@@ -51,12 +51,22 @@ test('key-plan preview fits the frame and retains native text without duplicate 
     '10', '50', '20', '60', '10', '150', '20', '90',
     '0', 'TEXT', '8', 'KEY_PLAN_TEXT', '10', '210', '20', '140', '40', '2',
     '1', 'KEY PLAN (NOT TO SCALE)', '50', '0',
+    '0', 'LWPOLYLINE', '8', 'KEY_PLAN_OVERRUN', '90', '2', '70', '0',
+    '10', '30', '20', '90', '10', '50', '20', '90',
+    '0', 'LWPOLYLINE', '8', 'KEY_PLAN_DEAD_END', '90', '4', '70', '0',
+    '10', '28', '20', '92', '10', '30', '20', '92',
+    '10', '30', '20', '88', '10', '28', '20', '88',
+    '0', 'TEXT', '8', 'KEY_PLAN_DIRECTION_TEXT', '10', '80', '20', '65', '40', '2',
+    '1', 'UP MAIN LINE', '50', '0',
     '0', 'ENDSEC', '0', 'EOF', '',
   ].join('\n');
   const result = dxfToSvg(dxf, { keyPlan: true });
   assert.equal(result.w, 462);
   assert.equal(result.h, 165);
   assert.ok(result.svg.includes('KEY PLAN (NOT TO SCALE)'));
+  assert.ok(!result.svg.includes('OVER RUN'));
+  assert.ok(result.svg.includes('UP MAIN LINE'));
+  assert.ok(result.layers.some((layer) => layer.name === 'KEY_PLAN_DEAD_END'));
   assert.ok(result.svg.includes('font-family: Arial'));
   assert.ok(!result.svg.includes('class="cad-crossover-tag"'));
 });

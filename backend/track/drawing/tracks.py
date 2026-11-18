@@ -107,9 +107,9 @@ def draw_tracks(
             _common_polyline(doc, running, layer_name, 1)
             outward_left = str(getattr(spec, "side", "LEFT")).upper() == "LEFT"
             if start_stub is not None:
-                draw_srj_overrun_stub(doc, start_stub, True, outward_left)
+                draw_srj_overrun_stub(doc, start_stub, True, outward_left, track_name=name)
             if end_stub is not None:
-                draw_srj_overrun_stub(doc, end_stub, False, outward_left)
+                draw_srj_overrun_stub(doc, end_stub, False, outward_left, track_name=name)
             if cut[0] is None or cut[1] is None:
                 try:
                     try:

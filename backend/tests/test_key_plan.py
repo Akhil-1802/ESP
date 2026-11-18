@@ -16,6 +16,9 @@ from pipeline.orchestrator import ESPGenerator
 from .test_generation_performance import yard_config
 import server
 from platform_gen.kml_io import build_kml_document, _load_kml_points
+from track.specs import LineSpec
+from track.drawing import draw_srj_overrun_stub
+from track.overrun_metadata import resolved_overruns
 
 
 @pytest.fixture
@@ -66,7 +69,8 @@ def test_dxf_roundtrip_preserves_labels_units_and_geometry(snapshot, tmp_path):
     texts = [e.dxf.text for e in result.modelspace().query("TEXT")]
     assert "KEY PLAN (NOT TO SCALE)" in texts
     assert "PLATFORM 1 600.00 x 10.00M" in texts
-    assert "C4 1:12" in texts
+    assert "1:12" in texts
+    assert not any('C4' in text for text in texts)
     assert any("CH:5600.00m" in text for text in texts)
     assert all(e.dxf.rotation == 0 for e in result.modelspace().query("TEXT"))
 
@@ -185,3 +189,153 @@ def test_survey_north_survives_horizontal_conversion_and_coordinate_cache(tmp_pa
     assert first._esp_north_angle_deg == pytest.approx(expected)
     assert cached._esp_north_angle_deg == pytest.approx(expected)
     assert cached._esp_kml_cache_hit is True
+
+
+@pytest.mark.parametrize('start_length,end_length', [(120, 80), (0, 120), (120, 0), (0, 0)])
+def test_final_snapshot_retains_actual_overruns_and_separates_running_track(tmp_path, start_length, end_length):
+    cfg = yard_config(tmp_path)
+    for loop in cfg.loops:
+        loop.extend_start_m, loop.extend_end_m = start_length, end_length
+    generator = ESPGenerator(cfg)
+    generator.run()
+    snapshot = json.loads(json.dumps(generator.key_plan_snapshot))
+    expected = 2 * (int(start_length > 0) + int(end_length > 0))
+    assert len(snapshot['overruns']) == expected
+    tracks = {track['name']: track for track in snapshot['tracks']}
+    for overrun in snapshot['overruns']:
+        track = tracks[overrun['track']]
+        assert overrun['length_m'] == pytest.approx(start_length if overrun['at_start'] else end_length)
+        assert overrun['srj_chainage'] == pytest.approx(track['start'] if overrun['at_start'] else track['end'])
+        assert (overrun['tip_chainage'] < overrun['srj_chainage']) == overrun['at_start']
+        assert snapshot['start'] <= overrun['tip_chainage'] <= snapshot['end']
+    scene = build_scene(snapshot, KeyPlanOptions())
+    assert len(scene.overruns) == expected
+    assert len([line for line in scene.lines if line['layer'] == 'KEY_PLAN_DEAD_END']) == expected
+    assert len(scene.directions) == 4
+    assert {(d['side'], d['direction']) for d in scene.directions} == {
+        ('left', 'UP'), ('left', 'DN'), ('right', 'UP'), ('right', 'DN')}
+    texts = [e.dxf.text for e in generate_key_plan(snapshot).modelspace().query('TEXT')]
+    assert not any('OVER RUN' in text or text == 'DE' for text in texts)
+
+
+@pytest.mark.parametrize('width,height', [(420, 150), (840, 150), (420, 300), (840, 300)])
+def test_overrun_endpoints_and_up_dn_arrows_scale_with_the_container(snapshot, width, height):
+    snapshot['overruns'] = [dict(track='LOOP_1', at_start=True, srj_chainage=1100,
+                                tip_chainage=1000, length_m=100),
+                            dict(track='LOOP_1', at_start=False, srj_chainage=2100,
+                                 tip_chainage=2200, length_m=100)]
+    snapshot['tracks'][0]['direction'] = 'UP'
+    snapshot['tracks'].append(dict(snapshot['tracks'][0], name='MAIN_LINE_1', offset=-10.6, direction='DN'))
+    original = copy.deepcopy(snapshot)
+    scene = build_scene(snapshot, KeyPlanOptions(width=width, height=height))
+    assert snapshot == original
+    assert scene.overruns[0]['x_tip'] == pytest.approx(50*width/420)
+    assert scene.overruns[1]['x_tip'] == pytest.approx(370*width/420)
+    assert all(overrun['length_m'] == 100 for overrun in scene.overruns)
+    directions = {direction['direction']: direction for direction in scene.directions}
+    assert directions['UP']['x_head'] < directions['UP']['x_tail']
+    assert directions['DN']['x_head'] > directions['DN']['x_tail']
+    assert len(scene.directions) == 4
+    for marker in scene.directions:
+        xs = [marker['x_head'], marker['x_tail']]
+        assert max(xs) < width*50/420 if marker['side'] == 'left' else min(xs) > width*(1-50/420)
+    texts = [text['text'] for text in scene.texts]
+    assert 'UP MAIN LINE' in texts and 'DN MAIN LINE' in texts
+    for item in scene.lines + scene.polygons:
+        assert all(0 <= x <= width and 0 <= y <= height for x, y in item['points'])
+
+
+def test_direction_snapshot_uses_additional_line_settings_and_explicit_overrides(tmp_path):
+    cfg = yard_config(tmp_path)
+    cfg.additional_lines = [LineSpec('MAIN_LINE_1', 15.9, 'RIGHT', direction='DN')]
+    cfg.main_directions = {'MAIN_LINE': 'UP'}
+    gen = ESPGenerator(cfg)
+    gen.run()
+    directions = {t['name']: t['direction'] for t in gen.key_plan_snapshot['tracks']}
+    assert directions['MAIN_LINE'] == 'UP'
+    assert directions['MAIN_LINE_1'] == 'DN'
+    assert directions['LOOP_1'] == ''
+    cfg.main_directions['MAIN_LINE_1'] = 'UP'
+    gen = ESPGenerator(cfg)
+    gen.run()
+    assert next(t for t in gen.key_plan_snapshot['tracks'] if t['name'] == 'MAIN_LINE_1')['direction'] == 'UP'
+
+
+def test_overrun_clamped_at_main_start_uses_actual_length_and_resolved_srj(tmp_path):
+    cfg = yard_config(tmp_path)
+    for loop in cfg.loops:
+        loop.extend_start_m = loop.extend_end_m = 120
+    cfg.loops[0].first_crossover_chainage = 50
+    cfg.crossovers[0].from_track = 'LOOP_1'
+    cfg.crossovers[0].to_track = 'MAIN_LINE'
+    cfg.crossovers[0].from_chainage_m = 50
+    generator = ESPGenerator(cfg)
+    generator.run()
+    overrun = next(o for o in generator.key_plan_snapshot['overruns'] if o['track'] == 'LOOP_1' and o['at_start'])
+    assert overrun['tip_chainage'] == pytest.approx(0)
+    assert 0 < overrun['length_m'] < 120
+    assert overrun['length_m'] == pytest.approx(overrun['srj_chainage'])
+    scene = build_scene(generator.key_plan_snapshot, KeyPlanOptions())
+    assert any(o['length_m'] == overrun['length_m'] for o in scene.overruns)
+    assert not any('OVER RUN' in text['text'] for text in scene.texts)
+
+
+def test_curved_overrun_metadata_survives_dxf_roundtrip_and_transforms(tmp_path):
+    from ezdxf.math import Matrix44
+    doc = ezdxf.new('R2010')
+    draw_srj_overrun_stub(doc, [(0, 5), (30, 5), (30, 45)], True, True, track_name='LOOP_1')
+    path = tmp_path / 'overrun.dxf'
+    doc.saveas(path)
+    loaded = ezdxf.readfile(path)
+    record = list(resolved_overruns(loaded))[0]
+    assert record['length_m'] == 70
+    assert tuple(record['srj']) == (30, 45, 0)
+    assert tuple(record['tip']) == (0, 5, 0)
+    for entity in loaded.modelspace():
+        entity.transform(Matrix44.translate(100, 200, 0))
+    translated = list(resolved_overruns(loaded))[0]
+    assert tuple(translated['srj']) == (130, 245, 0)
+    assert tuple(translated['tip']) == (100, 205, 0)
+    assert translated['length_m'] == 70
+    assert not loaded.audit().errors
+
+
+def test_cached_finalization_exports_overruns_and_directions_without_replanning(api, monkeypatch):
+    payload = dict(enable_main_line_trim=True, align_final_plan_to_x_axis=True,
+        loops=[dict(name='LOOP_1', spacing=5.3, side='LEFT', first_crossover_chainage=500,
+                    second_crossover_chainage=1800, extend_start_m=120, extend_end_m=120)],
+        additional_lines=[dict(name='MAIN_LINE_1', spacing=15.9, side='RIGHT', direction='DN')],
+        main_directions={'MAIN_LINE': 'UP'})
+    def finalize():
+        return api.post('/generate', files={'config': ('config.json', json.dumps(payload), 'application/json'),
+            'kml': ('source.kml', KML, 'application/vnd.google-earth.kml+xml')})
+    response = finalize()
+    assert response.status_code == 200, response.text
+    monkeypatch.setattr(ESPGenerator, 'run', lambda *_: pytest.fail('Cached key plans must not regenerate the ESP'))
+    cached = finalize()
+    assert cached.status_code == 200 and cached.headers['x-esp-cache'] == 'hit'
+    response = api.post('/key-plan', json={'generation_id': cached.headers['x-esp-generation-id']})
+    assert response.status_code == 200, response.text
+    doc = ezdxf.read(io.StringIO(response.content.decode('utf-8'), newline=None))
+    texts = [e.dxf.text for e in doc.modelspace().query('TEXT')]
+    assert not any('OVER RUN' in text for text in texts)
+    assert 'UP MAIN LINE' in texts and 'DN MAIN LINE' in texts
+    assert texts.count('UP MAIN LINE') == texts.count('DN MAIN LINE') == 2
+    assert len(doc.modelspace().query('LWPOLYLINE[layer=="KEY_PLAN_DEAD_END"]')) == 2
+
+
+def test_reference_presentation_keeps_geometry_without_overrun_or_crossover_names(snapshot):
+    snapshot['tracks'][0]['direction'] = 'UP/DN'
+    snapshot['overruns'] = [dict(track='LOOP_1', at_start=True, srj_chainage=1100,
+                                tip_chainage=1000, length_m=100)]
+    scene = build_scene(snapshot, KeyPlanOptions(left_destination='BJD', right_destination='SANAND'))
+    texts = [text['text'] for text in scene.texts]
+    assert not any('OVER RUN' in text or 'C4' in text for text in texts)
+    assert '1:12' in texts
+    assert len(scene.overruns) == 1 and len(scene.crossovers) == 1
+    assert any(line['layer'] == 'KEY_PLAN_DEAD_END' for line in scene.lines)
+    assert any(line['layer'] == 'KEY_PLAN_CONNECTION' for line in scene.lines)
+    assert texts.count('DN MAIN LINE') == texts.count('UP MAIN LINE') == 2
+    for side in ('left', 'right'):
+        markers = {d['direction']: d for d in scene.directions if d['side'] == side}
+        assert markers['DN']['y'] > markers['UP']['y']
