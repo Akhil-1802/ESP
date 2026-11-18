@@ -36,9 +36,13 @@ class CrossoverPlanner:
         tracks: dict[str, Sequence[Point]],
         extents: dict[str, tuple[float, float]] | None = None,
         main_length: float | None = None,
+        *,
+        loop_ranges: dict[str, tuple[float, float]] | None = None,
     ):
         self.tracks = tracks
         self.extents = _resolve_extents(extents)
+        # Defined loop ends are distinct from the available overrun extents.
+        self.loop_ranges = dict(loop_ranges or {})
         if main_length is None and "MAIN_LINE" in tracks:
             main_length = _track_length(tracks["MAIN_LINE"])
         self.main_length = main_length
@@ -95,6 +99,28 @@ class CrossoverPlanner:
                 placed_order.append(req.id)
                 continue
 
+            requested_anchor = str((req.metadata or {}).get("auto_anchor_id") or "")
+            loop_range = next(
+                (self.loop_ranges[name] for name in (req.to_track, req.from_track)
+                 if name in self.loop_ranges),
+                None,
+            )
+            if loop_range is not None and requested_anchor not in placed_order:
+                # Match the preview: try the connected loop's actual end, then
+                # apply the existing collision push only to coincident SRJs.
+                resolved[req.id] = float(loop_range[1 if req.direction == "REVERSE" else 0])
+                placed = [r for r in requests if r.id in resolved]
+                resolved = self._resolve_crossover_collisions(placed, resolved)
+                # Subsequent anchored AUTO searches must see corrected positions.
+                for placed_req in placed:
+                    params = self._params_or_none(placed_req, resolved[placed_req.id])
+                    if params is None:
+                        fixed_params.pop(placed_req.id, None)
+                    else:
+                        fixed_params[placed_req.id] = params
+                placed_order.append(req.id)
+                continue
+
             if placed_order:
                 requested_anchor = (req.metadata or {}).get("auto_anchor_id")
                 prev_id = (
@@ -136,7 +162,7 @@ class CrossoverPlanner:
             }
             for pid in placed_order:
                 if pid in fixed_params:
-                    placed_chainages.setdefault(pid, resolved[pid])
+                    placed_chainages[pid] = resolved[pid]
                     continue
                 pr = next(r for r in requests if r.id == pid)
                 pp = self._params_or_none(pr, resolved[pid])
@@ -144,8 +170,20 @@ class CrossoverPlanner:
                     placed_params[pid] = pp
                 placed_chainages[pid] = resolved[pid]
             placed_reqs = {r.id: r for r in requests if r.id in placed_params}
+            earlier_requests = [r for r in requests if r.id in placed_order]
 
             for seed in seeds:
+                # Keep the normal 13/54m anchor offset. If that actual candidate
+                # meets another crossover, use the same 64m correction as FIXED
+                # placement before spacing validation searches past the collision.
+                if self._params_or_none(req, seed) is not None:
+                    corrected = self._resolve_crossover_collisions(
+                        [*earlier_requests, req], {**resolved, req.id: seed},
+                        moving_id=req.id,
+                    )
+                    if corrected[req.id] != seed:
+                        found = corrected[req.id]
+                        break
                 found = _scan_ray(
                     self,
                     req,
@@ -182,6 +220,8 @@ class CrossoverPlanner:
         requests: Sequence[CrossoverRequest],
         resolved: dict[str, float],
         push_m: float = COLLISION_PUSH_SEPARATION_M,
+        *,
+        moving_id: str | None = None,
     ) -> dict[str, float]:
         """When two crossovers point at the exact same chainage or point on a shared track,
         keep the earlier placed crossover at its position, and push the second placed crossover
@@ -193,6 +233,9 @@ class CrossoverPlanner:
         for req in requests:
             ch = resolved.get(req.id)
             if ch is None:
+                continue
+            if moving_id is not None and req.id != moving_id:
+                placed_reqs.append(req)
                 continue
 
             collision = True

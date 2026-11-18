@@ -265,7 +265,10 @@ class CrossoverStep(PipelineStep):
         main_pts = tracks.get("MAIN_LINE")
         main_length = polyline_length(main_pts) if main_pts else None
 
-        planner = CrossoverPlanner(tracks, extents, main_length)
+        planner = CrossoverPlanner(
+            tracks, extents, main_length,
+            loop_ranges={name: bounds[:2] for name, bounds in self._bounded_loop_defined_ranges().items()},
+        )
         try:
             results, report = planner.plan(requests)
             self._crossover_results = list(results)

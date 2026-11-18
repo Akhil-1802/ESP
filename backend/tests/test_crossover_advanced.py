@@ -95,9 +95,9 @@ def test_19_auto_places_shared_track_gap():
     assert report.overall_valid, report.errors
     c2 = next(r for r in results if r.id == "C2")
     assert c2.placement == "BEHIND"
-    assert c2.chainage == pytest.approx(218.087, abs=0.01)
+    assert c2.chainage == pytest.approx(219.287, abs=0.01)
     chk = report.spacing_checks[0]
-    assert chk.actual_m == pytest.approx(55.2, abs=0.05)
+    assert chk.actual_m == pytest.approx(54.0, abs=0.001)
 
 
 def test_20_auto_follows_shared_line():
@@ -190,7 +190,7 @@ def test_auto_reverse_anchors_before_previous():
     results, report = plan_ok([fixed, auto], tracks)
     assert report.overall_valid, report.errors
     placed = next(r.chainage for r in results if r.id == "C2")
-    assert placed == pytest.approx(444.8, abs=0.01)
+    assert placed == pytest.approx(446.0, abs=0.001)
 
 
 def test_auto_forward_anchors_after_previous():

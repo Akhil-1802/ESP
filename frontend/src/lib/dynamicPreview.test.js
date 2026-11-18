@@ -508,6 +508,70 @@ describe('generateDynamicPreview', () => {
     assert.ok(res.svg.includes('LOOP_1'));
   });
 
+  for (const direction of ['FORWARD', 'REVERSE']) {
+    test(`places fourth ${direction} AUTO at loop end, shifting 64m only on collision with C2`, () => {
+      const sign = direction === 'FORWARD' ? 1 : -1;
+      const other = direction === 'FORWARD' ? 'REVERSE' : 'FORWARD';
+      const firstEnd = sign === 1 ? 1250 : 500;
+      const secondEnd = sign === 1 ? 500 : 1250;
+      const result = generateDynamicPreview({
+        mainLength: 2000, mainCenter: 1000,
+        loops: [
+          { name: 'LOOP_1', spacing: 5.3, side: 'LEFT', c1: 500, c2: 1250 },
+          { name: 'LOOP_2', spacing: 5.3, side: 'RIGHT', c1: 500, c2: 1250 },
+        ],
+        crossovers: [
+          { id: 'C1', from: 'LOOP_1', to: 'MAIN_LINE', chainage: firstEnd, direction: other },
+          { id: 'C2', from: 'LOOP_1', to: 'MAIN_LINE', chainage: secondEnd, direction },
+          { id: 'C3', from: 'LOOP_2', to: 'MAIN_LINE', chainage: firstEnd, direction: other },
+          { id: 'C4', from: 'LOOP_2', to: 'MAIN_LINE', chainage: 'AUTO', direction },
+        ],
+      });
+      const [c1, c2, c3, c4] = result.placedCrossovers;
+      assert.equal(c1.c1, firstEnd);
+      assert.equal(c2.c1, secondEnd);
+      assert.equal(c3.c1, firstEnd - sign * 64);
+      assert.equal(c4.c1, secondEnd + sign * 64);
+      assert.ok(Math.abs(c4.c2 - c2.c2 - sign * 64) < 1e-6);
+    });
+  }
+
+  for (const direction of ['FORWARD', 'REVERSE']) {
+    for (const earlierAuto of [false, true]) {
+      test(`applies C4's ${direction} C3 anchor offset before collision push (earlier AUTO: ${earlierAuto})`, () => {
+        const sign = direction === 'FORWARD' ? 1 : -1;
+        const outerStart = sign === 1 ? 500 : 1250;
+        const candidate = outerStart + sign * (97.578 + 13);
+        const firstTwo = earlierAuto ? [
+          { id: 'C1', from: 'LOOP_3', to: 'LOOP_1', chainage: outerStart, direction },
+          { id: 'C2', from: 'LOOP_1', to: 'MAIN_LINE', chainage: 'AUTO', direction, autoAnchor: 'C1' },
+        ] : [
+          { id: 'C1', from: 'LOOP_1', to: 'MAIN_LINE', chainage: candidate, direction },
+          { id: 'C2', from: 'LOOP_3', to: 'LOOP_1', chainage: outerStart, direction },
+        ];
+        const result = generateDynamicPreview({
+          mainLength: 2000, mainCenter: 1000,
+          loops: [
+            { name: 'LOOP_1', spacing: 5.3, side: 'LEFT', c1: 500, c2: 1250 },
+            { name: 'LOOP_2', spacing: 5.3, side: 'RIGHT', c1: 500, c2: 1250 },
+            { name: 'LOOP_3', referenceTrack: 'LOOP_1', spacing: 5.3, side: 'LEFT', c1: 500, c2: 1250 },
+            { name: 'LOOP_4', referenceTrack: 'LOOP_2', spacing: 5.3, side: 'RIGHT', c1: 500, c2: 1250 },
+          ],
+          crossovers: [...firstTwo,
+            { id: 'C3', from: 'LOOP_4', to: 'LOOP_2', chainage: outerStart, direction },
+            { id: 'C4', from: 'LOOP_2', to: 'MAIN_LINE', chainage: 'AUTO', direction, autoAnchor: 'C3' },
+          ],
+        });
+        const collider = result.placedCrossovers[earlierAuto ? 1 : 0];
+        const [c3, c4] = result.placedCrossovers.slice(2);
+        assert.ok(Math.abs(collider.c1 - candidate) < 1e-6);
+        assert.ok(Math.abs(c4.c1 - candidate - sign * 64) < 1e-6);
+        assert.ok(Math.abs(c4.c1 - c3.c2 - sign * (13 + 64)) < 1e-6);
+        assert.ok(Math.abs(c4.c2 - collider.c2 - sign * 64) < 1e-6);
+      });
+    }
+  }
+
   test('trims main lines when enableMainLineTrim is active matching post-generation plan', () => {
     const untrimmedForm = {
       mainLength: 2000,

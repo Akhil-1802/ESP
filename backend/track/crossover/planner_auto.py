@@ -149,6 +149,7 @@ def _scan_ray(
     c = float(seed)
     if ext is not None:
         c = max(c, float(ext[0]))
+    search_start = max(0.0, c)
     try:
         fixed_info = _fixed_side_info(
             planner, req, placed_params, placed_reqs, placed_chainages
@@ -174,7 +175,9 @@ def _scan_ray(
             back = 0
             while back < 1200:
                 trial = round(found - 0.001, 3)
-                if trial < 0:
+                # Refine within the searched interval, preserving an already
+                # valid anchor offset instead of adding 1.2m to reverse spacing.
+                if trial < search_start:
                     break
                 if (
                     _candidate_violates_fixed(
