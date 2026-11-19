@@ -49,3 +49,18 @@ test('live FOB preview converts absolute input to MAIN distance', () => {
   assert.ok(fobGeometry(absolute));
   assert.equal(fobGeometry(absolute), fobGeometry(localEquivalent));
 });
+
+test('BOTH submits one platform entry and previews both landing arms', () => {
+  const f = form();
+  f.fobs[0].arms = [{ platform: 'PLATFORM_1', length: '17', side: 'BOTH' }];
+  assert.deepEqual(buildConfig(f).fobs[0].arms.PLATFORM_1, { length: 17, side: 'BOTH' });
+  const geometry = () => generateDynamicPreview(f).svg.match(/<g data-layer="FOB"[\s\S]*?<\/g>/)[0];
+  const both = geometry();
+  for (const side of ['LEFT', 'RIGHT']) {
+    f.fobs[0].arms[0].side = side;
+    const paths = geometry().match(/<path[^>]*>/g);
+    assert.equal(paths.length, 2);
+    assert.ok(both.includes(paths[1]));
+  }
+  assert.equal(both.match(/<path[^>]*>/g).length, 3);
+});

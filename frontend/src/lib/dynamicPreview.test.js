@@ -633,3 +633,15 @@ describe('generateDynamicPreview', () => {
     assert.ok(res.layers.includes('LOOP_CURVED'));
   });
 });
+
+test('absolute gradients share preview geometry across equivalent datums', () => {
+  const preview = (startKm, startM, absoluteChainage) => generateDynamicPreview({
+    startKm, startM, mainLength: 1500, gradients: [{ absoluteChainage, rightValue: '260' }],
+  });
+  const absolute = preview('12', '250', '12850');
+  const layer = result => result.svg.match(/<g data-layer="GRADIENT"[\s\S]*?<\/g>/)?.[0];
+  assert.match(absolute.svg, /CH: 12\+850/);
+  assert.ok(layer(absolute));
+  assert.equal(layer(absolute), layer(preview('0', '0', '600')));
+  assert.equal(layer(preview('12', '250', '100')), undefined);
+});

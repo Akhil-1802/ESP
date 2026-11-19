@@ -1,11 +1,28 @@
+import { useId } from 'react';
 import { ChainageRangeReference } from './ChainageRangeReference.jsx';
-import { Field, Grid, Num, Sel, Text } from './fields.jsx';
+import { Field, Grid, ItemCard, Num, Sel, Text } from './fields.jsx';
 import { BRIDGE_TYPE_OPTIONS } from '../lib/bridgePlacement.js';
 
 export function BridgeFields({ form, bridge, onChange, buildingOptions = [] }) {
+  const groupName = useId();
   const fixed = bridge.placementMode === 'fixed';
   return (
     <div className="space-y-3">
+      <div role="radiogroup" aria-label="Placement mode" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-slate-700">
+        <span className="text-slate-500">Placement mode:</span>
+        {[
+          ['offset', 'Offset from station edge (Recommended)'],
+          ['fixed', 'Absolute chainage'],
+        ].map(([mode, label]) => (
+          <label key={mode} className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name={groupName} value={mode}
+              checked={(bridge.placementMode || 'offset') === mode}
+              onChange={() => onChange({ placementMode: mode })}
+              className="accent-[var(--accent)]" />
+            {label}
+          </label>
+        ))}
+      </div>
       <Grid>
         <Field label="Bridge type *">
           <Sel value={bridge.bridgeType || 'PSC_SLAB'} options={BRIDGE_TYPE_OPTIONS}
@@ -17,12 +34,6 @@ export function BridgeFields({ form, bridge, onChange, buildingOptions = [] }) {
               onChange={(e) => onChange({ customType: e.target.value })} />
           </Field>
         )}
-        <Field label="Placement method">
-          <Sel value={bridge.placementMode || 'offset'} options={[
-            { value: 'offset', label: 'Offset from station edge' },
-            { value: 'fixed', label: 'Absolute chainage' },
-          ]} onChange={(e) => onChange({ placementMode: e.target.value })} />
-        </Field>
         {fixed ? (
           <Field label="Absolute chainage *" hint="MAIN datum: km+metres (12+850), or absolute metres (12850)">
             <Text value={bridge.chainage ?? ''} placeholder="12+850"
@@ -59,5 +70,16 @@ export function BridgeFields({ form, bridge, onChange, buildingOptions = [] }) {
         <p className="text-xs text-amber-700">Add a station building to use an edge offset, or choose absolute chainage.</p>
       )}
     </div>
+  );
+}
+
+export function BridgeCard({ title, onRemove, bridge, ...fieldProps }) {
+  const badge = bridge.placementMode === 'fixed'
+    ? (String(bridge.chainage ?? '').trim() ? `CH ${bridge.chainage}` : 'Absolute chainage')
+    : `Offset ${bridge.offset || 50}m (${bridge.direction || 'INCREASING'})`;
+  return (
+    <ItemCard title={title} subtitle={`Width: ${bridge.width || 10}m · MAIN_LINE`} badge={badge} onRemove={onRemove}>
+      <BridgeFields bridge={bridge} {...fieldProps} />
+    </ItemCard>
   );
 }

@@ -89,7 +89,7 @@ export const blankBridge = () => ({
 
 export const blankGradient = () => ({
   track: 'MAIN_LINE',
-  chainage: '',
+  absoluteChainage: '',
   direction: 'UP',
   leftValue: '',
   leftDirection: 'STRAIGHT',

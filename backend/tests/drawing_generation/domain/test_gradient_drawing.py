@@ -1,11 +1,15 @@
 """Tests for Gradient Annotation feature."""
 
+import math
+
 import ezdxf
 import pytest
 from app.features.drawing_generation.config import (
     GradientRequest,
     load_config_from_json,
 )
+
+from app.features.drawing_generation.formats.dxf.final_plan import align_final_plan
 
 from .gradient_fixture import _get_grad_lines, _get_grad_texts, _make_sample_pipeline
 
@@ -357,3 +361,44 @@ def test_gradient_km_and_m_loading_and_pipeline(tmp_path):
     doc = ezdxf.readfile(str(out))
     labels = _get_grad_texts(doc)
     assert any("CH:" in l.dxf.text for l in labels)
+
+
+@pytest.mark.parametrize(("value", "station"), [("12+850", "12+750"), ("12850", None)])
+def test_absolute_gradient_on_nonzero_datum(tmp_path, value, station):
+    gen, out = _make_sample_pipeline(
+        tmp_path, [GradientRequest(absolute_chainage=value, right_gradient_value="260")],
+        station_chainage=station,
+    )
+    gen.config.start_km, gen.config.start_m = 12, 250
+    gen.run()
+    doc = ezdxf.readfile(out)
+    marker, = doc.modelspace().query('INSERT[layer=="GRADIENT"]')
+    assert marker.dxf.insert.x == pytest.approx(600)
+    assert "CH: 12+850" in [t.dxf.text for t in _get_grad_texts(doc)]
+
+
+def test_absolute_gradient_rejects_outside_main(tmp_path):
+    gen, _ = _make_sample_pipeline(tmp_path, [GradientRequest(absolute_chainage="11+999")])
+    gen.config.start_km = 12
+    with pytest.raises(ValueError, match="outside MAIN"):
+        gen.run()
+
+
+def test_final_gradient_text_follows_slopes_and_stem(tmp_path):
+    gradient = GradientRequest(
+        absolute_chainage="0+600", left_gradient_value="120", left_direction="RISE",
+        right_gradient_value="65", right_direction="DOWN", rl="97.53",
+    )
+    gen, out = _make_sample_pipeline(
+        tmp_path, [gradient], track_coords=((0, 0), (2000, 400)), station_chainage=None,
+    )
+    gen.run()
+    assert abs(align_final_plan(str(out))) > 0.1
+    doc = ezdxf.readfile(out)
+    left, right, stem = _get_grad_lines(doc)
+    labels = {text.dxf.text: text for text in _get_grad_texts(doc)}
+    for caption, line in [('120', left), ('65', right), ('CH: 0+600', stem),
+                          ('RL: 97.53m', stem), ('UP LINE', stem)]:
+        direction = line.dxf.end - line.dxf.start
+        rotation = math.radians(labels[caption].dxf.rotation)
+        assert math.sin(rotation - direction.angle) == pytest.approx(0, abs=1e-8)

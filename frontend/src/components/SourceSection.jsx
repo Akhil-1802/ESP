@@ -4,7 +4,7 @@ import { getTrackCentre, loadKmlAlignment } from '../lib/kmlAlignment.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
 import { blankStationMarker } from '../lib/formDefaults.js';
 import { isBlank } from '../lib/formUtils.js';
-import { Field, Grid, Section, Text } from './fields.jsx';
+import { Field, Grid, Section, Text, YardAddButton } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { TrackSelectionPanel } from './TrackSelectionPanel.jsx';
 
@@ -290,13 +290,7 @@ export function SourceSection({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={addStationMarker}
-                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white shadow-2xs transition-colors cursor-pointer"
-              >
-                <span>+ Add</span>
-              </button>
+              <YardAddButton onClick={addStationMarker}>station</YardAddButton>
             </div>
           </div>
 
@@ -326,7 +320,7 @@ export function SourceSection({
                             type="checkbox"
                             checked={stn.showFlag !== false}
                             onChange={(e) => updateStationMarker(idx, { showFlag: e.target.checked })}
-                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3 w-3"
+                            className="rounded border-slate-300 text-[var(--accent)] focus:ring-[var(--accent)] h-3 w-3"
                           />
                           <span>🚩 Station Flag</span>
                         </label>

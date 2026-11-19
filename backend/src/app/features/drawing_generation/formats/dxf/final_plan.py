@@ -23,6 +23,10 @@ def _horizontal_labels(layout):
     def visit(entity):
         kind = entity.dxftype()
         layer = entity.dxf.layer.upper()
+        # Gradient captions follow the two slope segments and the marker stem.
+        # The modelspace transform already rotates the complete symbol together.
+        if layer == 'GRADIENT':
+            return
         if kind in ('TEXT', 'MTEXT', 'ATTRIB'):
             if entity.has_xdata('ESP_LABEL'):
                 if (1000, 'PLATFORM') in entity.get_xdata('ESP_LABEL'):

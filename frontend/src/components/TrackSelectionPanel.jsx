@@ -94,7 +94,7 @@ export function TrackSelectionPanel({
                       {cand.length_m.toFixed(2)} m
                     </span>
                     {isConfirmed && (
-                      <span className="rounded bg-emerald-50 border border-emerald-300 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">
+                      <span className="rounded bg-[var(--surface-soft)] border border-[var(--border)] px-2 py-0.5 text-[10.5px] font-bold text-[var(--accent)]">
                         ✓ MAIN
                       </span>
                     )}
@@ -114,8 +114,8 @@ export function TrackSelectionPanel({
                     }}
                     className={`rounded-md px-3 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer ${
                       isConfirmed
-                        ? 'bg-emerald-600 text-white hover:bg-emerald-500 ring-1 ring-emerald-400'
-                        : 'border border-[var(--border)] bg-white text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[rgba(50,95,244,0.06)] hover:text-[var(--accent)]'
+                        ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
+                        : 'border border-[var(--border)] bg-white text-[var(--accent)] hover:border-[var(--accent)] hover:bg-[rgba(50,95,244,0.06)] hover:text-[var(--accent)]'
                     }`}
                   >
                     {isConfirmed ? '✓ Main Line' : 'Select as Main Line'}
@@ -133,11 +133,7 @@ export function TrackSelectionPanel({
           <button
             type="button"
             onClick={() => onConfirmMainLine && onConfirmMainLine(activeTrack)}
-            className={`w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold shadow-sm transition-all cursor-pointer ${
-              confirmedTrackId === activeTrack.candidate_id
-                ? 'bg-emerald-600 text-white hover:bg-emerald-500 ring-2 ring-emerald-400/50'
-                : 'bg-gradient-to-r from-[var(--accent-start)] to-[var(--accent)] text-white hover:from-[var(--accent-strong)] hover:to-[var(--accent-strong)]'
-            }`}
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[var(--accent-strong)] cursor-pointer"
           >
             <span>
               {confirmedTrackId === activeTrack.candidate_id

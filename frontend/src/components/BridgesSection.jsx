@@ -1,8 +1,8 @@
-import { Section, Empty, ItemCard } from './fields.jsx';
+import { Section, Empty } from './fields.jsx';
 import { blankBridge } from '../lib/formDefaults.js';
 import { patchAt } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
-import { BridgeFields } from './BridgeFields.jsx';
+import { BridgeCard } from './BridgeFields.jsx';
 
 export function BridgesSection({ form, set }) {
   const setTop = useFormSetter(set);
@@ -15,11 +15,10 @@ export function BridgesSection({ form, set }) {
       onAdd={() => setTop({ bridges: [...bridges, blankBridge()] })} addLabel="+ Add Bridge">
       {bridges.length === 0 && <Empty>No bridges configured.</Empty>}
       {bridges.map((bridge, i) => (
-        <ItemCard key={i} title={`Bridge ${i + 1}`}
-          onRemove={() => setTop({ bridges: bridges.filter((_, k) => k !== i) })}>
-          <BridgeFields form={form} bridge={bridge} buildingOptions={buildingOptions}
-            onChange={(patch) => setTop({ bridges: patchAt(bridges, i, patch) })} />
-        </ItemCard>
+        <BridgeCard key={i} title={`Bridge ${i + 1}`}
+          onRemove={() => setTop({ bridges: bridges.filter((_, k) => k !== i) })}
+          form={form} bridge={bridge} buildingOptions={buildingOptions}
+          onChange={(patch) => setTop({ bridges: patchAt(bridges, i, patch) })} />
       ))}
     </Section>
   );

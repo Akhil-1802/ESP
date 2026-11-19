@@ -49,6 +49,7 @@ class GradientRequest:
     station_index: int | None = None
     km: float | str | None = None
     m: float | str | None = None
+    absolute_chainage: float | str | None = None
 
 
 @dataclass

@@ -597,6 +597,20 @@ describe('sidings', () => {
 });
 
 describe('gradients', () => {
+  it('serializes absolute input and validates the alignment range across yards', () => {
+    const form = { ...base(), startKm: '12', startM: '250', mainLength: 1500,
+      gradients: ['12850', '13+750'].map((absoluteChainage, stationIndex) => ({
+        absoluteChainage, stationIndex, rightValue: '260', direction: 'DN', rightDirection: 'RISE',
+      })) };
+    const gradients = buildConfig(form).gradients;
+    assert.deepEqual(gradients.map(g => [g.station_index, g.absolute_chainage, g.direction, g.right_direction]),
+      [[0, '12850', 'DN', 'RISE'], [1, '13+750', 'DN', 'RISE']]);
+    for (const value of ['12+250', '13+750', '12850', '12+249', '13+751', '', 'bad']) {
+      form.gradients[0].absoluteChainage = value;
+      const invalid = validateForm(form).some(message => message.startsWith('Gradient'));
+      assert.equal(invalid, !['12+250', '13+750', '12850'].includes(value), value);
+    }
+  });
   it('serializes gradients with defaults and custom values', () => {
     const form = {
       gradients: [

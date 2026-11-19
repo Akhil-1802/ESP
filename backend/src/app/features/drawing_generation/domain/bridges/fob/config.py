@@ -102,7 +102,7 @@ class FOBConfig:
                 if float(arm["length"]) <= 0:
                     raise ValueError(f"Arm length for platform {plat!r} must be > 0.")
                 side = str(arm.get("side", "LEFT")).strip().upper()
-                if side not in ("LEFT", "RIGHT"):
-                    raise ValueError(f"Arm side for platform {plat!r} must be 'LEFT' or 'RIGHT'.")
+                if side not in ("LEFT", "RIGHT", "BOTH"):
+                    raise ValueError(f"Arm side for platform {plat!r} must be 'LEFT', 'RIGHT', or 'BOTH'.")
                 arm["side"] = side
                 arm["length"] = float(arm["length"])

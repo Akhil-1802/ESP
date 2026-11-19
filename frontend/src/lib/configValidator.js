@@ -192,7 +192,13 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
   });
 
   (f.gradients || []).forEach((g, i) => {
-    if (isBlank(g.chainage)) at('Gradient', i, 'chainage is required.');
+    if (g.absoluteChainage != null) {
+      const distance = resolveBridgeDistance(f, { placementMode: 'fixed', chainage: g.absoluteChainage });
+      if (!Number.isFinite(distance)) at('Gradient', i, 'absolute chainage is required as metres or km+metres.');
+      else if (distance < 0 || (!isBlank(f.mainLength) && distance > Number(f.mainLength))) {
+        at('Gradient', i, 'absolute chainage is outside the MAIN alignment range.');
+      }
+    } else if (isBlank(g.chainage)) at('Gradient', i, 'chainage is required.');
     const leftVal = g.leftValue ?? g.left_gradient_value ?? '';
     const rightVal = g.rightValue ?? g.right_gradient_value ?? g.gradientValue ?? '';
     if (isBlank(leftVal) && isBlank(rightVal)) {

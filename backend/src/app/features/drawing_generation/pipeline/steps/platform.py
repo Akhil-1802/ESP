@@ -325,6 +325,7 @@ class PlatformStep(PipelineStep):
                 fob_ch = resolve_fob_chainage(
                     fob,
                     tracks,
+                    alignment_config=self.config,
                     station_requests=getattr(self.config, "stations", None),
                     station_markers=getattr(self.config, "station_markers", None),
                 )
@@ -342,18 +343,15 @@ class PlatformStep(PipelineStep):
 
                 half_fob_w = fob_w / 2.0
 
-                if arm_spec and isinstance(arm_spec, dict):
+                fob_min_ch = plat_fob_ch - half_fob_w
+                fob_max_ch = plat_fob_ch + half_fob_w
+                if isinstance(arm_spec, dict):
                     arm_len = float(arm_spec.get("length", 15.0) or 15.0)
                     arm_side = str(arm_spec.get("side", "LEFT") or "LEFT").upper()
-                    if arm_side == "LEFT":
-                        fob_min_ch = plat_fob_ch - half_fob_w - arm_len
-                        fob_max_ch = plat_fob_ch + half_fob_w
-                    else:
-                        fob_min_ch = plat_fob_ch - half_fob_w
-                        fob_max_ch = plat_fob_ch + half_fob_w + arm_len
-                else:
-                    fob_min_ch = plat_fob_ch - half_fob_w
-                    fob_max_ch = plat_fob_ch + half_fob_w
+                    if arm_side in ("LEFT", "BOTH"):
+                        fob_min_ch -= arm_len
+                    if arm_side in ("RIGHT", "BOTH"):
+                        fob_max_ch += arm_len
 
                 # User requirement:
                 # "from 1m before the FOB arm and make a line above or down depending on the side where we are making FOB,

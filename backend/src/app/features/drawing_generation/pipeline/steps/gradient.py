@@ -1,7 +1,7 @@
 """Gradient annotation pipeline step.
 
 Places straight horizontal gradient annotation symbols at the correct location
-along the railway track alignment using station center chainage as reference.
+using absolute MAIN stationing or a legacy station-centred reference.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from ...domain.geometry.operations import (
     nearest_point_on_alignment,
     polyline_length,
 )
+from ...domain.geometry.stationing import absolute_track_distance, parse_absolute_chainage
 from ...formats.dxf.styles import ensure_layer, ensure_text_style
 from .chainage_collect import station_centres_from_dxf
 from .gradient_reference import (
@@ -101,37 +102,41 @@ class GradientStep(GradientReference):
 
             total_len = polyline_length(cleaned_track)
 
-            # Project station center onto target track to get station reference chainage
-            stn_proj = nearest_point_on_alignment(cleaned_track, stn_center_pt)
-            stn_track_ch = float(stn_proj.chainage)
-
-            # If no station reference chainage string was explicitly input, use the station's actual track route chainage
-            effective_stn_ch = stn_ch_input
-            if effective_stn_ch is None:
-                start_m_total = (float(getattr(self.config, "start_km", 0) or 0) * 1000.0) + float(getattr(self.config, "start_m", 0) or 0)
-                effective_stn_ch = f"{start_m_total + stn_track_ch:.3f} M"
-
-            # Compute relative offset along alignment using chainage
-            if grad.chainage is not None and str(grad.chainage).strip() != "":
-                offset_m = compute_gradient_offset(grad.chainage, effective_stn_ch)
-            elif getattr(grad, "km", None) is not None and str(grad.km).strip() != "":
-                m_val = getattr(grad, "m", None)
-                km_m_str = f"{grad.km}+{m_val}" if m_val is not None and str(m_val).strip() != "" else str(grad.km)
-                offset_m = compute_gradient_offset(km_m_str, effective_stn_ch)
-            elif getattr(grad, "m", None) is not None and str(grad.m).strip() != "":
-                offset_m = compute_gradient_offset(f"0+{grad.m}", effective_stn_ch)
+            if grad.absolute_chainage is not None:
+                absolute = parse_absolute_chainage(grad.absolute_chainage)
+                target_track_ch = absolute_track_distance(self.config, absolute, tracks, track_name, "Gradient")
             else:
-                offset_m = 0.0
+                # Project station center onto target track to get station reference chainage
+                stn_proj = nearest_point_on_alignment(cleaned_track, stn_center_pt)
+                stn_track_ch = float(stn_proj.chainage)
 
-            target_track_ch = stn_track_ch + offset_m
+                # If no station reference chainage string was explicitly input, use the station's actual track route chainage
+                effective_stn_ch = stn_ch_input
+                if effective_stn_ch is None:
+                    start_m_total = (float(getattr(self.config, "start_km", 0) or 0) * 1000.0) + float(getattr(self.config, "start_m", 0) or 0)
+                    effective_stn_ch = f"{start_m_total + stn_track_ch:.3f} M"
 
-            # Bounds check
-            if target_track_ch < -1e-6 or target_track_ch > total_len + 1e-6:
-                raise ValueError(
-                    f"Gradient chainage '{grad.chainage}' (relative offset {offset_m:+.2f} m, "
-                    f"computed target track chainage {target_track_ch:.2f} m) falls outside "
-                    f"track '{track_name}' extent [0.00 m, {total_len:.2f} m]."
-                )
+                # Compute relative offset along alignment using chainage
+                if grad.chainage is not None and str(grad.chainage).strip() != "":
+                    offset_m = compute_gradient_offset(grad.chainage, effective_stn_ch)
+                elif getattr(grad, "km", None) is not None and str(grad.km).strip() != "":
+                    m_val = getattr(grad, "m", None)
+                    km_m_str = f"{grad.km}+{m_val}" if m_val is not None and str(m_val).strip() != "" else str(grad.km)
+                    offset_m = compute_gradient_offset(km_m_str, effective_stn_ch)
+                elif getattr(grad, "m", None) is not None and str(grad.m).strip() != "":
+                    offset_m = compute_gradient_offset(f"0+{grad.m}", effective_stn_ch)
+                else:
+                    offset_m = 0.0
+
+                target_track_ch = stn_track_ch + offset_m
+
+                # Bounds check
+                if target_track_ch < -1e-6 or target_track_ch > total_len + 1e-6:
+                    raise ValueError(
+                        f"Gradient chainage '{grad.chainage}' (relative offset {offset_m:+.2f} m, "
+                        f"computed target track chainage {target_track_ch:.2f} m) falls outside "
+                        f"track '{track_name}' extent [0.00 m, {total_len:.2f} m]."
+                    )
 
             # Exact point and tangent on track alignment at the gradient chainage
             target_track_ch = min(max(target_track_ch, 0.0), total_len)
@@ -328,7 +333,11 @@ class GradientStep(GradientReference):
             dir_line_text = f"{dir_short} LINE"
 
             # Chainage text
-            if grad.chainage is not None and str(grad.chainage).strip() != "":
+            if grad.absolute_chainage is not None:
+                km, mm = divmod(round(abs(absolute) * 1000), 1_000_000)
+                metres = f"{mm / 1000:07.3f}".rstrip("0").rstrip(".")
+                ch_str = f"CH: {'-' if absolute < 0 else ''}{km}+{metres}"
+            elif grad.chainage is not None and str(grad.chainage).strip() != "":
                 ch_num, _ = parse_chainage_val(str(grad.chainage))
                 ch_str = f"CH: {ch_num:.2f}"
             else:

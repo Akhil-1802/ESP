@@ -146,6 +146,7 @@ export default function App() {
       (form.crossovers && form.crossovers.length > 0) ||
       (form.fobs && form.fobs.length > 0) ||
       (form.bridges && form.bridges.length > 0) ||
+      (form.gradients && form.gradients.length > 0) ||
       (form.sidings && form.sidings.length > 0)
     );
     if (!hasContent) return null;

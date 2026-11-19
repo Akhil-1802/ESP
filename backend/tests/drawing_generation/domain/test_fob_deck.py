@@ -190,3 +190,21 @@ def test_write_uses_shared_primitives():
     write_fob_deck(doc, _square(0, 0, 2), "FOB", 1)
     assert "FOB" in doc.layers
     assert doc.layers.get("FOB").color == 1
+
+
+def test_both_landing_arms_extend_full_length_on_the_same_platform():
+    doc = ezdxf.new()
+    cfg = FOBConfig(
+        reference_chainage=50, width=4, platforms=["P1", "P2"],
+        arms={"P1": {"side": "BOTH", "length": 17}}, output_layer="FOB_1",
+    )
+    generate_fob(doc, {"MAIN_LINE": [(0, 0), (100, 0)]}, {},
+                 {"P1": _square(50, -8, 5), "P2": _square(50, 8, 5)}, cfg)
+    arms = list(doc.modelspace().query('LWPOLYLINE[layer=="FOB_1"]'))
+    assert len(arms) == 2
+    bounds = []
+    for arm in arms:
+        points = list(arm.get_points("xy"))
+        assert all(y < 0 for _, y in points)
+        bounds.append((min(x for x, _ in points), max(x for x, _ in points)))
+    assert sorted(bounds) == [(31, 48), (52, 69)]

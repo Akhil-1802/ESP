@@ -19,6 +19,15 @@ export function useCardCollapse() {
 
 /** Shared form primitives: cards, labeled inputs, list helpers. */
 
+export function YardAddButton({ onClick, children }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="ml-auto inline-flex min-h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] cursor-pointer">
+      + Add {children}
+    </button>
+  );
+}
+
 export function Section({ id, title, hint, count, onAdd, addLabel, actions, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen);
   const { itemsExpanded, collapseSignal, toggleAll } = useCardCollapse();

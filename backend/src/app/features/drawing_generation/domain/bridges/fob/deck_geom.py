@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ...geometry.operations import Point
+from ...geometry.operations import Point, line_segment_parameter, track_axis_hits
 
 
 def validate_fob_span(span_m: float) -> float:
@@ -28,23 +28,6 @@ def _order_outward(a: Point, b: Point, ox: float, oy: float) -> tuple[Point, Poi
     return a, b
 
 
-def _line_param(
-    origin: Point, direction: Point, edge_start: Point, edge_end: Point
-) -> float | None:
-    """Parameter t where origin + t*direction meets edge_start-end."""
-    dx, dy = direction
-    ex, ey = edge_end[0] - edge_start[0], edge_end[1] - edge_start[1]
-    det = ex * dy - dx * ey
-    if abs(det) < 1e-12:
-        return None
-    rx, ry = edge_start[0] - origin[0], edge_start[1] - origin[1]
-    u = (dx * ry - dy * rx) / det
-    if u < -1e-9 or u > 1.0 + 1e-9:
-        return None
-    t = (ex * ry - ey * rx) / det
-    return t
-
-
 def _axis_hits(origin: Point, normal: Point, polygon: Sequence[Point]) -> List[float]:
     """Projections (along normal) where the axis crosses a polygon."""
     ring = [(float(p[0]), float(p[1])) for p in polygon]
@@ -52,7 +35,7 @@ def _axis_hits(origin: Point, normal: Point, polygon: Sequence[Point]) -> List[f
         ring = ring[:-1]
     hits: List[float] = []
     for start, end in zip(ring, ring[1:] + ring[:1]):
-        t = _line_param(origin, normal, start, end)
+        t = line_segment_parameter(origin, normal, start, end)
         if t is not None:
             hits.append(t)
     return hits
@@ -122,20 +105,6 @@ def build_fob_outline(
     ]
 
 
-def track_axis_hits(
-    origin: Point, normal: Point, tracks: Dict[str, List[Point]]
-) -> List[float]:
-    """Projections (along normal) where any track crosses the axis."""
-    hits: List[float] = []
-    for points in tracks.values():
-        ring = [(float(p[0]), float(p[1])) for p in points]
-        for start, end in zip(ring, ring[1:]):
-            t = _line_param(origin, normal, start, end)
-            if t is not None:
-                hits.append(t)
-    return hits
-
-
 def choose_label_spot(
     lo: float,
     hi: float,
@@ -189,7 +158,7 @@ def build_fob_arms(
     tracks: Dict[str, List[Point]] | None = None,
     track_hits: Sequence[float] | None = None,
 ) -> List[List[Point]]:
-    """Landing-arm outlines, one closed rectangle per specified platform.
+    """Landing-arm outlines, one rectangle per requested side of each platform.
 
     For side platforms, the clearance from adjacent track centerline to FOB arm near edge
     is enforced to 5.33 m (IRS SOD minimum structure clearance), and the arm width
@@ -219,9 +188,6 @@ def build_fob_arms(
         if spec is None or span is None:
             continue
         length = float(spec["length"])
-        stride = -1.0 if spec["side"] == "LEFT" else 1.0
-        s_in = s0 - bridge_hw if stride < 0 else s0 + bridge_hw
-        s_out = s_in + stride * length
 
         p_lo, p_hi = min(span[0], span[1]), max(span[0], span[1])
         if hits:
@@ -265,7 +231,13 @@ def build_fob_arms(
                 low = arm_far
                 high = arm_near
 
-        arms.append([_pt(s_in, low), _pt(s_out, low), _pt(s_out, high), _pt(s_in, high)])
+        for side in ("LEFT", "RIGHT"):
+            if spec["side"] not in (side, "BOTH"):
+                continue
+            stride = -1 if side == "LEFT" else 1
+            s_in = s0 + stride * bridge_hw
+            s_out = s_in + stride * length
+            arms.append([_pt(s_in, low), _pt(s_out, low), _pt(s_out, high), _pt(s_in, high)])
     return arms
 
 

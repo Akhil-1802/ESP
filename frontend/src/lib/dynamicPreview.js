@@ -1,3 +1,4 @@
+import { absoluteChainageAtDistance } from './chainageRange.js';
 import { bridgeTypeLabel, resolveBridgeDistance } from './bridgePlacement.js';
 /**
  * Dynamic Client-Side DXF/SVG Plan-View Generator.
@@ -194,6 +195,7 @@ export function generateDynamicPreview(form, options = {}) {
       s.includes('LOOP') ||
       s.includes('TURNOUT') ||
       s.includes('CROSSOVER') ||
+      s.includes('GRADIENT') ||
       s.includes('FOB') ||
       s.includes('BRIDGE') ||
       s.includes('SIGNAL')
@@ -686,6 +688,25 @@ export function generateDynamicPreview(form, options = {}) {
   // ---------------------------------------------------------------------------
   const platformBoundsMap = {};
 
+  function fobDeckChainage(fb, width) {
+    if (fb.placementMode === 'fixed') {
+      return resolveBridgeDistance(f, { placementMode: 'fixed', chainage: fb.chainage });
+    }
+    const sign = fb.direction === 'DECREASING' ? -1 : 1;
+    const station = (f.stations || []).find(s => (f.platforms || []).some((_, i) => s.platform === `PLATFORM_${i + 1}`));
+    const edge = mainCenter + sign * parseNum(station?.length, 40) / 2;
+    const towardsSide = sign > 0 ? 'LEFT' : 'RIGHT';
+    let towardsLength = 0;
+    for (const arm of fb.arms || []) {
+      const side = String(arm.side || 'LEFT').toUpperCase();
+      if (side === towardsSide || side === 'BOTH') {
+        towardsLength = Math.max(towardsLength, parseNum(arm.length, 17));
+      }
+    }
+    return edge + sign * (parseNum(fb.offset, 40) + width / 2 + towardsLength);
+  }
+
+
   (f.platforms || []).forEach((p, idx) => {
     // References from the form and backend use IDs, independent of display names.
     const layerName = `PLATFORM_${idx + 1}`;
@@ -736,21 +757,7 @@ export function generateDynamicPreview(form, options = {}) {
         const armSide = String(arm?.side || 'LEFT').toUpperCase();
         const armLen = parseNum(arm?.length, 17.0);
 
-        let fbCh = mainCenter;
-        if (fb.placementMode === 'fixed' && fb.chainage) {
-          fbCh = parseNum(fb.chainage, mainCenter);
-        } else {
-          const off = parseNum(fb.offset, 40.0);
-          const dir = fb.direction || 'INCREASING';
-          const validStn = (f.stations || []).find((s) => s?.platform && platformBoundsMap[String(s.platform).trim()]);
-          const stnLen = parseNum(validStn?.length, 40.0);
-          const edge = mainCenter + (dir === 'INCREASING' ? stnLen / 2.0 : -stnLen / 2.0);
-          // Backend: arm_towards_station is non-zero ONLY when arm points toward the station
-          const towardsStation = (dir === 'INCREASING' && armSide === 'LEFT') || (dir === 'DECREASING' && armSide === 'RIGHT');
-          const armTowardsStation = towardsStation ? armLen : 0.0;
-          const extra = halfFobW + armTowardsStation;
-          fbCh = dir === 'INCREASING' ? edge + off + extra : edge - (off + extra);
-        }
+        const fbCh = fobDeckChainage(fb, width);
 
         if (fbCh >= s0 && fbCh <= s1 && armLen > 0) {
           // IRS SOD clearance: FOB arm outer edge = 5.33 + arm_w, required widening = 5.33 + arm_w + 1.0
@@ -761,15 +768,8 @@ export function generateDynamicPreview(form, options = {}) {
             const widenedDist = armOuterDist + 1.0;
             widenedFarOff = trackOff + sgn * widenedDist;
 
-            let fobMinCh, fobMaxCh;
-            // RIGHT = toward higher chainage (+X), LEFT = toward lower chainage (-X)
-            if (armSide === 'RIGHT') {
-              fobMinCh = fbCh - halfFobW;
-              fobMaxCh = fbCh + halfFobW + armLen;
-            } else {
-              fobMinCh = fbCh - halfFobW - armLen;
-              fobMaxCh = fbCh + halfFobW;
-            }
+            const fobMinCh = fbCh - halfFobW - (armSide === 'RIGHT' ? 0 : armLen);
+            const fobMaxCh = fbCh + halfFobW + (armSide === 'LEFT' ? 0 : armLen);
             fobWidenZone = {
               sStart: Math.max(s0, fobMinCh - 1.0),
               sEnd: Math.min(s1, fobMaxCh + 1.0),
@@ -845,6 +845,7 @@ export function generateDynamicPreview(form, options = {}) {
   });
 
   const stationBuildingBounds = new Map();
+  const flagOffsets = new Map();
 
   // Station Buildings (Mathematical mirror of backend station building flush to platform)
   (f.stations || []).forEach((stn, idx) => {
@@ -926,6 +927,7 @@ export function generateDynamicPreview(form, options = {}) {
     ], 'STATION-FLAG', true, true);
 
     const arrowY = bFar + sgn * 4.0;
+    flagOffsets.set(stationIndex ?? 0, arrowY);
     const aL = align.offsetAt(centerCh - 5.0, arrowY);
     const aR = align.offsetAt(centerCh + 5.0, arrowY);
     addLine(aL, aR, 'STATION-FLAG');
@@ -936,6 +938,36 @@ export function generateDynamicPreview(form, options = {}) {
   });
 
   // ---------------------------------------------------------------------------
+  // Absolute gradient annotations use the MAIN datum for their longitudinal position.
+  (f.gradients || []).forEach(g => {
+    if (g.absoluteChainage == null) return;
+    const distance = resolveBridgeDistance(f, { placementMode: 'fixed', chainage: g.absoluteChainage });
+    const track = g.track || 'MAIN_LINE';
+    const extent = loopExtents[track];
+    if (!Number.isFinite(distance) || distance < 0 || distance > totalLength || trackOffsets[track] == null ||
+        (extent && (distance < extent.sStart || distance > extent.sEnd))) return;
+
+    const flag = flagOffsets.get(g.stationIndex ?? 0) ?? 45;
+    const centre = align.offsetAt(distance, trackOffsets[track] + flag);
+    const { tangent, normal } = align.getAt(distance);
+    const angle = Math.atan2(tangent[1], tangent[0]) * 180 / Math.PI;
+    const point = (along, across) => [
+      centre[0] + tangent[0] * along + normal[0] * across,
+      centre[1] + tangent[1] * along + normal[1] * across,
+    ];
+    for (const [side, along] of [['left', -5], ['right', 5]]) {
+      const profile = g[side + 'Direction'] || (side === 'left' ? 'STRAIGHT' : 'RISE');
+      const rise = (profile === 'RISE' ? 1.2 : profile === 'DOWN' ? -1.2 : 0) * Math.sign(flag);
+      addLine(centre, point(along, rise), 'GRADIENT');
+      const label = g[side + 'Value'];
+      if (label) addText(label, ...point(along / 2, rise / 2 + 0.6), 'GRADIENT', 0.8, angle);
+    }
+    addLine(centre, [centre[0], centre[1] - 7], 'GRADIENT');
+    addText(`CH: ${absoluteChainageAtDistance(f, distance)}`, centre[0] - 0.7, centre[1] - 3.5, 'GRADIENT', 0.75, 90);
+    if (g.rl) addText(`RL: ${g.rl}m`, centre[0] + 0.7, centre[1] - 3.5, 'GRADIENT', 0.75, 90);
+    addText(`${g.direction || 'UP'} LINE`, centre[0] + (g.rl ? 1.7 : 0.7), centre[1] - 3.5, 'GRADIENT', 0.75, 90);
+  });
+
   // 5. Draw FOBs (Foot Over Bridges)
   // ---------------------------------------------------------------------------
   (f.fobs || []).forEach((fb, idx) => {
@@ -944,30 +976,8 @@ export function generateDynamicPreview(form, options = {}) {
     const connPlats = fb.platforms || Object.keys(platformBoundsMap);
     if (connPlats.length < 2) return;
 
-    let fbCh = mainCenter;
-    if (fb.placementMode === 'fixed') {
-      fbCh = resolveBridgeDistance(f, { placementMode: 'fixed', chainage: fb.chainage });
-      if (!Number.isFinite(fbCh) || fbCh < 0 || fbCh > totalLength) return;
-    } else {
-      const off = parseNum(fb.offset, 40.0);
-      const dir = fb.direction || 'INCREASING';
-      const validStn = (f.stations || []).find((s) => s?.platform && platformBoundsMap[String(s.platform).trim()]);
-      const stnLen = parseNum(validStn?.length, 40.0);
-      const edge = mainCenter + (dir === 'INCREASING' ? stnLen / 2.0 : -stnLen / 2.0);
-
-      // Check if any arm goes towards station (backend resolve_fob_chainage)
-      let armTowardsStation = 0.0;
-      (fb.arms || []).forEach((arm) => {
-        const armSide = String(arm.side || 'LEFT').toUpperCase();
-        const armLen = parseNum(arm.length, 17.0);
-        const towards = (dir === 'INCREASING' && armSide === 'LEFT') || (dir === 'DECREASING' && armSide === 'RIGHT');
-        if (towards) {
-          armTowardsStation = Math.max(armTowardsStation, armLen);
-        }
-      });
-      const extra = halfW + armTowardsStation;
-      fbCh = dir === 'INCREASING' ? edge + off + extra : edge - (off + extra);
-    }
+    const fbCh = fobDeckChainage(fb, width);
+    if (!Number.isFinite(fbCh) || fbCh < 0 || fbCh > totalLength) return;
 
     const offs = connPlats.map((p) => {
       const b = platformBoundsMap[p];
@@ -991,13 +1001,6 @@ export function generateDynamicPreview(form, options = {}) {
       const aLen = parseNum(arm.length, 17.0);
       if (aLen <= 0) return;
       const aSide = String(arm.side || 'LEFT').toUpperCase();
-      const stride = aSide === 'RIGHT' ? 1.0 : -1.0;
-
-      const sIn = stride > 0 ? fbCh + halfW : fbCh - halfW;
-      const sOut = sIn + stride * aLen;
-      const armStart = Math.min(sIn, sOut);
-      const armEnd = Math.max(sIn, sOut);
-
       // IRS SOD clearance: near edge of FOB arm is at 5.33m from track centerline!
       const armW = Math.max(3.0, width);
       const trkOff = b.trackOff ?? 0.0;
@@ -1005,11 +1008,16 @@ export function generateDynamicPreview(form, options = {}) {
       const armNear = trkOff + sgn * 5.33;
       const armFar = armNear + sgn * armW;
 
-      const aA = align.offsetAt(armStart, armNear);
-      const aB = align.offsetAt(armEnd, armNear);
-      const aC = align.offsetAt(armEnd, armFar);
-      const aD = align.offsetAt(armStart, armFar);
-      addPolyline([aA, aB, aC, aD], 'FOB', true);
+      for (const side of ['LEFT', 'RIGHT']) {
+        if (aSide !== side && aSide !== 'BOTH') continue;
+        const stride = side === 'LEFT' ? -1 : 1;
+        const inner = fbCh + stride * halfW;
+        const outer = inner + stride * aLen;
+        addPolyline([
+          align.offsetAt(inner, armNear), align.offsetAt(outer, armNear),
+          align.offsetAt(outer, armFar), align.offsetAt(inner, armFar),
+        ], 'FOB', true);
+      }
     });
 
     const midPt = align.offsetAt(fbCh, (minOff + maxOff) / 2.0);

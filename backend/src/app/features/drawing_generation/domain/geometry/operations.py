@@ -171,3 +171,34 @@ def bounds(points: Sequence[Point]) -> tuple[float, float, float, float]:
         max(p[0] for p in points),
         max(p[1] for p in points),
     )
+
+
+def line_segment_parameter(
+    origin: Point, direction: Point, edge_start: Point, edge_end: Point
+) -> float | None:
+    """Parameter t where origin + t*direction meets edge_start-end."""
+    dx, dy = direction
+    ex, ey = edge_end[0] - edge_start[0], edge_end[1] - edge_start[1]
+    det = ex * dy - dx * ey
+    if abs(det) < 1e-12:
+        return None
+    rx, ry = edge_start[0] - origin[0], edge_start[1] - origin[1]
+    u = (dx * ry - dy * rx) / det
+    if u < -1e-9 or u > 1.0 + 1e-9:
+        return None
+    t = (ex * ry - ey * rx) / det
+    return t
+
+
+def track_axis_hits(
+    origin: Point, normal: Point, tracks: dict[str, Sequence[Point]]
+) -> list[float]:
+    """Projections (along normal) where any track crosses the axis."""
+    hits: list[float] = []
+    for points in tracks.values():
+        ring = [(float(p[0]), float(p[1])) for p in points]
+        for start, end in zip(ring, ring[1:]):
+            t = line_segment_parameter(origin, normal, start, end)
+            if t is not None:
+                hits.append(t)
+    return hits

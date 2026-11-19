@@ -1,6 +1,7 @@
+import { GradientsSection } from './GradientsSection.jsx';
 import { absoluteChainageAtDistance } from '../lib/chainageRange.js';
 import { ChainageRangeReference } from './ChainageRangeReference.jsx';
-import { BridgeFields } from './BridgeFields.jsx';
+import { BridgeCard } from './BridgeFields.jsx';
 import { useState } from 'react';
 import { fmt, isBlank } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
@@ -17,13 +18,12 @@ import {
   blankArm,
   blankCrossover,
   blankFob,
-  blankGradient,
   blankLoop,
   blankBridge,
   blankSiding,
   blankStation,
 } from '../lib/formDefaults.js';
-import { Check, Empty, Field, Grid, ItemCard, Num, Sel, Text } from './fields.jsx';
+import { Check, Empty, Field, Grid, ItemCard, Num, Sel, Text, YardAddButton } from './fields.jsx';
 
 export function StationYardSection({
   station,
@@ -374,48 +374,6 @@ export function StationYardSection({
     setTop({ sidings: (form.sidings || []).filter((s) => s !== sidingObj) });
   };
 
-  // -------------------------------------------------------------
-  // 7. Gradients belonging to this station
-  // -------------------------------------------------------------
-  const stationGradients = (form.gradients || []).filter(
-    (g) => (g.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex,
-  );
-
-  const addGradient = () => {
-    const parsedStn = parseKmM(station?.chainage);
-    const hasKm = !isBlank(station?.km);
-    const hasM = !isBlank(station?.m);
-    const stnKm = hasKm ? String(station.km) : (hasM ? '0' : (parsedStn.km || '0'));
-    const stnM = hasM ? String(station.m) : (parsedStn.m || '');
-    const defaultCh = formatStartChainage(stnKm, stnM);
-    const newGradient = {
-      ...blankGradient(),
-      km: stnKm,
-      m: stnM,
-      chainage: defaultCh,
-      direction: 'UP',
-      rl: '',
-      leftValue: '',
-      leftDirection: 'STRAIGHT',
-      rightValue: '',
-      rightDirection: 'RISE',
-      stationIndex,
-    };
-    setTop({ gradients: [...(form.gradients || []), newGradient] });
-  };
-
-  const updateGradientAt = (gradObj, patch) => {
-    const globalIdx = (form.gradients || []).indexOf(gradObj);
-    if (globalIdx < 0) return;
-    const current = [...form.gradients];
-    current[globalIdx] = { ...current[globalIdx], ...patch };
-    setTop({ gradients: current });
-  };
-
-  const removeGradient = (gradObj) => {
-    setTop({ gradients: (form.gradients || []).filter((g) => g !== gradObj) });
-  };
-
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_12px_rgba(25,49,104,0.04)] overflow-hidden transition-all">
       {/* Station Section Accordion Header */}
@@ -456,23 +414,15 @@ export function StationYardSection({
           {/* 1. Loop Lines (same fields as TracksSection)              */}
           {/* ========================================================= */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🔄</span> Loops &amp; Additional Lines ({stationLoops.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  Loops are bounded parallel lines (C1 → C2) referenced to {isAlignmentDatum ? 'the alignment centre' : stnName}.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addLoop}
-                className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
-              >
-                + Add loop
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🔄</span> Loops &amp; Additional Lines ({stationLoops.length})
+              </h3>
+              <YardAddButton onClick={addLoop}>loop</YardAddButton>
             </div>
+            <p className="text-[10.5px] text-slate-500">
+              Loops are bounded parallel lines (C1 → C2) referenced to {isAlignmentDatum ? 'the alignment centre' : stnName}.
+            </p>
 
             {stationLoops.length === 0 ? (
               <Empty>No loops configured for this yard. Click "+ Add loop" to add one.</Empty>
@@ -586,23 +536,15 @@ export function StationYardSection({
           {/* 2. Platforms (same fields as PlatformsSection)            */}
           {/* ========================================================= */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🏗️</span> Platforms ({stationPlatforms.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  SIDE sits next to one track; ISLAND sits between two (blank = 7.0 m / 550 m / 1.68 m / 0.84 m).
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addPlatform}
-                className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
-              >
-                + Add platform
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🏗️</span> Platforms ({stationPlatforms.length})
+              </h3>
+              <YardAddButton onClick={addPlatform}>platform</YardAddButton>
             </div>
+            <p className="text-[10.5px] text-slate-500">
+              SIDE sits next to one track; ISLAND sits between two (blank = 7.0 m / 550 m / 1.68 m / 0.84 m).
+            </p>
 
             {stationPlatforms.length === 0 ? (
               <Empty>No platforms configured for this yard. Click "+ Add platform" to add one.</Empty>
@@ -709,25 +651,15 @@ export function StationYardSection({
           {/* 3. Crossovers (same fields as CrossoversSection)           */}
           {/* ========================================================= */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🔀</span> Crossovers ({stationCrossovers.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  Only the START chainage is input — the second SRJ is derived. Type AUTO to let the engine place it.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={addCrossover}
-                  className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors cursor-pointer shadow-sm"
-                >
-                  + Add crossover
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🔀</span> Crossovers ({stationCrossovers.length})
+              </h3>
+              <YardAddButton onClick={addCrossover}>crossover</YardAddButton>
             </div>
+            <p className="text-[10.5px] text-slate-500">
+              Only the START chainage is input — the second SRJ is derived. Type AUTO to let the engine place it.
+            </p>
 
             {!hasGenerated && (
               <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-2.5 text-xs text-blue-900 shadow-2xs">
@@ -844,23 +776,15 @@ export function StationYardSection({
           {/* 4. Station Building (same fields as StationsSection)       */}
           {/* ========================================================= */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🏢</span> Station Building ({stationBuildings.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  Rectangular footprint placed against a platform edge. Blank length/width = 40 × 10 m.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addStationBuilding}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shadow-sm"
-              >
-                + Add station building
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🏢</span> Station Building ({stationBuildings.length})
+              </h3>
+              <YardAddButton onClick={addStationBuilding}>station building</YardAddButton>
             </div>
+            <p className="text-[10.5px] text-slate-500">
+              Rectangular footprint placed against a platform edge. Blank length/width = 40 × 10 m.
+            </p>
 
             {stationBuildings.length === 0 ? (
               <p className="text-[11px] text-slate-500">No station building configured for {stnName}.</p>
@@ -940,23 +864,15 @@ export function StationYardSection({
           {/* 5. Foot Over Bridge (same fields as FobsSection)           */}
           {/* ========================================================= */}
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🌉</span> Foot Over Bridge (FOB) ({stationFobs.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  Basic deck connecting platforms at {stnName} (validated at 6.25 m clearance and 30 m maximum span).
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addFob}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shadow-sm"
-              >
-                + Add FOB
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🌉</span> Foot Over Bridge (FOB) ({stationFobs.length})
+              </h3>
+              <YardAddButton onClick={addFob}>FOB</YardAddButton>
             </div>
+            <p className="text-[10.5px] text-slate-500">
+              Basic deck connecting platforms at {stnName} (validated at 6.25 m clearance and 30 m maximum span).
+            </p>
 
             {stationFobs.length === 0 ? (
               <p className="text-[11px] text-slate-500">No FOB configured for this station.</p>
@@ -1077,15 +993,9 @@ export function StationYardSection({
                     </div>
 
                     <div className="mt-3">
-                      <div className="mb-1 flex items-center gap-2">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-medium text-slate-600">Landing arms (optional, parallel to track)</span>
-                        <button
-                          type="button"
-                          onClick={() => addArmToFob(fb)}
-                          className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
-                        >
-                          + Add arm
-                        </button>
+                        <YardAddButton onClick={() => addArmToFob(fb)}>arm</YardAddButton>
                       </div>
                       {(fb.arms || []).length === 0 && (
                         <Empty>No landing arms (deck only). Add arms to lead onto platforms.</Empty>
@@ -1125,7 +1035,7 @@ export function StationYardSection({
                               <Sel
                                 value={arm.side || 'LEFT'}
                                 onChange={(e) => updateArmAt(fb, aIdx, { side: e.target.value })}
-                                options={['LEFT', 'RIGHT']}
+                                options={['LEFT', 'RIGHT', 'BOTH']}
                               />
                             </Field>
                           </Grid>
@@ -1139,24 +1049,21 @@ export function StationYardSection({
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xs font-bold text-slate-800">Bridges ({stationBridges.length})</h3>
-              <button type="button" onClick={addBridge}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold cursor-pointer">
-                + Add Bridge
-              </button>
+              <YardAddButton onClick={addBridge}>bridge</YardAddButton>
             </div>
             {stationBridges.length === 0 && <p className="text-xs text-slate-500">No bridges configured for this station.</p>}
             {stationBridges.map((bridge, idx) => (
-              <ItemCard key={idx} title={`Bridge ${(form.bridges || []).indexOf(bridge) + 1}`}
-                onRemove={() => removeBridge(bridge)}>
-                <BridgeFields form={form} bridge={bridge} onChange={(patch) => updateBridgeAt(bridge, patch)}
+              <BridgeCard key={idx} title={`Bridge ${(form.bridges || []).indexOf(bridge) + 1}`}
+                onRemove={() => removeBridge(bridge)}
+                form={form} bridge={bridge} onChange={(patch) => updateBridgeAt(bridge, patch)}
                   buildingOptions={(form.stations || []).flatMap((s, i) =>
                     (s.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex
                       ? [{ value: i, label: s.name || `Station building ${i + 1}` }] : [])} />
-              </ItemCard>
             ))}
           </div>
+          <GradientsSection form={form} set={set} stationIndex={stationIndex} />
         </div>
       )}
     </section>

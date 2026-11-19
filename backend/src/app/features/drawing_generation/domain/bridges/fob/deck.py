@@ -13,6 +13,8 @@ from ...constants import (
 )
 from ...geometry.alignment import nearest_point_on_alignment, point_at_chainage
 
+from ...geometry.stationing import absolute_track_distance, parse_absolute_chainage
+
 FOB_DEFAULT_WIDTH_M: float = DEFAULT_FOB_WIDTH_M
 FOB_LABEL: str = "FOOT OVER BRIDGE"
 FOB_LABEL_HEIGHT: float = 1.0
@@ -66,30 +68,11 @@ def resolve_fob_chainage(
         return float(cfg.fob_chainage)
 
     if cfg.absolute_chainage is not None:
-        from ...geometry.stationing import alignment_start_metres, parse_absolute_chainage
         if alignment_config is None:
             raise ValueError("FOB absolute placement requires the alignment start datum.")
-        main = tracks.get("MAIN_LINE")
-        if main is None or len(main) < 2:
-            raise ValueError("FOB absolute placement requires MAIN_LINE geometry.")
-        absolute = parse_absolute_chainage(cfg.absolute_chainage)
-        distance = absolute - alignment_start_metres(alignment_config)
-        total_main = polyline_length(main)
-        if not math.isfinite(distance) or not 0 <= distance <= total_main:
-            raise ValueError(f"FOB absolute chainage resolves outside MAIN alignment [0, {total_main:.3f}] m.")
-        if cfg.reference_track not in tracks:
-            raise ValueError(f"FOB reference track {cfg.reference_track!r} not found.")
-        local = distance
-        if cfg.reference_track != "MAIN_LINE":
-            sample = point_at_chainage(main, distance)
-            normal = (-sample.tangent[1], sample.tangent[0])
-            points = tracks[cfg.reference_track]
-            hits = track_axis_hits(sample.point, normal, {cfg.reference_track: points})
-            if not hits:
-                raise ValueError("FOB absolute chainage does not cross the selected reference track.")
-            hit = min(hits, key=abs)
-            crossing = (sample.point[0] + hit * normal[0], sample.point[1] + hit * normal[1])
-            local = float(nearest_point_on_alignment(points, crossing).chainage)
+        local = absolute_track_distance(
+            alignment_config, parse_absolute_chainage(cfg.absolute_chainage), tracks, cfg.reference_track, "FOB"
+        )
         cfg.reference_chainage = local
         cfg.fob_chainage = local
         return local
@@ -212,7 +195,7 @@ def resolve_fob_chainage(
         for arm_spec in (cfg.arms or {}).values():
             if (
                 isinstance(arm_spec, dict)
-                and str(arm_spec.get("side", "")).upper() == towards_side
+                and str(arm_spec.get("side", "")).upper() in (towards_side, "BOTH")
             ):
                 arm_towards_station = max(
                     arm_towards_station, float(arm_spec.get("length", 0.0))

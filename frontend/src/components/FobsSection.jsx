@@ -252,7 +252,7 @@ export function FobsSection({ form, set, tracks, layers }) {
                     const arms = (fb.arms || []).map((a, j) => (j === k ? { ...a, side: e.target.value } : a));
                     setTop({ fobs: patchAt(form.fobs, i, { arms }) });
                   }}
-                  options={['LEFT', 'RIGHT']}
+                  options={['LEFT', 'RIGHT', 'BOTH']}
                 />
                 <button
                   type="button"

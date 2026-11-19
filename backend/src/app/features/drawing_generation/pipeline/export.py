@@ -10,7 +10,7 @@ from .generator import ESPGenerator
 logger = logging.getLogger(__name__)
 
 _DXF_CACHE = BoundedCache(max_bytes=8 * 1024 * 1024, max_entries=8, ttl=300)
-_GENERATION_CACHE_VERSION = "bridges-fob-absolute-v4"
+_GENERATION_CACHE_VERSION = "gradient-orientation-v6"
 _KEY_PLAN_SNAPSHOTS = BoundedCache(max_bytes=4 * 1024 * 1024, max_entries=32, ttl=600)
 
 

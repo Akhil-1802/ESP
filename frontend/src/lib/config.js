@@ -680,7 +680,9 @@ function buildGradient(g, index, f) {
 
   const res = {
     track: strOr(g.track, 'MAIN_LINE'),
-    chainage: ch,
+    ...(g.absoluteChainage != null
+      ? { absolute_chainage: String(g.absoluteChainage).trim() }
+      : { chainage: ch }),
     direction: dir,
     left_gradient_value: String(leftVal).trim(),
     left_direction: strOr(g.leftDirection || g.left_direction, 'STRAIGHT').toUpperCase(),
@@ -690,8 +692,8 @@ function buildGradient(g, index, f) {
     gradient_value: String(rightVal).trim(),
     rl: !isBlank(g.rl) ? String(g.rl).trim() : null,
   };
-  if (hasKm) res.km = Number(g.km);
-  if (hasM) res.m = Number(g.m);
+  if (g.absoluteChainage == null && hasKm) res.km = Number(g.km);
+  if (g.absoluteChainage == null && hasM) res.m = Number(g.m);
   if (g.stationIndex != null || g.station_index != null) {
     res.station_index = Number(g.stationIndex ?? g.station_index);
   }
