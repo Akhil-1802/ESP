@@ -30,7 +30,7 @@ __all__ = [
     "collect_siding",
     "collect_fm",
     "collect_dead_ends",
-    "collect_robs",
+    "collect_bridges",
     "collect_optional_layers",
 ]
 
@@ -325,27 +325,27 @@ def collect_dead_ends(doc, tracks_for_datum: dict, datum: StationDatum, config, 
     return out
 
 
-def collect_robs(tracks_for_datum: dict, datum: StationDatum, config, main_line_points: list | None = None) -> list:
-    """Station-relative chainage markers for Road Over Bridges (ROB)."""
+def collect_bridges(tracks_for_datum: dict, datum: StationDatum, config, main_line_points: list | None = None) -> list:
+    """Station-relative chainage markers for Bridges."""
     out: list = []
-    for rob in list(getattr(config, "robs", None) or []):
-        ref_track = getattr(rob, "reference_track", None) or "MAIN_LINE"
+    for bridge in list(getattr(config, "bridges", None) or []):
+        ref_track = getattr(bridge, "reference_track", None) or "MAIN_LINE"
         ref_pts = (tracks_for_datum or {}).get(ref_track) or (tracks_for_datum or {}).get("MAIN_LINE")
         if not ref_pts or len(ref_pts) < 2:
             continue
         cleaned = _clean_pts(ref_pts)
-        rob_ch = getattr(rob, "_calculated_chainage", None)
-        if rob_ch is None:
+        bridge_ch = getattr(bridge, "_calculated_chainage", None)
+        if bridge_ch is None:
             continue
-        rob_ch = max(0.0, min(polyline_length(cleaned), float(rob_ch)))
-        sp = point_at_chainage(cleaned, rob_ch)
-        rel_m = datum.relative_for_track(ref_track, rob_ch)
-        rob_side = determine_side(sp.point, main_line_points=main_line_points, config=config, host_track=ref_track)
+        bridge_ch = max(0.0, min(polyline_length(cleaned), float(bridge_ch)))
+        sp = point_at_chainage(cleaned, bridge_ch)
+        rel_m = datum.relative_for_track(ref_track, bridge_ch)
+        bridge_side = determine_side(sp.point, main_line_points=main_line_points, config=config, host_track=ref_track)
         tn = math.hypot(sp.tangent[0], sp.tangent[1]) or 1.0
-        norm = getattr(rob, "_normal", (-sp.tangent[1] / tn, sp.tangent[0] / tn))
-        off = getattr(rob, "_bottom_offset", -10.0) if rob_side == "RIGHT" else getattr(rob, "_top_offset", 10.0)
+        norm = getattr(bridge, "_normal", (-sp.tangent[1] / tn, sp.tangent[0] / tn))
+        off = getattr(bridge, "_bottom_offset", -10.0) if bridge_side == "RIGHT" else getattr(bridge, "_top_offset", 10.0)
         base = (sp.point[0] + norm[0] * off, sp.point[1] + norm[1] * off)
-        out.append((base, (float(sp.tangent[0]), float(sp.tangent[1])), float(rel_m), "BR", rob_side))
+        out.append((base, (float(sp.tangent[0]), float(sp.tangent[1])), float(rel_m),bridge.type_label, bridge_side))
     return out
 
 
@@ -354,7 +354,6 @@ def collect_optional_layers(doc, tracks_for_datum: dict, datum: StationDatum, co
     out: list = []
     wants = (
         ("LC", ("LC", "LEVEL")),
-        ("BRIDGE", ("BRIDGE",)),
     )
     try:
         entities = list(doc.modelspace())

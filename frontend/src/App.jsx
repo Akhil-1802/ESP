@@ -52,7 +52,7 @@ const initialForm = () => ({
   crossovers: [],
   stations: [],
   fobs: [],
-  robs: [],
+  bridges: [],
   sidings: [],
   gradients: [],
 });
@@ -145,7 +145,7 @@ export default function App() {
       (form.mainLines && form.mainLines.length > 0) ||
       (form.crossovers && form.crossovers.length > 0) ||
       (form.fobs && form.fobs.length > 0) ||
-      (form.robs && form.robs.length > 0) ||
+      (form.bridges && form.bridges.length > 0) ||
       (form.sidings && form.sidings.length > 0)
     );
     if (!hasContent) return null;

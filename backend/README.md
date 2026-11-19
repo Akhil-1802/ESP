@@ -171,7 +171,7 @@ Prepare KML/source document
   → Fouling marks
   → Fencing
   → Foot over bridges (FOBs)
-  → Road over bridges (ROBs)
+  → Bridges (bridges)
   → Gradients
   → Alignment and station chainage labels
   → Main-line trimming, when enabled
@@ -263,6 +263,58 @@ Output cleanup runs on startup, when persisting another output, and in a backgro
 
 A future database can retain snapshots and generation metadata across restarts/workers. Cloud object storage can retain DXFs for later downloads. The export cache remains an optional performance choice. Removing the output copy requires adapting response delivery or temporary-file cleanup so files remain available until transmission/upload finishes. These alternatives are not implemented in the current flow.
 
+## Bridges
+
+The station-yard editor supports **PSC Slab**, **RCC Box**, and **Other**. Other requires a custom type/name (up to 80 characters). The selected type supplies the drawing caption. These types currently share the same six-line bridge symbol; type selection does not imply a separate structural design.
+
+Choose one placement method:
+
+- **Offset from station edge:** select a station building, increasing/decreasing chainage direction, and a nonnegative offset. The distance is measured along MAIN from the corresponding edge of the actual generated building to the bridge centreline. It is not a platform-end offset or an edge-to-edge bridge clearance.
+- **Absolute chainage:** enter railway stationing such as `12+850`, absolute metres such as `12850`, or an explicit unit such as `12.850 KM`. With an alignment start of `12+000`, these examples resolve to 850 m along MAIN. Plain numbers always mean metres in the bridge input.
+
+Both modes use the original MAIN alignment datum before final trimming/rotation. Invalid references and positions outside the alignment are rejected rather than silently moved. Fixed placement needs no station or platform. Offset placement requires a generated station building.
+
+The generation payload uses the `bridges` array:
+
+```json
+{
+  "start_km": 12,
+  "start_m": 0,
+  "bridges": [
+    {
+      "id": "BRIDGE_1",
+      "bridge_type": "PSC_SLAB",
+      "position_mode": "OFFSET",
+      "station_index": 0,
+      "direction": "INCREASING",
+      "offset": 100,
+      "width": 10
+    },
+    {
+      "id": "BRIDGE_2",
+      "bridge_type": "OTHER",
+      "custom_type": "Steel girder",
+      "position_mode": "FIXED",
+      "chainage": "12+850",
+      "width": 12
+    }
+  ]
+}
+```
+
+`station_index` is the zero-based index into the payload's `stations` building requests, not the station-marker index. The frontend maps the selected building explicitly. Only the selected placement mode's fields are submitted. Existing platform-end bridge configurations must be reconfigured using one of these methods.
+
+Each bridge gets an independent DXF block so dimensions cannot overwrite another instance. Finalized key-plan snapshots retain the resolved centre, absolute chainage, identifier, and bridge type.
+
+Implementation: [configuration](src/app/features/drawing_generation/domain/bridges/bridge/config.py), [placement resolver](src/app/features/drawing_generation/domain/bridges/bridge/placement.py), [geometry and captions](src/app/features/drawing_generation/domain/bridges/bridge/geometry.py), and [pipeline step](src/app/features/drawing_generation/pipeline/steps/bridge.py).
+
+
+## FOB absolute chainage
+
+The FOB fixed-placement option uses the same absolute MAIN railway datum as Bridges. Enter km+metres (for example 12+850), absolute metres (12850), or an explicit unit (12.850 KM). The alignment range appears below the input. Centre-fill controls also write absolute chainage. Offset-from-station-edge placement retains its existing behavior.
+
+Fixed FOB requests carry position_mode: FIXED and absolute_chainage. The backend subtracts the alignment start datum, then resolves the selected reference track at that MAIN cross-section. Bounded reference tracks use their local resolved distance without subtracting their start twice. Invalid chainages and positions outside MAIN or beyond the selected reference track are rejected. Existing reference_chainage-only API configurations retain their local-distance semantics.
+
 ## Directory and file guide
 
 Jump to the [HTTP routes](#http-routes), [pipeline](#drawing-pipeline), [railway domain](#railway-domain), [file formats](#file-formats), or [tests and fixtures](#tests-and-fixtures). Each filename below links to its implementation. Paths beginning with `domain/`, `formats/`, `pipeline/`, or `routes/` are relative to `src/app/features/drawing_generation/`.
@@ -353,7 +405,7 @@ Drawing stages and their helpers. A stage reads the current drawing and configur
 | [station.py](src/app/features/drawing_generation/pipeline/steps/station.py) | Places station buildings relative to platforms, checks their footprints, and writes station features and labels. |
 | [station_label.py](src/app/features/drawing_generation/pipeline/steps/station_label.py) | Moves a platform label when it clashes with a station building. |
 | [fob.py](src/app/features/drawing_generation/pipeline/steps/fob.py) | Resolves footbridge placement from track, station, and platform geometry and generates the bridge deck. |
-| [rob.py](src/app/features/drawing_generation/pipeline/steps/rob.py) | Places a road bridge at its requested reference position and writes its geometry into the drawing. |
+| [bridge.py](src/app/features/drawing_generation/pipeline/steps/bridge.py) | Places a bridge at its requested reference position and writes its geometry into the drawing. |
 | [fouling.py](src/app/features/drawing_generation/pipeline/steps/fouling.py) | Runs fouling-mark detection on the generated tracks and draws the resulting marks. |
 | [fencing.py](src/app/features/drawing_generation/pipeline/steps/fencing.py) | Draws platform fencing with gaps where station buildings occupy the edge. |
 | [boundary.py](src/app/features/drawing_generation/pipeline/steps/boundary.py) | Derives the land boundary from drawing features and the main alignment. |
@@ -362,7 +414,7 @@ Drawing stages and their helpers. A stage reads the current drawing and configur
 | [cal_labels.py](src/app/features/drawing_generation/pipeline/steps/cal_labels.py) | Runs the final CAL callout pass for loop and main lines. |
 | [chainage.py](src/app/features/drawing_generation/pipeline/steps/chainage.py) | Combines marker collection, alignment ticks, and station-relative labels into the chainage step. |
 | [chainage_alignment.py](src/app/features/drawing_generation/pipeline/steps/chainage_alignment.py) | Draws regularly spaced chainage ticks and configured station markers along the main alignment. |
-| [chainage_collect.py](src/app/features/drawing_generation/pipeline/steps/chainage_collect.py) | Collects annotation positions from features such as platform ends, turnouts, sidings, fouling marks, and road bridges. |
+| [chainage_collect.py](src/app/features/drawing_generation/pipeline/steps/chainage_collect.py) | Collects annotation positions from features such as platform ends, turnouts, sidings, fouling marks, and bridges. |
 | [chainage_sides.py](src/app/features/drawing_generation/pipeline/steps/chainage_sides.py) | Finds station centres in the DXF and determines which side of a track or alignment a marker belongs on. |
 | [chainage_labels.py](src/app/features/drawing_generation/pipeline/steps/chainage_labels.py) | Lays out and draws station-relative labels and their leaders around the yard. |
 | [chainage_text.py](src/app/features/drawing_generation/pipeline/steps/chainage_text.py) | Defines text offsets and calculates the insertion point for text alongside a chainage leader. |
@@ -478,15 +530,15 @@ Foot overbridge (FOB) placement, deck geometry, and rendering.
 | [deck_geom.py](src/app/features/drawing_generation/domain/bridges/fob/deck_geom.py) | Computes deck spans, track crossings, outlines, landing arms, and label positions. |
 | [deck.py](src/app/features/drawing_generation/domain/bridges/fob/deck.py) | Resolves the deck location, invokes the geometry calculations, and writes the footbridge to the DXF. |
 
-#### domain/bridges/rob/
+#### domain/bridges/bridge/
 
-Road overbridge (ROB) settings and geometry.
+Bridge settings and geometry.
 
 | File | Responsibility |
 | --- | --- |
-| [__init__.py](src/app/features/drawing_generation/domain/bridges/rob/__init__.py) | Empty package marker for this directory. |
-| [config.py](src/app/features/drawing_generation/domain/bridges/rob/config.py) | Defines road-bridge configuration values. |
-| [geometry.py](src/app/features/drawing_generation/domain/bridges/rob/geometry.py) | Measures the cross-track extent, builds the road-bridge geometry, and writes it to the drawing. |
+| [__init__.py](src/app/features/drawing_generation/domain/bridges/bridge/__init__.py) | Empty package marker for this directory. |
+| [config.py](src/app/features/drawing_generation/domain/bridges/bridge/config.py) | Defines bridge configuration values. |
+| [geometry.py](src/app/features/drawing_generation/domain/bridges/bridge/geometry.py) | Measures the cross-track extent, builds the bridge geometry, and writes it to the drawing. |
 
 #### domain/key_plan/
 
@@ -616,7 +668,7 @@ Feature-specific regression tests. Some exercise an individual calculation, whil
 | [test_main_line_trim.py](tests/drawing_generation/domain/test_main_line_trim.py) | Checks trimming beyond the outermost relevant switch joints and behavior when there are none. |
 | [test_main_lines.py](tests/drawing_generation/domain/test_main_lines.py) | Checks independent parallel main lines, direction marks, and valid reference tracks. |
 | [test_platform_arm.py](tests/drawing_generation/domain/test_platform_arm.py) | Checks configurable arm length, stair geometry, and footbridge label orientation. |
-| [test_rob.py](tests/drawing_generation/domain/test_rob.py) | Checks road-bridge settings, geometry across multiple tracks, offsets, and station-relative placement. |
+| [test_bridge.py](tests/drawing_generation/domain/test_bridge.py) | Checks bridge settings, geometry across multiple tracks, offsets, and station-relative placement. |
 | [test_siding.py](tests/drawing_generation/domain/test_siding.py) | Checks siding geometry, clearances, validation, configuration loading, and dead-end drawing. |
 | [test_station_chainage.py](tests/drawing_generation/domain/test_station_chainage.py) | Checks station-centre chainage inputs, accepted configuration aliases, and DXF label text. |
 | [test_station_flag.py](tests/drawing_generation/domain/test_station_flag.py) | Checks the flag geometry directly and on a generated station drawing. |

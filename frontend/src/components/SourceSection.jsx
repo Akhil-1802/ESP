@@ -1,3 +1,4 @@
+import { ChainageRangeReference } from './ChainageRangeReference.jsx';
 import { useRef, useState } from 'react';
 import { getTrackCentre, loadKmlAlignment } from '../lib/kmlAlignment.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
@@ -247,6 +248,7 @@ export function SourceSection({
                   {startDisplay || '0.000'}
                 </strong>
               </span>
+              <ChainageRangeReference form={form} units="kilometres" />
             </div>
 
             {/* End Chainage (Calculated) */}
@@ -382,6 +384,8 @@ export function SourceSection({
                         />
                       </div>
                     </div>
+
+                    <ChainageRangeReference form={form} units="kilometres" />
 
                     {/* Station Summary / Placement Badge */}
                     <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 pt-0.5">

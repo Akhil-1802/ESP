@@ -74,7 +74,7 @@ class StationChainageLabels:
         markers += self._collect_siding(tracks_for_datum, extents, datum, tracks_for_datum)
         markers += self._collect_fm(datum)
         markers += self._collect_dead_ends(doc, tracks_for_datum, datum)
-        markers += self._collect_robs(tracks_for_datum, datum)
+        markers += self._collect_bridges(tracks_for_datum, datum)
         markers += self._collect_optional_layers(doc, tracks_for_datum, datum)
         if not markers:
             logger.info("   ! Station chainage labels: no markers found")

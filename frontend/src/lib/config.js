@@ -39,9 +39,8 @@ export const DEFAULTS = {
   sidingDirection: 'FORWARD',
   sidingSide: 'LEFT',
   sidingTurnout: '1:8.5',
-  robWidth: 10.0,
-  robOffset: 50.0,
-  robReferenceEnd: 'START',
+  bridgeWidth: 10.0,
+  bridgeOffset: 50.0,
 };
 
 export const MIN_TRACK_SPACING_M = 5.3;
@@ -138,11 +137,11 @@ export function loopsNeedingCentre(form) {
     .filter((i) => i >= 0);
 }
 
-/** Indices of FOBs with a blank reference chainage (auto-centre on MAIN). */
+/** Legacy auto-centre entries only; explicit absolute inputs must not be overwritten. */
 export function fobsNeedingCentre(form) {
   return ((form || {}).fobs || [])
     .map((fb, i) => {
-      if (fb.placementMode === 'offset') return -1;
+      if (fb.placementMode === 'offset' || fb.placementMode === 'fixed') return -1;
       return (isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER' ? i : -1);
     })
     .filter((i) => i >= 0);
@@ -586,12 +585,13 @@ function buildFob(f) {
   const isOffset = f.placementMode === 'offset' || (!f.placementMode && (isBlank(f.chainage) || !isBlank(f.offset)));
   const rawCh = String(f.chainage ?? '').trim().toUpperCase();
   let refCh = null;
-  if (!isOffset && !isBlank(f.chainage)) {
+  if (f.placementMode !== 'fixed' && !isOffset && !isBlank(f.chainage)) {
     refCh = rawCh === 'MAIN_CENTER' ? 'MAIN_CENTER' : Number(f.chainage);
   }
   const entry = {
     reference_track: strOr(f.refTrack, 'MAIN_LINE'),
     reference_chainage: refCh,
+    ...(f.placementMode === 'fixed' ? { absolute_chainage: String(f.chainage ?? '').trim() } : {}),
     platforms: [...(f.platforms || [])],
     width: numOr(f.width, DEFAULTS.fobWidth),
     extend_start_m: numOr(f.extStart, DEFAULTS.extension),
@@ -639,26 +639,22 @@ function buildSiding(s, index) {
   };
 }
 
-function buildRob(r, index) {
-  const blockName = strOr(r.blockName, 'SGFD');
-  const tracksList = Array.isArray(r.tracks)
-    ? r.tracks.filter(Boolean)
-    : typeof r.tracks === 'string' && r.tracks.trim()
-      ? r.tracks.split(',').map((t) => t.trim()).filter(Boolean)
-      : [];
+function buildBridge(r, index) {
+  const mode = r.placementMode === 'fixed' ? 'FIXED' : 'OFFSET';
   return {
-    id: strOr(r.id, `ROB_${index + 1}`),
-    platform: strOr(r.platform, 'PLATFORM_1'),
-    reference_end: strOr(r.referenceEnd, DEFAULTS.robReferenceEnd).toUpperCase(),
-    offset: numOr(r.offset, DEFAULTS.robOffset),
-    width: numOr(r.width, DEFAULTS.robWidth),
-    reference_track: strOr(r.referenceTrack, 'MAIN_LINE'),
-    block_name: blockName,
-    output_layer: strOr(r.outputLayer, blockName),
-    tracks: tracksList,
-    chainage: r.chainage ? String(r.chainage).trim() : null,
-    add_dimension: true,
-    add_chainage: false,
+    id: strOr(r.id, `BRIDGE_${index + 1}`),
+    bridge_type: strOr(r.bridgeType, 'PSC_SLAB'),
+    custom_type: r.bridgeType === 'OTHER' ? strOr(r.customType, '') : '',
+    position_mode: mode,
+    reference_track: 'MAIN_LINE',
+    ...(mode === 'OFFSET' ? {
+      station_index: isBlank(r.stationBuildingIndex) ? null : Number(r.stationBuildingIndex),
+      offset: numOr(r.offset, DEFAULTS.bridgeOffset),
+      direction: strOr(r.direction, 'INCREASING'),
+    } : { chainage: String(r.chainage ?? '').trim() }),
+    width: numOr(r.width, DEFAULTS.bridgeWidth),
+    output_layer: `BRIDGE_${index + 1}`,
+    tracks: Array.isArray(r.tracks) ? r.tracks.filter(Boolean) : [],
   };
 }
 
@@ -853,7 +849,9 @@ export function calculateEndChainageFromKmM(km, m, lengthMeters) {
 export function buildConfig(form) {
   const f = form || {};
   const mainLines = f.mainLines || [];
-  const startKmVal = !isBlank(f.startKm) ? Number(f.startKm) : null;
+  const startKmVal = !isBlank(f.startKm)
+    ? (Number(f.startKm) === 0 && String(f.startKm).trim().startsWith('-') ? '-0' : Number(f.startKm))
+    : null;
   const startMVal = !isBlank(f.startM) ? Number(f.startM) : null;
   const startChStr = !isBlank(f.startKm) || !isBlank(f.startM)
     ? formatStartChainage(f.startKm, f.startM)
@@ -911,7 +909,7 @@ export function buildConfig(form) {
     crossovers: (f.crossovers || []).map(buildCrossover),
     stations: (f.stations || []).map((s, i) => buildStation(s, i, f)),
     fobs: (f.fobs || []).map(buildFob),
-    robs: (f.robs || []).map(buildRob),
+    bridges: (f.bridges || []).map(buildBridge),
     sidings: (f.sidings || []).map(buildSiding),
     gradients: (f.gradients || []).map((g, i) => buildGradient(g, i, f)),
     main_directions: mainLines.length > 0

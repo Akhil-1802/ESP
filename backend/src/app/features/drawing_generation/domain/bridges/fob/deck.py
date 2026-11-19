@@ -59,10 +59,40 @@ def resolve_fob_chainage(
     doc=None,
     station_requests=None,
     station_markers=None,
+    alignment_config=None,
 ) -> float:
     """Resolve and cache the FOB chainage along cfg.reference_track."""
     if getattr(cfg, "fob_chainage", None) is not None:
         return float(cfg.fob_chainage)
+
+    if cfg.absolute_chainage is not None:
+        from ...geometry.stationing import alignment_start_metres, parse_absolute_chainage
+        if alignment_config is None:
+            raise ValueError("FOB absolute placement requires the alignment start datum.")
+        main = tracks.get("MAIN_LINE")
+        if main is None or len(main) < 2:
+            raise ValueError("FOB absolute placement requires MAIN_LINE geometry.")
+        absolute = parse_absolute_chainage(cfg.absolute_chainage)
+        distance = absolute - alignment_start_metres(alignment_config)
+        total_main = polyline_length(main)
+        if not math.isfinite(distance) or not 0 <= distance <= total_main:
+            raise ValueError(f"FOB absolute chainage resolves outside MAIN alignment [0, {total_main:.3f}] m.")
+        if cfg.reference_track not in tracks:
+            raise ValueError(f"FOB reference track {cfg.reference_track!r} not found.")
+        local = distance
+        if cfg.reference_track != "MAIN_LINE":
+            sample = point_at_chainage(main, distance)
+            normal = (-sample.tangent[1], sample.tangent[0])
+            points = tracks[cfg.reference_track]
+            hits = track_axis_hits(sample.point, normal, {cfg.reference_track: points})
+            if not hits:
+                raise ValueError("FOB absolute chainage does not cross the selected reference track.")
+            hit = min(hits, key=abs)
+            crossing = (sample.point[0] + hit * normal[0], sample.point[1] + hit * normal[1])
+            local = float(nearest_point_on_alignment(points, crossing).chainage)
+        cfg.reference_chainage = local
+        cfg.fob_chainage = local
+        return local
 
     ref_track = cfg.reference_track if cfg.reference_track in tracks else "MAIN_LINE"
     if ref_track not in tracks:
@@ -241,7 +271,7 @@ def generate_fob(
             f"{cfg.reference_track} [0, {total:.3f}] MAIN m."
         )
     extent = extents.get(cfg.reference_track)
-    local = chainage - extent[0] if extent is not None else chainage
+    local = chainage - extent[0] if extent is not None and cfg.absolute_chainage is None else chainage
     local = min(max(local, 0.0), polyline_length(points))
     station = point_at_chainage(points, local)
     tn = math.hypot(station.tangent[0], station.tangent[1]) or 1.0

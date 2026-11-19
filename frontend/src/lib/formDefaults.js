@@ -76,13 +76,15 @@ export const blankSiding = () => ({
   spacing: '5.3',
 });
 
-export const blankRob = () => ({
-  platform: 'PLATFORM_1',
-  referenceEnd: 'START',
+export const blankBridge = () => ({
+  bridgeType: 'PSC_SLAB',
+  customType: '',
+  placementMode: 'offset',
+  stationBuildingIndex: null,
   offset: '50.0',
+  direction: 'INCREASING',
+  chainage: '',
   width: '10.0',
-  referenceTrack: 'MAIN_LINE',
-  blockName: 'SGFD',
 });
 
 export const blankGradient = () => ({

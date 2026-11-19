@@ -1,3 +1,4 @@
+import { ChainageRangeReference } from './ChainageRangeReference.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { patchAt } from '../lib/formUtils.js';
 import { blankGradient } from '../lib/formDefaults.js';
@@ -146,6 +147,7 @@ export function GradientsSection({ form, set }) {
                     }}
                   />
                 </div>
+                <ChainageRangeReference form={form} units="kilometres" className="col-span-2" />
               </div>
 
               <div className="sm:col-span-3">

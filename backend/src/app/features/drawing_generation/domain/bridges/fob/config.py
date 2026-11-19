@@ -76,8 +76,14 @@ class FOBConfig:
     fob_chainage: Optional[float] = None
     dimension_layer: Optional[str] = None
     position_mode: Optional[str] = None
+    absolute_chainage: Optional[float | str] = None  # MAIN railway datum; plain numbers are metres.
 
     def __post_init__(self):
+        if self.absolute_chainage is not None:
+            from ...geometry.stationing import parse_absolute_chainage
+            if str(self.position_mode or "").upper() != "FIXED":
+                raise ValueError("FOB absolute chainage requires FIXED placement.")
+            parse_absolute_chainage(self.absolute_chainage)
         if self.width <= 0:
             raise ValueError(f"FOB width must be > 0, got {self.width}.")
         if self.extend_start_m < 0 or self.extend_end_m < 0:

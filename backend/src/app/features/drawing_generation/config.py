@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .domain.bridges.fob.config import FOBConfig
-from .domain.bridges.rob.config import ROBConfig
+from .domain.bridges.bridge.config import BridgeConfig
 from .domain.platform.config import PlatformConfig
 from .domain.track.specs import CrossoverSpec, LineSpec, LoopSpec, SidingSpec
 from .domain.track.turnouts import default_crossing_angle_rad, get_turnout_parameters
@@ -67,7 +67,7 @@ class ESPConfig:
     crossover_preset_turnout: str = "1:12"
     fobs: list = None
     sidings: list = None
-    robs: list = None
+    bridges: list = None
     gradients: list[GradientRequest] = None
     start_chainage: float | str | None = 0.0
     start_km: float | int | None = None
@@ -93,8 +93,8 @@ class ESPConfig:
             self.fobs = []
         if self.sidings is None:
             self.sidings = []
-        if self.robs is None:
-            self.robs = []
+        if self.bridges is None:
+            self.bridges = []
         if self.gradients is None:
             self.gradients = []
         if self.main_directions is None:
@@ -163,15 +163,15 @@ def _load_fob(item: dict[str, Any], number: int = 1):
     return FOBConfig(**values)
 
 
-def _load_rob(item: dict[str, Any], number: int = 1):
-    """Convert JSON ROB entry to ROBConfig."""
+def _load_bridge(item: dict[str, Any], number: int = 1):
+    """Convert JSON bridge entry to BridgeConfig."""
     values = _strip_comments(dict(item))
     if not values.get("id"):
-        values["id"] = f"ROB_{number}"
-    values.setdefault("output_layer", f"ROB_{number}")
-    allowed = {f.name for f in _dc.fields(ROBConfig)}
+        values["id"] = f"BRIDGE_{number}"
+    values.setdefault("output_layer", f"BRIDGE_{number}")
+    allowed = {f.name for f in _dc.fields(BridgeConfig)}
     values = {k: v for k, v in values.items() if k in allowed}
-    return ROBConfig(**values)
+    return BridgeConfig(**values)
 
 
 def _load_platform(item: dict[str, Any], source: str, output: str, number: int) -> PlatformRequest:
@@ -256,6 +256,9 @@ def load_config_from_json(filename: str) -> ESPConfig:
     with config_path.open(encoding="utf-8") as stream:
         data = json.load(stream)
     
+    if data.get("robs"):
+        raise ValueError("Legacy platform-end bridge inputs must be reconfigured in bridges with OFFSET or FIXED placement.")
+
     source = _resolve_path(data["source_path"], config_path)
     output = _resolve_path(data["output_dxf"], config_path)
 
@@ -290,7 +293,7 @@ def load_config_from_json(filename: str) -> ESPConfig:
     crossovers = [_load_crossover(item, idx) for idx, item in enumerate(raw_crossovers or [])]
     fobs = [_load_fob(item, idx) for idx, item in enumerate(data.get("fobs", []) or [], 1)]
     sidings = [_load_siding(item, idx) for idx, item in enumerate(data.get("sidings", []) or [])]
-    robs = [_load_rob(item, idx) for idx, item in enumerate(data.get("robs", []) or [], 1)]
+    bridges = [_load_bridge(item, idx) for idx, item in enumerate(data.get("bridges", []) or [], 1)]
 
     def _load_gradient(item: dict) -> GradientRequest:
         cleaned = _strip_comments(item)
@@ -350,7 +353,7 @@ def load_config_from_json(filename: str) -> ESPConfig:
         crossover_preset_turnout=str(preset_turnout or "1:12"),
         fobs=fobs,
         sidings=sidings,
-        robs=robs,
+        bridges=bridges,
         gradients=gradients,
         start_chainage=data.get("start_chainage", 0.0),
         start_km=data.get("start_km"),

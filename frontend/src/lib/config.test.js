@@ -14,7 +14,7 @@ const base = () => ({
   crossovers: [],
   stations: [],
   fobs: [],
-  robs: [],
+  bridges: [],
 });
 
 describe('defaults', () => {
@@ -209,7 +209,8 @@ describe('defaults', () => {
       }],
     });
     assert.equal(cfgFixed.fobs[0].position_mode, 'FIXED');
-    assert.equal(cfgFixed.fobs[0].reference_chainage, 850.5);
+    assert.equal(cfgFixed.fobs[0].reference_chainage, null);
+    assert.equal(cfgFixed.fobs[0].absolute_chainage, '850.5');
     assert.equal(cfgFixed.fobs[0].offset, undefined);
   });
 

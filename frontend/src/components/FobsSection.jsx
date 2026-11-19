@@ -1,7 +1,9 @@
+import { ChainageRangeReference } from './ChainageRangeReference.jsx';
+import { absoluteChainageAtDistance } from '../lib/chainageRange.js';
 import { useState } from 'react';
 import { fetchMainCenter } from '../lib/api.js';
 import { FOB_MAX_SPAN_M, estimateFobSpan } from '../lib/config.js';
-import { fmt, patchAt } from '../lib/formUtils.js';
+import { patchAt } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { blankArm, blankFob } from '../lib/formDefaults.js';
 import { Check, Empty, Field, Grid, ItemCard, Num, Section, Sel, Text } from './fields.jsx';
@@ -19,13 +21,13 @@ export function FobsSection({ form, set, tracks, layers }) {
     setCentreBusy(true);
     setCentreMsg('');
     try {
-      const c = await fetchMainCenter({ kmlFile: form.kmlFile });
+      const c = await fetchMainCenter({ kmlFile: form.kmlFile, selectedTrackId: form.selectedTrackId });
       setTop({
         fobs: patchAt(form.fobs, i, {
-          chainage: fmt(c.main_center_m),
+          chainage: absoluteChainageAtDistance(form, c.main_center_m),
         }),
       });
-      setCentreMsg(`FOB ${i + 1} chainage reset to track centre (${fmt(c.main_center_m)} m).`);
+      setCentreMsg(`FOB ${i + 1} chainage reset to track centre (${absoluteChainageAtDistance(form, c.main_center_m)}).`);
     } catch (err) {
       setCentreMsg(err.message);
     } finally {
@@ -82,7 +84,7 @@ export function FobsSection({ form, set, tracks, layers }) {
         const isOffsetMode = fb.placementMode !== 'fixed';
         const fbBadge = isOffsetMode
           ? `Offset ${fb.offset || 40}m (${fb.direction || 'INCREASING'})`
-          : (fb.chainage ? `CH ${fb.chainage}m` : 'Track-centre');
+          : (fb.chainage ? `CH ${fb.chainage}` : 'Track-centre');
         const fbSub = `Width: ${fb.width || 3.0}m · ${fb.refTrack || 'MAIN_LINE'}`;
         return (
           <ItemCard
@@ -110,12 +112,12 @@ export function FobsSection({ form, set, tracks, layers }) {
                 name={`fob-mode-${i}`}
                 checked={!isOffsetMode}
                 onChange={() => {
-                  const defaultCh = fb.chainage || (form.mainCenter ? fmt(form.mainCenter) : '');
+                  const defaultCh = fb.chainage || absoluteChainageAtDistance(form, form.mainCenter);
                   setTop({ fobs: patchAt(form.fobs, i, { placementMode: 'fixed', chainage: defaultCh }) });
                 }}
                 className="text-sky-600 focus:ring-sky-500"
               />
-              <span>Fixed chainage</span>
+              <span>Absolute chainage</span>
             </label>
           </div>
 
@@ -147,12 +149,13 @@ export function FobsSection({ form, set, tracks, layers }) {
                 </Field>
               </>
             ) : (
-              <Field label="FOB chainage (MAIN m)" hint="Default = track centre">
+              <Field label="Absolute chainage *" hint="MAIN datum: km+metres (12+850), or absolute metres (12850)">
                 <Text
                   value={fb.chainage}
-                  placeholder={form.mainCenter ? fmt(form.mainCenter) : 'MAIN_CENTER'}
+                  placeholder={absoluteChainageAtDistance(form, form.mainCenter) || '12+850'}
                   onChange={(e) => setTop({ fobs: patchAt(form.fobs, i, { chainage: e.target.value }) })}
                 />
+                <ChainageRangeReference form={form} />
                 <button
                   type="button"
                   onClick={() => applyMainCentre(i)}

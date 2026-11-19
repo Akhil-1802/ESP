@@ -10,7 +10,7 @@ from app.features.drawing_generation.config import (
     StationRequest,
 )
 from app.features.drawing_generation.domain.bridges.fob.config import FOBConfig
-from app.features.drawing_generation.domain.bridges.rob.config import ROBConfig
+from app.features.drawing_generation.domain.bridges.bridge.config import BridgeConfig
 from app.features.drawing_generation.domain.platform.config import PlatformConfig
 from app.features.drawing_generation.domain.track.specs import CrossoverSpec, LoopSpec
 from app.features.drawing_generation.domain.track.turnouts import select_turnout
@@ -38,7 +38,7 @@ def yard_config(folder: Path) -> ESPConfig:
                                  "AHEAD", id="C2", direction="REVERSE", position_mode="FIXED")],
         fobs=[FOBConfig(reference_chainage=1050, position_mode="FIXED",
                         platforms=["PLATFORM_1", "PLATFORM_2"])],
-        robs=[ROBConfig(platform="PLATFORM_2")],
+        bridges=[BridgeConfig(station_index=0)],
         enable_main_line_trim=True, align_final_plan_to_x_axis=True,
     )
 

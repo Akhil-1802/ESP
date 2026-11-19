@@ -22,7 +22,7 @@ from .steps import (
     FoulingStep,
     GradientStep,
     PlatformStep,
-    RobStep,
+    BridgeStep,
     SidingStep,
     StationStep,
     TrackStep,
@@ -42,7 +42,7 @@ class ESPGenerator(
     FoulingStep,
     FencingStep,
     FobStep,
-    RobStep,
+    BridgeStep,
     GradientStep,
     ChainageStep,
     CalLabelStep,
@@ -174,11 +174,11 @@ class ESPGenerator(
             self._run_stage("fobs", self._generate_fobs, tracks)
             logger.info(f"   ✓ Generated {len(self.config.fobs)} FOB(s)")
 
-        # Step 8b: Generate road over bridges (needs tracks and platforms in place)
-        if getattr(self.config, "robs", None):
-            logger.info("🌉 Generating road over bridges (ROB)...")
-            self._run_stage("robs", self._generate_robs, tracks)
-            logger.info(f"   ✓ Generated {len(self.config.robs)} ROB(s)")
+        # Step 8b: Generate bridges (offset mode needs generated station buildings)
+        if getattr(self.config, "bridges", None):
+            logger.info("🌉 Generating bridges...")
+            self._run_stage("bridges", self._generate_bridges, tracks)
+            logger.info(f"   ✓ Generated {len(self.config.bridges)} bridge(s)")
 
         # Step 8c: Generate gradient annotations
         if getattr(self.config, "gradients", None):

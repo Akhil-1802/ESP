@@ -46,11 +46,11 @@ export const LAYER_CONFIG = {
   'STATION-CENTER': { color: '#6366f1', width: '1.0', dash: '6 3', category: 'station', label: 'Station Center' },
   'STATION-FLAG': { color: '#ef4444', width: '1.4', category: 'station', label: 'Station Flag' },
   FOB_1: { color: '#2dd4bf', width: '2.0', category: 'fob', label: 'Foot Over Bridge' },
-  ROB: { color: '#ef4444', width: '2.5', category: 'rob', label: 'Road Over Bridge (SGFD)' },
-  SGFD: { color: '#ef4444', width: '2.5', category: 'rob', label: 'Road Over Bridge (SGFD)' },
-  'ROB-DIM': { color: '#64748b', width: '0.9', category: 'reference', label: 'ROB Dimensions' },
+  BRIDGE: { color: '#ef4444', width: '2.5', category: 'bridge', label: 'Bridge' },
+  SGFD: { color: '#ef4444', width: '2.5', category: 'bridge', label: 'Bridge (SGFD)' },
+  'BRIDGE-DIM': { color: '#64748b', width: '0.9', category: 'reference', label: 'Bridge Dimensions' },
   'SGFD-DIM': { color: '#64748b', width: '0.9', category: 'reference', label: 'SGFD Dimensions' },
-  'ROB-CENTER': { color: '#94a3b8', width: '1.0', dash: '6 3', category: 'reference', label: 'ROB Centerline' },
+  'BRIDGE-CENTER': { color: '#94a3b8', width: '1.0', dash: '6 3', category: 'reference', label: 'Bridge Centerline' },
   'SGFD-CENTER': { color: '#94a3b8', width: '1.0', dash: '6 3', category: 'reference', label: 'SGFD Centerline' },
 
   // Signals
@@ -119,8 +119,8 @@ export function getLayerStyle(layer) {
   if (u.includes('FOB')) {
     return applyOverride({ color: '#2dd4bf', width: '2.0', category: 'fob', label: name });
   }
-  if (u.includes('ROB') || u.includes('SGFD')) {
-    return applyOverride({ color: '#ef4444', width: '2.5', category: 'rob', label: name });
+  if (u.includes('BRIDGE') || u.includes('SGFD')) {
+    return applyOverride({ color: '#ef4444', width: '2.5', category: 'bridge', label: name });
   }
   if (u.includes('FENCE') || u.includes('BOUNDARY') || u.includes('LAND')) {
     return applyOverride({ color: '#22c55e', width: '1.5', dash: '8 5', category: 'fencing', label: name });
@@ -171,7 +171,7 @@ export function dxfToSvg(input, options = {}) {
       s.includes('TURNOUT') ||
       s.includes('CROSSOVER') ||
       s.includes('FOB') ||
-      s.includes('ROB') ||
+      s.includes('BRIDGE') ||
       s.includes('GRADIENT') ||
       s.includes('SIGNAL')
     );
@@ -547,7 +547,7 @@ export function dxfToSvg(input, options = {}) {
   const flip = y0 + (y0 + h);
 
   const sortedLayers = Array.from(layerGroups.values()).sort((a, b) => {
-    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, rob: 6, signal: 7, track: 8, crossover: 9 };
+    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, bridge: 6, signal: 7, track: 8, crossover: 9 };
     return (order[a.style.category] || 5) - (order[b.style.category] || 5);
   });
 

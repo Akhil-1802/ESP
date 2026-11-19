@@ -175,7 +175,12 @@ def test_complete_yard_snapshot_survives_cleanup_and_keeps_resolved_connections(
     assert snapshot is not None and generator.context.document is None
     assert len(snapshot["platforms"]) == 2
     assert len(snapshot["buildings"]) == 1
-    assert {b["kind"] for b in snapshot["bridges"]} == {"FOB", "ROB"}
+    assert {b["kind"] for b in snapshot["bridges"]} == {"FOB", "BRIDGE"}
+    bridge = next(b for b in snapshot["bridges"] if b["kind"] == "BRIDGE")
+    cfg = generator.config.bridges[0]
+    assert bridge["chainage"] == pytest.approx(cfg._calculated_chainage)
+    assert bridge["absolute_chainage"] == pytest.approx(cfg._absolute_chainage)
+    assert bridge["bridge_type"] == "PSC_SLAB" and bridge["label"] == "PSC SLAB"
     assert snapshot["crossovers"][0]["end"] == pytest.approx(generator._crossover_results[0].end_chainage)
     # Confirm the rich pipeline output is a plain JSON snapshot, not a live document.
     detached = json.loads(json.dumps(snapshot))

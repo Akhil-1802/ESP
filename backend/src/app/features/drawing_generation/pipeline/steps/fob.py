@@ -62,6 +62,7 @@ class FobStep(PipelineStep):
                 doc=doc,
                 station_requests=getattr(self.config, "stations", None),
                 station_markers=getattr(self.config, "station_markers", None),
+                alignment_config=self.config,
             )
 
             offset = float(cfg.offset) if cfg.offset is not None else DEFAULT_FOB_OFFSET_M

@@ -1,8 +1,9 @@
+import { bridgeTypeLabel, resolveBridgeDistance } from './bridgePlacement.js';
 /**
  * Dynamic Client-Side DXF/SVG Plan-View Generator.
  *
  * Renders the railway schematic dynamically in real-time as the user edits the
- * form (loops, platforms, stations, FOBs, ROBs, sidings, crossovers) without
+ * form (loops, platforms, stations, FOBs, bridges, sidings, crossovers) without
  * calling the backend API on every keystroke.
  */
 
@@ -194,7 +195,7 @@ export function generateDynamicPreview(form, options = {}) {
       s.includes('TURNOUT') ||
       s.includes('CROSSOVER') ||
       s.includes('FOB') ||
-      s.includes('ROB') ||
+      s.includes('BRIDGE') ||
       s.includes('SIGNAL')
     );
   };
@@ -843,6 +844,8 @@ export function generateDynamicPreview(form, options = {}) {
     );
   });
 
+  const stationBuildingBounds = new Map();
+
   // Station Buildings (Mathematical mirror of backend station building flush to platform)
   (f.stations || []).forEach((stn, idx) => {
     const platName = String(stn?.platform || '').trim();
@@ -868,6 +871,7 @@ export function generateDynamicPreview(form, options = {}) {
     const s0 = Math.max(0.0, centerCh - sLen / 2.0);
     const s1 = Math.min(totalLength, centerCh + sLen / 2.0);
 
+    stationBuildingBounds.set(idx, { start: s0, end: s1 });
     const bA = align.offsetAt(s0, bNear);
     const bB = align.offsetAt(s1, bNear);
     const bC = align.offsetAt(s1, bFar);
@@ -941,8 +945,9 @@ export function generateDynamicPreview(form, options = {}) {
     if (connPlats.length < 2) return;
 
     let fbCh = mainCenter;
-    if (fb.placementMode === 'fixed' && fb.chainage) {
-      fbCh = parseNum(fb.chainage, mainCenter);
+    if (fb.placementMode === 'fixed') {
+      fbCh = resolveBridgeDistance(f, { placementMode: 'fixed', chainage: fb.chainage });
+      if (!Number.isFinite(fbCh) || fbCh < 0 || fbCh > totalLength) return;
     } else {
       const off = parseNum(fb.offset, 40.0);
       const dir = fb.direction || 'INCREASING';
@@ -1014,29 +1019,30 @@ export function generateDynamicPreview(form, options = {}) {
   });
 
   // ---------------------------------------------------------------------------
-  // 6. Draw ROBs (Road Over Bridges)
+  // 6. Draw bridges (Bridges)
   // ---------------------------------------------------------------------------
-  (f.robs || []).forEach((rb, idx) => {
-    const width = parseNum(rb.width, 10.0);
-    const off = parseNum(rb.offset, 50.0);
-    const refEnd = rb.referenceEnd || 'START';
-    const robCh = parseNum(rb.chainage, refEnd === 'START' ? 150.0 + off : totalLength - 150.0 - off);
-
-    const allOffs = Object.values(trackOffsets);
-    const minOff = Math.min(...allOffs) - 6.0;
-    const maxOff = Math.max(...allOffs) + 6.0;
-
-    const halfW = width / 2.0;
-    const rA = align.offsetAt(robCh - halfW, minOff);
-    const rB = align.offsetAt(robCh + halfW, minOff);
-    const rC = align.offsetAt(robCh + halfW, maxOff);
-    const rD = align.offsetAt(robCh - halfW, maxOff);
-    addPolyline([rA, rB, rC, rD], 'ROB', true);
-
-    const midPt = align.offsetAt(robCh, (minOff + maxOff) / 2.0);
-    const rbAt = align.getAt(robCh);
-    const rbAng = (Math.atan2(rbAt.normal[1], rbAt.normal[0]) * 180) / Math.PI;
-    addText('ROAD OVER BRIDGE', midPt[0], midPt[1], 'ROB', 1.4, rbAng, 1, 2);
+  (f.bridges || []).forEach((bridge, idx) => {
+    const width = parseNum(bridge.width, 10);
+    const distance = resolveBridgeDistance(f, bridge,
+      stationBuildingBounds.get(Number(bridge.stationBuildingIndex)));
+    if ((bridge.placementMode !== 'fixed' && (bridge.stationBuildingIndex == null || bridge.stationBuildingIndex === '')) ||
+        !Number.isFinite(distance) || distance < 0 || distance > totalLength || width <= 0) return;
+    const included = Object.entries(trackOffsets).filter(([name]) =>
+      !bridge.tracks?.length || bridge.tracks.includes(name)).map(([, offset]) => offset);
+    if (!included.length) return;
+    const lo = Math.min(...included) - 3.5, hi = Math.max(...included) + 3.5;
+    const at = align.getAt(distance), half = width / 2, diag = 8 * Math.SQRT1_2;
+    const pt = (u, v) => [at.point[0] + at.tangent[0] * u + at.normal[0] * v,
+      at.point[1] + at.tangent[1] * u + at.normal[1] * v];
+    const layer = `BRIDGE_${idx + 1}`;
+    for (const side of [-1, 1]) {
+      addLine(pt(side * half, lo), pt(side * half, hi), layer);
+      addLine(pt(side * half, hi), pt(side * (half + diag), hi + diag), layer);
+      addLine(pt(side * half, lo), pt(side * (half + diag), lo - diag), layer);
+    }
+    const label = pt(0, hi + diag + 2.5);
+    addText(`${bridgeTypeLabel(bridge)} BRIDGE`, label[0], label[1], layer, 1.2,
+      Math.atan2(at.tangent[1], at.tangent[0]) * 180 / Math.PI, 1, 2);
   });
 
   // ---------------------------------------------------------------------------
@@ -1091,7 +1097,7 @@ export function generateDynamicPreview(form, options = {}) {
   const flip = y0 + (y0 + h);
 
   const sortedLayers = Array.from(layerGroups.values()).sort((a, b) => {
-    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, rob: 6, signal: 7, track: 8, crossover: 9 };
+    const order = { fencing: 1, reference: 2, platform: 3, station: 4, fob: 5, bridge: 6, signal: 7, track: 8, crossover: 9 };
     return (order[a.style.category] || 5) - (order[b.style.category] || 5);
   });
 

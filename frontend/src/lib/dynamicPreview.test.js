@@ -299,8 +299,9 @@ describe('generateDynamicPreview', () => {
           c2: 575,
         },
       ],
-      robs: [
+      bridges: [
         {
+          placementMode: 'fixed',
           chainage: 950,
           width: 12,
         },
@@ -315,8 +316,8 @@ describe('generateDynamicPreview', () => {
     assert.ok(res.layers.includes('SRJ'));
     assert.ok(res.svg.includes('cad-crossover-tag'));
     assert.ok(res.svg.includes('X-101'));
-    assert.ok(res.layers.includes('ROB'));
-    assert.ok(res.svg.includes('ROAD OVER BRIDGE'));
+    assert.ok(res.layers.includes('BRIDGE_1'));
+    assert.ok(res.svg.includes('BRIDGE'));
   });
 
   test('dynamically responds to crossover parameter updates (chainage, turnout, direction)', () => {

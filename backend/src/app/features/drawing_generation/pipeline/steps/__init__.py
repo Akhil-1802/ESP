@@ -10,7 +10,7 @@ from .fob import FobStep
 from .fouling import FoulingStep
 from .gradient import GradientStep
 from .platform import PlatformStep
-from .rob import RobStep
+from .bridge import BridgeStep
 from .siding import SidingStep
 from .station import StationStep
 from .track import TrackStep
@@ -26,7 +26,7 @@ __all__ = [
     "FoulingStep",
     "FencingStep",
     "FobStep",
-    "RobStep",
+    "BridgeStep",
     "GradientStep",
     "ChainageStep",
     "CalLabelStep",

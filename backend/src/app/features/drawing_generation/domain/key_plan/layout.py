@@ -176,7 +176,7 @@ def build_scene(snapshot, options):
         lo = min((p["y0"] for p in connected), default=min(n.levels.values())-n.gap)
         hi = max((p["y1"] for p in connected), default=max(n.levels.values())+n.gap)
         rectangle(x-font*.35, lo, x+font*.35, hi, "KEY_PLAN_BRIDGE")
-        label(bridge["kind"], x, hi+font*1.2, w*.12, font*.75)
+        label(bridge.get("label", bridge["kind"]), x, hi+font*1.2, w*.12, font*.75)
 
     stations = snapshot["stations"] or [dict(name=b["name"], chainage=b["chainage"],
         chainage_m=snapshot["start_chainage_m"]+b["chainage"]) for b in snapshot["buildings"]]

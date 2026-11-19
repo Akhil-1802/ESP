@@ -6,7 +6,7 @@ export { PlatformsSection } from './PlatformsSection.jsx';
 export { CrossoversSection } from './CrossoversSection.jsx';
 export { StationsSection } from './StationsSection.jsx';
 export { FobsSection } from './FobsSection.jsx';
-export { RobsSection } from './RobsSection.jsx';
+export { BridgesSection } from './BridgesSection.jsx';
 export { SidingsSection } from './SidingsSection.jsx';
 export { GradientsSection } from './GradientsSection.jsx';
 

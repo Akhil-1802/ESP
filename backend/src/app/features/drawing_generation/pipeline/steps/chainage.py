@@ -9,7 +9,7 @@ from .chainage_collect import (
     collect_fm,
     collect_optional_layers,
     collect_platform_ends,
-    collect_robs,
+    collect_bridges,
     collect_siding,
     collect_srj_turnout_crossover,
     determine_side,
@@ -72,8 +72,8 @@ class ChainageStep(StationChainageLabels, AlignmentChainageLabels, PipelineStep)
             doc, tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None)
         )
 
-    def _collect_robs(self, tracks_for_datum, datum) -> list:
-        return collect_robs(tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None))
+    def _collect_bridges(self, tracks_for_datum, datum) -> list:
+        return collect_bridges(tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None))
 
     def _collect_optional_layers(self, doc, tracks_for_datum, datum) -> list:
         return collect_optional_layers(doc, tracks_for_datum, datum, self.config, getattr(self, "_main_line_points", None))

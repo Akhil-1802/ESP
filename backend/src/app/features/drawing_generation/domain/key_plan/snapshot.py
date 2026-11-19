@@ -121,10 +121,11 @@ def capture_snapshot(generator, tracks, doc, main):
         # a different chainage origin from MAIN. Never reinterpret its input.
         point = tuple(sum(p[i] for p in outline) / len(outline) for i in (0, 1))
         result["bridges"].append(dict(kind="FOB", chainage=ch(point), platforms=list(cfg.platforms)))
-    for cfg in getattr(generator.config, "robs", []) or []:
+    for cfg in getattr(generator.config, "bridges", []) or []:
         geometry = getattr(cfg, "_geom", None)
         if geometry:
-            result["bridges"].append(dict(kind="ROB", chainage=ch(geometry.center_point), platforms=[]))
+            result["bridges"].append(dict(kind="BRIDGE", id=cfg.id, bridge_type=cfg.bridge_type, label=cfg.type_label,
+                chainage=ch(geometry.center_point), absolute_chainage=cfg._absolute_chainage, platforms=[]))
     bounds = [v for t in result["tracks"] for v in (t["start"], t["end"])]
     bounds += [v for p in result["platforms"] for v in (p["start"], p["end"])]
     bounds += [v for c in result["crossovers"] for v in (c["start"], c["end"])]

@@ -1,4 +1,4 @@
-"""ROB (Road Over Bridge) geometric calculations and DXF generation."""
+"""Bridge geometric calculations and DXF generation."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from typing import Dict, List, Sequence, Tuple
 from ....formats.dxf.primitives import add_text, draw_arrow_dimension
 from ....formats.dxf.styles import ensure_layer
 from ...geometry.operations import Point, nearest_point_on_alignment
-from .config import ROBConfig
+from .config import BridgeConfig
 
 
 @dataclass
-class ROBGeometry:
-    """Calculated 2D geometric segments for an ROB."""
+class BridgeGeometry:
+    """Calculated 2D geometric segments for a bridge."""
 
     center_point: Point
     tangent: Point
@@ -61,8 +61,8 @@ def find_track_transverse_extents(
             if abs(det) < 1e-9:
                 continue
             rx, ry = ax - ox, ay - oy
-            u = (nx * ry - ny * rx) / det
-            v = (dx * ry - dy * rx) / det
+            u = (ny * rx - nx * ry) / det
+            v = (rx * dy - ry * dx) / det
             if -1e-5 <= u <= 1.0 + 1e-5:
                 hits.append(v)
 
@@ -85,15 +85,15 @@ def find_track_transverse_extents(
     return min(hits), max(hits)
 
 
-def generate_rob_geometry(
+def generate_bridge_geometry(
     origin: Point,
     tangent: Point,
     tracks: Dict[str, Sequence[Point]],
-    cfg: ROBConfig,
+    cfg: BridgeConfig,
     chainage: float = 0.0,
     chainage_text: str = "",
-) -> ROBGeometry:
-    """Generate all line segments for the ROB matching the CAD standard with flared outer diagonals."""
+) -> BridgeGeometry:
+    """Generate all line segments for the bridge matching the CAD standard with flared outer diagonals."""
     t_len = math.hypot(tangent[0], tangent[1]) or 1.0
     tx, ty = tangent[0] / t_len, tangent[1] / t_len
     # Normal pointing left/up (perpendicular to track)
@@ -147,7 +147,7 @@ def generate_rob_geometry(
 
     label_pos = pt(0.0, hi + diag + 2.5)
 
-    return ROBGeometry(
+    return BridgeGeometry(
         center_point=origin,
         tangent=(tx, ty),
         normal=(nx, ny),
@@ -162,8 +162,8 @@ def generate_rob_geometry(
     )
 
 
-def write_rob(doc, geom: ROBGeometry, cfg: ROBConfig) -> None:
-    """Write the ROB entities into the DXF document using the SGFD block definition."""
+def write_bridge(doc, geom: BridgeGeometry, cfg: BridgeConfig) -> None:
+    """Write the BRIDGE entities into the DXF document using the SGFD block definition."""
     layer = cfg.output_layer or "SGFD"
     color = cfg.color
     ensure_layer(doc, layer, color)
@@ -181,7 +181,7 @@ def write_rob(doc, geom: ROBGeometry, cfg: ROBConfig) -> None:
     else:
         block = doc.blocks.new(name=block_name, base_point=(0, 0))
 
-    # Add the 8 CAD lines inside the SGFD block definition
+    # Add the six symbol lines inside the SGFD block definition
     for p1, p2 in geom.local_segments:
         block.add_line(p1, p2, dxfattribs={"layer": layer, "color": color})
 
@@ -195,19 +195,6 @@ def write_rob(doc, geom: ROBGeometry, cfg: ROBConfig) -> None:
             "rotation": rot_deg,
         },
     )
-
-    # Add text label only if explicitly requested
-    if getattr(cfg, "add_text", False):
-        label_text = f"ROB ({cfg.width:g}m)"
-        add_text(
-            doc,
-            label_text,
-            geom.label_point,
-            layer,
-            color,
-            height=1.2,
-            rotation=rot_deg,
-        )
 
     # Add width dimension
     if getattr(cfg, "add_dimension", True):

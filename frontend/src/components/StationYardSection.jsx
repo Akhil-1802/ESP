@@ -1,3 +1,6 @@
+import { absoluteChainageAtDistance } from '../lib/chainageRange.js';
+import { ChainageRangeReference } from './ChainageRangeReference.jsx';
+import { BridgeFields } from './BridgeFields.jsx';
 import { useState } from 'react';
 import { fmt, isBlank } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
@@ -6,7 +9,6 @@ import {
   estimateFobSpan,
   formatStartChainage,
   getExtendedLoopEnds,
-  getPlatformBounds,
   getStationTrackDistance,
   getTrackRange,
   parseKmM,
@@ -17,7 +19,7 @@ import {
   blankFob,
   blankGradient,
   blankLoop,
-  blankRob,
+  blankBridge,
   blankSiding,
   blankStation,
 } from '../lib/formDefaults.js';
@@ -216,7 +218,15 @@ export function StationYardSection({
   };
 
   const removeBuilding = (bldObj) => {
-    setTop({ stations: (form.stations || []).filter((s) => s !== bldObj) });
+    const removed = (form.stations || []).indexOf(bldObj);
+    setTop({
+      stations: (form.stations || []).filter((s) => s !== bldObj),
+      bridges: (form.bridges || []).map((bridge) => ({ ...bridge,
+        stationBuildingIndex: bridge.stationBuildingIndex == null || bridge.stationBuildingIndex === '' ? null
+          : Number(bridge.stationBuildingIndex) === removed ? null
+          : Number(bridge.stationBuildingIndex) > removed ? Number(bridge.stationBuildingIndex) - 1 : bridge.stationBuildingIndex,
+      })),
+    });
   };
 
   // -------------------------------------------------------------
@@ -296,41 +306,36 @@ export function StationYardSection({
   const applyStationFobCentre = (fobObj) => {
     const centerCh = stnDist ?? (form.mainCenter ? Number(form.mainCenter) : 0);
     updateFobAt(fobObj, {
-      chainage: fmt(centerCh),
+      chainage: absoluteChainageAtDistance(form, centerCh),
     });
   };
 
   // -------------------------------------------------------------
-  // 5. ROBs belonging to this station
+  // 5. bridges belonging to this station
   // -------------------------------------------------------------
-  const stationRobs = (form.robs || []).filter(
+  const stationBridges = (form.bridges || []).filter(
     (r) => (r.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex,
   );
 
-  const addRob = () => {
-    const defaultPlat = safeLayers[0] || 'PLATFORM_1';
-    const newRob = {
-      ...blankRob(),
-      platform: defaultPlat,
-      referenceEnd: 'START',
-      offset: '50.0',
-      width: '10.0',
-      referenceTrack: 'MAIN_LINE',
-      stationIndex,
-    };
-    setTop({ robs: [...(form.robs || []), newRob] });
+  const addBridge = () => {
+    const buildingIndex = (form.stations || []).findIndex((s) =>
+      (s.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex);
+    setTop({ bridges: [...(form.bridges || []), {
+      ...blankBridge(), stationIndex,
+      stationBuildingIndex: buildingIndex >= 0 ? buildingIndex : null,
+    }] });
   };
 
-  const updateRobAt = (robObj, patch) => {
-    const globalIdx = (form.robs || []).indexOf(robObj);
+  const updateBridgeAt = (bridgeObj, patch) => {
+    const globalIdx = (form.bridges || []).indexOf(bridgeObj);
     if (globalIdx < 0) return;
-    const current = [...form.robs];
+    const current = [...form.bridges];
     current[globalIdx] = { ...current[globalIdx], ...patch };
-    setTop({ robs: current });
+    setTop({ bridges: current });
   };
 
-  const removeRob = (robObj) => {
-    setTop({ robs: (form.robs || []).filter((r) => r !== robObj) });
+  const removeBridge = (bridgeObj) => {
+    setTop({ bridges: (form.bridges || []).filter((r) => r !== bridgeObj) });
   };
 
   // -------------------------------------------------------------
@@ -441,7 +446,7 @@ export function StationYardSection({
         </div>
 
         <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-          <span>{stationLoops.length} loops · {stationPlatforms.length} platforms · {stationCrossovers.length} crossovers · {stationRobs.length} ROBs</span>
+          <span>{stationLoops.length} loops · {stationPlatforms.length} platforms · {stationCrossovers.length} crossovers · {stationBridges.length} bridges</span>
         </div>
       </div>
 
@@ -922,6 +927,7 @@ export function StationYardSection({
                             Use {stnDisp}
                           </button>
                         </div>
+                        <ChainageRangeReference form={form} units="kilometres" />
                       </Field>
                     </Grid>
                   </ItemCard>
@@ -963,7 +969,7 @@ export function StationYardSection({
                   <ItemCard
                     key={idx}
                     title={`FOB ${globalFobIdx + 1}`}
-                    badge={isOffsetMode ? `Offset ${fb.offset || 40}m (${fb.direction || 'INCREASING'})` : (fb.chainage ? `CH ${fb.chainage}m` : 'Station-centred')}
+                    badge={isOffsetMode ? `Offset ${fb.offset || 40}m (${fb.direction || 'INCREASING'})` : (fb.chainage ? `CH ${fb.chainage}` : 'Station-centred')}
                     subtitle={`Width: ${fb.width || 3.0}m · ${fb.refTrack || 'MAIN_LINE'}`}
                     onRemove={() => removeFob(fb)}
                   >
@@ -985,12 +991,12 @@ export function StationYardSection({
                           name={`stn-fob-mode-${idx}`}
                           checked={!isOffsetMode}
                           onChange={() => {
-                            const defaultCh = fb.chainage || (stnDist ? fmt(stnDist) : (form.mainCenter ? fmt(form.mainCenter) : ''));
+                            const defaultCh = fb.chainage || absoluteChainageAtDistance(form, stnDist ?? form.mainCenter);
                             updateFobAt(fb, { placementMode: 'fixed', chainage: defaultCh });
                           }}
                           className="text-sky-600 focus:ring-sky-500"
                         />
-                        <span>Fixed chainage</span>
+                        <span>Absolute chainage</span>
                       </label>
                     </div>
 
@@ -1022,12 +1028,13 @@ export function StationYardSection({
                           </Field>
                         </>
                       ) : (
-                        <Field label="FOB chainage (MAIN m)" hint="Default = station centre">
+                        <Field label="Absolute chainage *" hint="MAIN datum: km+metres (12+850), or absolute metres (12850)">
                           <Text
                             value={fb.chainage}
-                            placeholder={stnDist ? fmt(stnDist) : 'MAIN_CENTER'}
+                            placeholder={absoluteChainageAtDistance(form, stnDist) || '12+850'}
                             onChange={(e) => updateFobAt(fb, { chainage: e.target.value })}
                           />
+                          <ChainageRangeReference form={form} />
                           <button
                             type="button"
                             onClick={() => applyStationFobCentre(fb)}
@@ -1131,126 +1138,24 @@ export function StationYardSection({
             )}
           </div>
 
-          {/* ========================================================= */}
-          {/* 6. Road Over Bridges (same fields as RobsSection)         */}
-          {/* ========================================================= */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
+          <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🚗</span> Road Over Bridges (ROB) ({stationRobs.length})
-                </h3>
-                <p className="text-[10.5px] text-slate-500">
-                  Position is calculated from selected platform start (- offset) or platform end (+ offset).
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addRob}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shadow-sm"
-              >
-                + Add ROB
+              <h3 className="text-xs font-bold text-slate-800">Bridges ({stationBridges.length})</h3>
+              <button type="button" onClick={addBridge}
+                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold cursor-pointer">
+                + Add Bridge
               </button>
             </div>
-
-            {stationRobs.length === 0 ? (
-              <p className="text-[11px] text-slate-500">No ROB configured for this station.</p>
-            ) : (
-              stationRobs.map((rob, idx) => {
-                const globalRobIdx = (form.robs || []).indexOf(rob);
-                const platName = rob.platform || safeLayers[0];
-                const bounds = getPlatformBounds(form, platName);
-                const refEnd = (rob.referenceEnd || 'START').toUpperCase();
-                const offsetNum = Number(rob.offset || 0);
-
-                let centerCh = null;
-                let formulaText = '';
-                if (bounds) {
-                  if (refEnd === 'START') {
-                    centerCh = bounds.start - offsetNum;
-                    formulaText = `${bounds.start.toFixed(2)} m - ${offsetNum.toFixed(2)} m = ${centerCh.toFixed(2)} m`;
-                  } else {
-                    centerCh = bounds.end + offsetNum;
-                    formulaText = `${bounds.end.toFixed(2)} m + ${offsetNum.toFixed(2)} m = ${centerCh.toFixed(2)} m`;
-                  }
-                }
-
-                return (
-                  <ItemCard
-                    key={idx}
-                    title={`ROB ${globalRobIdx + 1}`}
-                    onRemove={() => removeRob(rob)}
-                  >
-                    <Grid>
-                      <Field label="Reference Platform *">
-                        <Sel
-                          value={rob.platform || safeLayers[0]}
-                          onChange={(e) => updateRobAt(rob, { platform: e.target.value })}
-                          options={safeLayers}
-                        />
-                      </Field>
-
-                      <Field
-                        label="Platform End Selection *"
-                        hint={refEnd === 'START' ? 'Drawn at Start - Offset' : 'Drawn at End + Offset'}
-                      >
-                        <Sel
-                          value={refEnd}
-                          onChange={(e) => updateRobAt(rob, { referenceEnd: e.target.value })}
-                          options={[
-                            { value: 'START', label: 'Platform Start (Start - Offset)' },
-                            { value: 'END', label: 'Platform End (End + Offset)' },
-                          ]}
-                        />
-                      </Field>
-
-                      {bounds && (
-                        <div className="col-span-full rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-2">
-                          <span>
-                            <strong>{bounds.platform} Bounds:</strong> Start = <strong>{bounds.start.toFixed(2)} m</strong>, End = <strong>{bounds.end.toFixed(2)} m</strong>
-                          </span>
-                          <span className="text-slate-500 font-mono">
-                            Centre: {formulaText || (centerCh !== null ? `${centerCh.toFixed(2)} m` : '—')}
-                          </span>
-                        </div>
-                      )}
-
-                      <Field
-                        label="Offset from Platform (m) *"
-                        hint={refEnd === 'START' ? 'Distance before platform start' : 'Distance after platform end'}
-                      >
-                        <Num
-                          value={rob.offset ?? '50.0'}
-                          onChange={(e) => updateRobAt(rob, { offset: e.target.value })}
-                          min="0"
-                          placeholder="50.0"
-                        />
-                      </Field>
-
-                      <Field
-                        label="ROB Width (m) *"
-                        hint="Width along track (X-axis); spans all tracks"
-                      >
-                        <Num
-                          value={rob.width ?? '10.0'}
-                          onChange={(e) => updateRobAt(rob, { width: e.target.value })}
-                          min="1"
-                          placeholder="10.0"
-                        />
-                      </Field>
-
-                      <Field label="Reference Track" hint="Track alignment to sample center & angle">
-                        <Sel
-                          value={rob.referenceTrack || 'MAIN_LINE'}
-                          onChange={(e) => updateRobAt(rob, { referenceTrack: e.target.value })}
-                          options={allTracks}
-                        />
-                      </Field>
-                    </Grid>
-                  </ItemCard>
-                );
-              })
-            )}
+            {stationBridges.length === 0 && <p className="text-xs text-slate-500">No bridges configured for this station.</p>}
+            {stationBridges.map((bridge, idx) => (
+              <ItemCard key={idx} title={`Bridge ${(form.bridges || []).indexOf(bridge) + 1}`}
+                onRemove={() => removeBridge(bridge)}>
+                <BridgeFields form={form} bridge={bridge} onChange={(patch) => updateBridgeAt(bridge, patch)}
+                  buildingOptions={(form.stations || []).flatMap((s, i) =>
+                    (s.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex
+                      ? [{ value: i, label: s.name || `Station building ${i + 1}` }] : [])} />
+              </ItemCard>
+            ))}
           </div>
         </div>
       )}

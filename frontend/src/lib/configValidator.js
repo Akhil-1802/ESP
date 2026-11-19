@@ -1,3 +1,4 @@
+import { bridgeTypeLabel, parseAbsoluteChainage, resolveBridgeDistance } from './bridgePlacement.js';
 /**
  * Client-side form validation rules.
  */
@@ -111,7 +112,17 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
   (f.fobs || []).forEach((fb, i) => {
     if (isBlank(fb.refTrack)) at('FOB', i, 'reference track is required.');
     const isOffsetMode = fb.placementMode === 'offset';
-    if (!isOffsetMode) {
+    if (fb.placementMode === 'fixed') {
+      const absolute = parseAbsoluteChainage(fb.chainage);
+      if (!Number.isFinite(absolute)) {
+        at('FOB', i, 'absolute chainage is required as metres or km+metres (for example 12+850).');
+      } else {
+        const distance = resolveBridgeDistance(f, { placementMode: 'fixed', chainage: fb.chainage });
+        if (!Number.isFinite(distance) || distance < 0 ||
+            (f.mainLength != null && distance > Number(f.mainLength)))
+          at('FOB', i, 'absolute chainage is outside the MAIN alignment.');
+      }
+    } else if (!isOffsetMode) {
       const isMc = isBlank(fb.chainage) || String(fb.chainage).trim().toUpperCase() === 'MAIN_CENTER';
       if (!isMc && (!Number.isFinite(Number(fb.chainage)) || Number(fb.chainage) < 0))
         at('FOB', i, 'reference chainage must be >= 0 (MAIN m), MAIN_CENTER, or blank.');
@@ -149,27 +160,35 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
       at('Siding', i, `spacing must be >= ${minTrackSpacing} m.`);
   });
 
-  (f.robs || []).forEach((rob, i) => {
-    if ((f.platforms || []).length === 0) {
-      at('ROB', i, 'requires at least one platform to be defined.');
-    }
-    if (isBlank(rob.platform)) {
-      at('ROB', i, 'platform selection is required.');
-    }
-    const end = strOr(rob.referenceEnd, 'START').toUpperCase();
-    if (end !== 'START' && end !== 'END') {
-      at('ROB', i, 'platform end must be either START or END.');
-    }
-    if (!isBlank(rob.offset)) {
-      const off = Number(rob.offset);
-      if (!Number.isFinite(off) || off < 0) {
-        at('ROB', i, 'offset must be a number >= 0.');
+  (f.bridges || []).forEach((bridge, i) => {
+    if (!['PSC_SLAB', 'RCC_BOX', 'OTHER'].includes(bridge.bridgeType || 'PSC_SLAB'))
+      at('Bridge', i, 'select a supported bridge type.');
+    const label = bridgeTypeLabel(bridge);
+    if (!label || label.length > 80 || /[\\{}]/.test(label))
+      at('Bridge', i, 'type/name is required, at most 80 characters, without DXF formatting characters.');
+    const mode = bridge.placementMode || 'offset';
+    if (!['offset', 'fixed'].includes(mode)) at('Bridge', i, 'placement method must be offset or fixed.');
+    if (mode === 'fixed') {
+      if (!Number.isFinite(parseAbsoluteChainage(bridge.chainage)))
+        at('Bridge', i, 'absolute chainage must be metres or km+metres (for example 12+850).');
+      else {
+        const distance = resolveBridgeDistance(f, bridge);
+        if (!Number.isFinite(distance) || distance < 0 ||
+            (f.mainLength != null && distance > Number(f.mainLength)))
+          at('Bridge', i, 'absolute chainage is outside the MAIN alignment.');
       }
+    } else {
+      const buildingIndex = bridge.stationBuildingIndex;
+      if (isBlank(buildingIndex) || !Number.isInteger(Number(buildingIndex)) || Number(buildingIndex) < 0 ||
+          !(f.stations || [])[Number(buildingIndex)])
+        at('Bridge', i, 'select a reference station building for offset placement.');
+      if (!['INCREASING', 'DECREASING'].includes(bridge.direction || 'INCREASING'))
+        at('Bridge', i, 'direction must be INCREASING or DECREASING.');
+      const offset = numOr(bridge.offset, defaults.bridgeOffset);
+      if (!Number.isFinite(offset) || offset < 0) at('Bridge', i, 'offset must be a number >= 0.');
     }
-    const width = numOr(rob.width, defaults.robWidth || 10.0);
-    if (!Number.isFinite(width) || width <= 0) {
-      at('ROB', i, `width must be a number > 0 (blank = ${defaults.robWidth || 10.0}).`);
-    }
+    const width = numOr(bridge.width, defaults.bridgeWidth || 10);
+    if (!Number.isFinite(width) || width <= 0) at('Bridge', i, 'width must be a number > 0.');
   });
 
   (f.gradients || []).forEach((g, i) => {

@@ -1,3 +1,4 @@
+import { ChainageRangeReference } from './ChainageRangeReference.jsx';
 import { patchAt } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import { blankStation } from '../lib/formDefaults.js';
@@ -71,6 +72,7 @@ export function StationsSection({ form, set, layers }) {
                 placeholder="125"
                 onChange={(e) => setTop({ stations: patchAt(form.stations, i, { chainage: e.target.value }) })}
               />
+              <ChainageRangeReference form={form} units="kilometres" />
             </Field>
           </Grid>
         </ItemCard>
