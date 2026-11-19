@@ -1,0 +1,99 @@
+{
+  "source_path": "ESP.kml",
+  "output_dxf": "../output/ESP_new6.dxf",
+  "track_source_layer": "MAIN_TRACK",
+  "loops": [
+    {
+      "name": "LOOP_1",
+      "spacing": 5.3,
+      "side": "LEFT",
+      "first_crossover_chainage": 175.709,
+      "second_crossover_chainage": 925.709,
+      "turnout_designation": "1:12",
+      "turnout_variant": "standard",
+      "crossover_distance_m": 750.0,
+      "extend_start_m": 120.0,
+      "extend_end_m": 120.0
+    },
+    {
+      "name": "LOOP_2",
+      "spacing": 6.3,
+      "side": "RIGHT",
+      "first_crossover_chainage": 175.709,
+      "second_crossover_chainage": 925.709,
+      "turnout_designation": "1:12",
+      "turnout_variant": "standard",
+      "crossover_distance_m": 750.0,
+      "extend_start_m": 120.0,
+      "extend_end_m": 120.0
+    }
+  ],
+  "additional_lines": [],
+  "platforms": [
+    {
+      "track_layer": "LOOP_1",
+      "platform_type": "SIDE",
+      "side": "LEFT",
+      "center_on_track": true,
+      "clearance": 1.68,
+      "platform_width": 7.0,
+      "platform_length": 550.0,
+      "platform_height": 0.84,
+      "platform_name": "PLATFORM 1",
+      "stair_length": 10.0
+    },
+    {
+      "track_layer": "LOOP_2",
+      "platform_type": "SIDE",
+      "side": "RIGHT",
+      "center_on_track": true,
+      "clearance": 1.68,
+      "platform_width": 7.0,
+      "platform_length": 550.0,
+      "platform_height": 0.84,
+      "platform_name": "PLATFORM 2",
+      "stair_length": 10.0
+    }
+  ],
+  "crossovers": [
+    {
+      "from_track": "LOOP_1",
+      "to_track": "MAIN_LINE",
+      "from_chainage_m": 175.709,
+      "turnout": "1:12",
+      "direction": "REVERSE"
+    },
+    {
+      "from_track": "LOOP_1",
+      "to_track": "MAIN_LINE",
+      "from_chainage_m": 925.709,
+      "turnout": "1:12",
+      "direction": "FORWARD"
+    }
+  ],
+  "stations": [
+    {
+      "platform_layer": "PLATFORM_1",
+      "building_length": 40.0,
+      "building_width": 10.0,
+      "platform_side": "LEFT",
+      "building_name": "STATION BUILDING"
+    }
+  ],
+  "fobs": [
+    {
+      "_note": "Basic FOB deck: span is auto-derived from the platform boundaries (no manual coordinates); validated against 6.25 m vertical clearance and the 30 m maximum single span. Platform widths here keep the derived span under 30 m.",
+      "reference_track": "MAIN_LINE",
+      "reference_chainage": 650.0,
+      "platforms": ["PLATFORM_1", "PLATFORM_2"],
+      "arms":{
+        "PLATFORM_1":
+        {"length":20.0 , "side":"LEFT"},
+        "PLATFORM_2":
+        {"length":20.0 , "side":"LEFT"}
+        
+      }
+    }
+  ],
+  "main_directions": {}
+}
