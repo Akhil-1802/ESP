@@ -19,3 +19,9 @@ app.add_middleware(
     expose_headers=["Server-Timing", "X-ESP-Cache", "X-ESP-Generation-ID", "Content-Disposition"],
 )
 app.include_router(router)
+
+
+@app.get("/health")
+@app.head("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
