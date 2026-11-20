@@ -343,6 +343,86 @@ def detect_kml_tracks(
                     "source_names": curr_names,
                 })
 
+    # 7. Secondary cross-handle topological stitching pass.
+    # CAD exports frequently split a single continuous railway alignment across multiple
+    # polyline handles (e.g. across transition spirals, sheet cuts, or layer splits).
+    # Safely stitch candidate paths whose endpoints connect end-to-end with:
+    # - Strict endpoint distance tolerance (<= endpoint_tol_m)
+    # - Collinear tangent alignment (<= max_angle_diff_deg)
+    # - Strict lateral offset (<= 0.4 m) so parallel tracks separated by >= 4.26 m are never cross-connected
+    # - Forward projection (>= -0.1 m) to eliminate reverse/hairpin jumps
+    if has_cad_handles and len(chained_paths) > 1:
+        cross_tol = min(endpoint_tol_m, 2.0)
+        cross_max_angle = min(max_angle_diff_deg, 35.0)
+        max_lateral = 0.4
+
+        merged = True
+        while merged:
+            merged = False
+            n = len(chained_paths)
+            for i in range(n):
+                if chained_paths[i] is None:
+                    continue
+                p1 = chained_paths[i]
+                tail1 = p1["m_pts"][-1]
+                out_v1 = _tangent_vector(p1["m_pts"], at_start=False)
+
+                best_j = None
+                best_rev = False
+                best_d = float("inf")
+
+                for j in range(n):
+                    if i == j or chained_paths[j] is None:
+                        continue
+                    p2 = chained_paths[j]
+
+                    # Tail of p1 -> Start of p2
+                    d_start = _dist(tail1, p2["m_pts"][0])
+                    if d_start <= cross_tol:
+                        in_v = _tangent_vector(p2["m_pts"], at_start=True)
+                        angle = _angle_diff_deg(out_v1, in_v)
+                        dx = p2["m_pts"][0][0] - tail1[0]
+                        dy = p2["m_pts"][0][1] - tail1[1]
+                        fwd = dx * out_v1[0] + dy * out_v1[1]
+                        lat = abs(dx * out_v1[1] - dy * out_v1[0])
+                        if angle <= cross_max_angle and lat <= max_lateral and fwd >= -0.1 and d_start < best_d:
+                            best_j, best_rev, best_d = j, False, d_start
+
+                    # Tail of p1 -> End of p2 (p2 reversed)
+                    d_end = _dist(tail1, p2["m_pts"][-1])
+                    if d_end <= cross_tol:
+                        raw_v = _tangent_vector(p2["m_pts"], at_start=False)
+                        in_v = (-raw_v[0], -raw_v[1])
+                        angle = _angle_diff_deg(out_v1, in_v)
+                        dx = p2["m_pts"][-1][0] - tail1[0]
+                        dy = p2["m_pts"][-1][1] - tail1[1]
+                        fwd = dx * out_v1[0] + dy * out_v1[1]
+                        lat = abs(dx * out_v1[1] - dy * out_v1[0])
+                        if angle <= cross_max_angle and lat <= max_lateral and fwd >= -0.1 and d_end < best_d:
+                            best_j, best_rev, best_d = j, True, d_end
+
+                if best_j is not None:
+                    p2 = chained_paths[best_j]
+                    nxt_m = list(reversed(p2["m_pts"])) if best_rev else list(p2["m_pts"])
+                    nxt_wgs = list(reversed(p2["wgs84_pts"])) if best_rev else list(p2["wgs84_pts"])
+                    new_m = p1["m_pts"] + nxt_m[1:]
+                    new_wgs = p1["wgs84_pts"] + nxt_wgs[1:]
+                    new_len = float(LineString(new_m).length)
+                    new_names = p1["source_names"] + p2["source_names"]
+                    chained_paths[i] = {
+                        "name": f"{p1['name']} + {p2['name']}",
+                        "m_pts": new_m,
+                        "wgs84_pts": new_wgs,
+                        "length_m": round(new_len, 2),
+                        "segment_count": p1["segment_count"] + p2["segment_count"],
+                        "source_names": new_names,
+                    }
+                    chained_paths[best_j] = None
+                    merged = True
+                    break
+
+        chained_paths = [p for p in chained_paths if p is not None]
+
     # Sort descending by TRUE chained continuous length
     chained_paths.sort(key=lambda c: c["length_m"], reverse=True)
 
