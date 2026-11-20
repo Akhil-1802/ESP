@@ -168,6 +168,24 @@ def test_api_expired_snapshot_and_invalid_options_are_explicit(api):
     assert api.post("/key-plan", json={"generation_id": token}).status_code == 410
 
 
+def test_two_stations_on_shared_alignment_keep_independent_finalized_plans(api):
+    tokens = {}
+    for km, name in enumerate(("PANSAR", "SATMILE"), start=1):
+        payload = dict(enable_main_line_trim=True, align_final_plan_to_x_axis=True,
+                       station_markers=[dict(name=name, km=km, m=0)])
+        response = api.post("/generate", files={
+            "config": ("config.json", json.dumps(payload), "application/json"),
+            "kml": ("source.kml", KML, "application/vnd.google-earth.kml+xml"),
+        })
+        assert response.status_code == 200, response.text
+        tokens[name] = response.headers["x-esp-generation-id"]
+    for name, token in tokens.items():
+        plan = api.post("/key-plan", json={"generation_id": token})
+        assert plan.status_code == 200, plan.text
+        assert name in plan.text
+        assert all(other not in plan.text for other in tokens if other != name)
+
+
 def test_complete_yard_snapshot_survives_cleanup_and_keeps_resolved_connections(tmp_path):
     generator = ESPGenerator(yard_config(tmp_path))
     generator.run()

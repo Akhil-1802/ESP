@@ -19,7 +19,7 @@ export function JsonViewer({
       await navigator.clipboard.writeText(displayedText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      onCopy?.();
+      onCopy?.(displayedText);
     } catch {
       // Fallback handled by parent if needed
     }

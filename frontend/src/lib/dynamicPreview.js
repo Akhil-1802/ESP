@@ -12,6 +12,7 @@ import { esc, polylinePathD, r3 } from './dxfPathUtils.js';
 import { BG_DARK, getLayerStyle } from './dxfPreview.js';
 import { formatStartChainage, getStationTrackDistance, parseKmM } from './config.js';
 import { isBlank } from './formUtils.js';
+import { anchorIndex, stationYardForm, yardOwner } from './stationYard.js';
 
 /**
  * Sampling step along track alignment in metres.
@@ -145,20 +146,31 @@ export function generateDynamicPreview(form, options = {}) {
   const alignPts = f.alignmentPoints || options.alignmentPoints || null;
   const mainLen = parseNum(f.mainLength, 1600.0);
   const align = buildAlignmentHelper(alignPts, mainLen);
-  const totalLength = align.totalLength;
-  const stationMarkers = f.stationMarkers || [];
-  const stationDistance = (marker) => {
-    if (!marker || [marker.km, marker.m, marker.chainage].every(isBlank)) return null;
-    const kmM = isBlank(marker.km) && isBlank(marker.m) ? parseKmM(marker.chainage) : marker;
-    return getStationTrackDistance(kmM, f.startKm, f.startM);
-  };
-  let baseCenter = parseNum(f.mainCenter, totalLength / 2.0);
-  const firstStationDistance = stationDistance(stationMarkers[0]);
-  if (firstStationDistance != null && firstStationDistance <= totalLength) {
-    baseCenter = firstStationDistance;
-  }
-  const mainCenter = baseCenter;
+  const layerGroups = new Map();
+  const labels = [];
+  const crossoverTags = [];
+  const allCrossovers = [];
+  const bounds = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const featureBounds = { ...bounds };
+  const scene = { layerGroups, labels, crossoverTags, bounds, featureBounds };
+  const combined = f.stationMarkers?.length > 1;
+  const yards = combined ? f.stationMarkers.map((_, i) => stationYardForm(f, i)) : [f];
+  let mainCenter;
+  yards.forEach((yard, index) => {
+    const platformNames = new Map();
+    if (combined) {
+      (f.platforms || []).forEach((p, i) => {
+        if (yardOwner(p) === index) platformNames.set(`PLATFORM_${platformNames.size + 1}`, `PLATFORM_${i + 1}`);
+      });
+    }
+    const rendered = drawYard(yard, align, scene, options, index === 0, platformNames);
+    mainCenter ??= rendered.mainCenter;
+    allCrossovers.push(...rendered.placedCrossovers);
+  });
+  return assemblePreview(align, mainCenter, scene, allCrossovers);
+}
 
+export function resolveStationGeometry(f, totalLength, mainCenter) {
   // Track position solver: trackName -> lateralOffset from MAIN_LINE
   const trackOffsets = { MAIN_LINE: 0.0 };
 
@@ -180,106 +192,7 @@ export function generateDynamicPreview(form, options = {}) {
     trackOffsets[name] = baseOff + sgn * sp;
   });
 
-  // Layer containers
-  const layerGroups = new Map();
-  const labels = [];
-  const crossoverTags = [];
-  const bounds = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-  const featureBounds = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
 
-  const isFeatureLayer = (layerName) => {
-    const s = String(layerName || '').toUpperCase();
-    return (
-      s.includes('STATION') ||
-      s.includes('PLATFORM') ||
-      s.includes('LOOP') ||
-      s.includes('TURNOUT') ||
-      s.includes('CROSSOVER') ||
-      s.includes('GRADIENT') ||
-      s.includes('FOB') ||
-      s.includes('BRIDGE') ||
-      s.includes('SIGNAL')
-    );
-  };
-
-  const feed = (x, y, layerName = null) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    if (x < bounds.x0) bounds.x0 = x;
-    if (y < bounds.y0) bounds.y0 = y;
-    if (x > bounds.x1) bounds.x1 = x;
-    if (y > bounds.y1) bounds.y1 = y;
-    if (layerName && isFeatureLayer(layerName)) {
-      if (x < featureBounds.x0) featureBounds.x0 = x;
-      if (y < featureBounds.y0) featureBounds.y0 = y;
-      if (x > featureBounds.x1) featureBounds.x1 = x;
-      if (y > featureBounds.y1) featureBounds.y1 = y;
-    }
-  };
-
-  const getGroup = (layerName) => {
-    const key = String(layerName || '0');
-    if (!layerGroups.has(key)) {
-      layerGroups.set(key, { name: key, items: [], style: getLayerStyle(key) });
-    }
-    return layerGroups.get(key);
-  };
-
-  const addLine = (p1, p2, layerName, extraDash = '') => {
-    feed(p1[0], p1[1], layerName);
-    feed(p2[0], p2[1], layerName);
-    const grp = getGroup(layerName);
-    const color = grp.style.color;
-    const w = grp.style.width || '1.5';
-    const dash = extraDash || grp.style.dash || '';
-    const dashAttr = dash ? `stroke-dasharray="${dash}" ` : '';
-    grp.items.push(
-      `<line x1="${r3(p1[0])}" y1="${r3(p1[1])}" x2="${r3(p2[0])}" y2="${r3(p2[1])}" stroke="${color}" stroke-width="${w}" ${dashAttr}vector-effect="non-scaling-stroke"/>`,
-    );
-  };
-
-  const addPolyline = (pts, layerName, closed = false, filled = false) => {
-    if (!pts || pts.length < 2) return;
-    pts.forEach((p) => feed(p[0], p[1], layerName));
-    const grp = getGroup(layerName);
-    const color = grp.style.color;
-    const w = grp.style.width || '1.5';
-    const dash = grp.style.dash || '';
-    const dashAttr = dash ? `stroke-dasharray="${dash}" ` : '';
-    const fillAttr = filled ? `fill="${color}" ` : 'fill="none" ';
-    const d = polylinePathD(pts, closed);
-    grp.items.push(
-      `<path d="${esc(d)}" ${fillAttr}stroke="${color}" stroke-width="${w}" ${dashAttr}vector-effect="non-scaling-stroke"/>`,
-    );
-  };
-
-  const addPath = (d, layerName, extraColor = null, extraWidth = null) => {
-    const grp = getGroup(layerName);
-    const color = extraColor || grp.style.color;
-    const w = extraWidth || grp.style.width || '1.5';
-    grp.items.push(
-      `<path d="${esc(d)}" fill="none" stroke="${color}" stroke-width="${w}" vector-effect="non-scaling-stroke"/>`,
-    );
-  };
-
-  const addText = (str, x, y, layerName, height = 1.0, angle = 0, halign = 1, valign = 2) => {
-    feed(x, y, layerName);
-    const grp = getGroup(layerName);
-    labels.push({
-      str: String(str),
-      x: Number(x),
-      y: Number(y),
-      layer: layerName,
-      color: grp.style.color,
-      height: Number(height) || 1.0,
-      angle: Number(angle) || 0,
-      halign,
-      valign,
-    });
-  };
-
-  // ---------------------------------------------------------------------------
-  // 1. Compute Base Loops & Pre-resolve Crossovers (with 64m Collision Push)
-  // ---------------------------------------------------------------------------
   const resolveTrackOffset = (name, fallback) => {
     if (!name) return fallback;
     if (trackOffsets[name] != null) return trackOffsets[name];
@@ -292,17 +205,16 @@ export function generateDynamicPreview(form, options = {}) {
     const name = (lp.name || `LOOP_${idx + 1}`).trim();
     const crossDist = parseNum(lp.crossoverDistance, 750.0);
     const defaultHalf = crossDist / 2.0;
-    const autoC1 = Math.max(0.0, baseCenter - defaultHalf);
-    const autoC2 = autoC1 + crossDist;
+    const autoC1 = Math.max(0.0, mainCenter - defaultHalf);
     const c1 = parseNum(lp.c1, autoC1);
-    const c2 = parseNum(lp.c2, autoC2);
+    const c2 = parseNum(lp.c2, c1 + crossDist);
     baseLoops[name] = { c1, c2 };
   });
 
   const placedCrossovers = [];
 
   (f.crossovers || []).forEach((x, idx) => {
-    const xId = (x.id || `C${idx + 1}`).trim();
+    const xId = (x.displayId || x.id || `C${idx + 1}`).trim();
     const fromTrack = (x.from || x.fromTrack || x.track1 || 'MAIN_LINE').trim();
     const otherTracks = Object.keys(trackOffsets).filter((k) => k !== fromTrack);
     const defaultTo = otherTracks.length > 0 ? otherTracks[0] : 'LOOP_1';
@@ -358,7 +270,10 @@ export function generateDynamicPreview(form, options = {}) {
       // Check if user selected an anchor crossover (e.g. 'C1', 'C2', 'C3')
       let anchorCrossover = null;
       if (x.autoAnchor) {
-        anchorCrossover = placedCrossovers.find((c) => c.id === String(x.autoAnchor).trim());
+        const target = anchorIndex(f.crossovers, idx);
+        if (target < 0) return;
+        anchorCrossover = placedCrossovers.find((c) => c.sourceIndex === target);
+        if (!anchorCrossover) return;
       }
 
       if (anchorCrossover) {
@@ -442,6 +357,7 @@ export function generateDynamicPreview(form, options = {}) {
     const c2 = c1 + sgnDir * ol_m;
 
     placedCrossovers.push({
+      sourceIndex: idx,
       id: xId,
       c1,
       c2,
@@ -461,61 +377,156 @@ export function generateDynamicPreview(form, options = {}) {
   // 2. Compute Loop Extents & Alignment Trimming (overrun 120m from outermost SRJ)
   // ---------------------------------------------------------------------------
   const loopExtents = {};
-
-  (f.loops || []).forEach((lp, idx) => {
-    const name = (lp.name || `LOOP_${idx + 1}`).trim();
-    const ref = lp.referenceTrack || 'MAIN_LINE';
-    const baseOff = trackOffsets[ref] ?? 0.0;
-    const sp = parseNum(lp.spacing, 5.3);
-    const sgn = String(lp.side || 'LEFT').toUpperCase() === 'RIGHT' ? -1 : 1;
-    const loopOff = baseOff + sgn * sp;
-
-    // Base crossover chainages C1 and C2 (default 750m centered on station/track)
-    const crossDist = parseNum(lp.crossoverDistance, 750.0);
-    const defaultHalf = crossDist / 2.0;
-    const autoC1 = Math.max(0.0, baseCenter - defaultHalf);
-    const autoC2 = autoC1 + crossDist;
-    const baseC1 = parseNum(lp.c1, autoC1);
-    const baseC2 = parseNum(lp.c2, autoC2);
-
-    let runS = baseC1;
-    let runE = baseC2;
-
-    // Check all SRJs on this loop from placedCrossovers to extend running line
-    placedCrossovers.forEach((xo) => {
-      if (xo.fromTrack === name || xo.toTrack === name) {
-        const srj = xo.fromTrack === name ? xo.c1 : xo.c2;
-        const mid = (baseC1 + baseC2) / 2.0;
-        if (srj <= mid && srj < runS) runS = srj;
-        if (srj > mid && srj > runE) runE = srj;
-      }
-    });
-
-    // Overruns (default 120m per Indian Railways standards, exactly 120m from outermost SRJ)
-    const overrunBefore = parseNum(lp.overrunBeforeC1 ?? lp.extStart, 120.0);
-    const overrunAfter = parseNum(lp.overrunAfterC2 ?? lp.extEnd, 120.0);
-
-    // Multi-loop ladder extension (matching backend count_outer_loops * 150m)
-    let numOuter = 0;
-    const mySide = String(lp.side || 'LEFT').toUpperCase();
-    const mySpacing = Math.abs(loopOff);
-    (f.loops || []).forEach((otherLp, oIdx) => {
-      if (oIdx === idx) return;
-      const otherName = (otherLp.name || `LOOP_${oIdx + 1}`).trim();
-      const otherSide = String(otherLp.side || 'LEFT').toUpperCase();
-      const otherSpacing = Math.abs(trackOffsets[otherName] ?? 5.3);
-      if (otherSide === mySide && otherSpacing > mySpacing + 1e-3) {
-        numOuter++;
-      }
-    });
-    const ladderLead = numOuter * 150.0;
-
-    const sStart = Math.max(0.0, runS - overrunBefore - ladderLead);
-    const sEnd = Math.min(totalLength, runE + overrunAfter + ladderLead);
-
-    loopExtents[name] = { c1: runS, c2: runE, baseC1, baseC2, overrunBefore, overrunAfter, ladderLead, sStart, sEnd, loopOff, ref, sp, sgn };
+  // Resolve running ends from the outermost loop inward, as in crossover_cuts.py.
+  const loops = (f.loops || []).map((loop, i) => {
+    const name = (loop.name || `LOOP_${i + 1}`).trim();
+    return { loop, name, offset: trackOffsets[name] };
   });
+  for (const left of [true, false]) {
+    const side = loops.filter(item => (item.offset >= 0) === left)
+      .sort((a, b) => Math.abs(b.offset) - Math.abs(a.offset));
+    let previous = null;
+    for (const { loop, name, offset } of side) {
+      const { c1: baseC1, c2: baseC2 } = baseLoops[name];
+      const middle = (baseC1 + baseC2) / 2;
+      const srjs = placedCrossovers.flatMap(x => x.fromTrack === name ? [x.c1] : x.toTrack === name ? [x.c2] : []);
+      const start = Math.min(...srjs.filter(ch => ch <= middle));
+      const end = Math.max(...srjs.filter(ch => ch > middle));
+      const outer = side.filter(other => Math.abs(other.offset) > Math.abs(offset) + 0.001).length;
+      const step = String(loop.turnout || '').includes('8.5') ? 78 : 110.578;
+      let c1 = baseC1, c2 = baseC2;
+      if (placedCrossovers.length) {
+        const cutStart = Number.isFinite(start) && (start < baseC1 - 0.1 || start > baseC1 + 1);
+        const cutEnd = Number.isFinite(end) && (end > baseC2 + 0.1 || end < baseC2 - 1);
+        const collapsed = cutStart && cutEnd && end - start < 1;
+        if (cutStart && !collapsed) c1 = start;
+        else if (previous) c1 = Math.min(baseC1 - outer * step, previous.c1 - step);
+        if (cutEnd && !collapsed) c2 = end;
+        else if (previous) c2 = Math.max(baseC2 + outer * step, previous.c2 + step);
+        c1 = Math.min(c1, start, previous?.c1 ?? Infinity);
+        c2 = Math.max(c2, end, previous?.c2 ?? -Infinity);
+      }
+      const lead = placedCrossovers.length ? 0 : outer * 150;
+      previous = { c1, c2, baseC1, baseC2, loopOff: offset,
+        sStart: Math.max(0, c1 - parseNum(loop.overrunBeforeC1 ?? loop.extStart, 120) - lead),
+        sEnd: Math.min(totalLength, c2 + parseNum(loop.overrunAfterC2 ?? loop.extEnd, 120) + lead) };
+      loopExtents[name] = previous;
+    }
+  }
+  return { placedCrossovers, loopExtents, trackOffsets };
+}
 
+function drawYard(f, align, scene, options, drawMain, platformNames) {
+  const totalLength = align.totalLength;
+  const { layerGroups, labels, crossoverTags, bounds, featureBounds } = scene;
+  const stationMarkers = f.stationMarkers || [];
+  const stationDistance = (marker) => {
+    if (!marker || [marker.km, marker.m, marker.chainage].every(isBlank)) return null;
+    const kmM = isBlank(marker.km) && isBlank(marker.m) ? parseKmM(marker.chainage) : marker;
+    return getStationTrackDistance(kmM, f.startKm, f.startM);
+  };
+  let baseCenter = parseNum(f.mainCenter, totalLength / 2.0);
+  const firstStationDistance = stationDistance(stationMarkers[0]);
+  if (firstStationDistance != null && firstStationDistance <= totalLength) {
+    baseCenter = firstStationDistance;
+  }
+  const mainCenter = baseCenter;
+
+  const { placedCrossovers, loopExtents, trackOffsets } = resolveStationGeometry(f, totalLength, mainCenter);
+
+  const isFeatureLayer = (layerName) => {
+    const s = String(layerName || '').toUpperCase();
+    return (
+      s.includes('STATION') ||
+      s.includes('PLATFORM') ||
+      s.includes('LOOP') ||
+      s.includes('TURNOUT') ||
+      s.includes('CROSSOVER') ||
+      s.includes('GRADIENT') ||
+      s.includes('FOB') ||
+      s.includes('BRIDGE') ||
+      s.includes('SIGNAL')
+    );
+  };
+
+  const feed = (x, y, layerName = null) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < bounds.x0) bounds.x0 = x;
+    if (y < bounds.y0) bounds.y0 = y;
+    if (x > bounds.x1) bounds.x1 = x;
+    if (y > bounds.y1) bounds.y1 = y;
+    if (layerName && isFeatureLayer(layerName)) {
+      if (x < featureBounds.x0) featureBounds.x0 = x;
+      if (y < featureBounds.y0) featureBounds.y0 = y;
+      if (x > featureBounds.x1) featureBounds.x1 = x;
+      if (y > featureBounds.y1) featureBounds.y1 = y;
+    }
+  };
+
+  const getGroup = (layerName) => {
+    const key = platformNames.get(layerName) ?? String(layerName || '0');
+    if (!layerGroups.has(key)) {
+      layerGroups.set(key, { name: key, items: [], style: getLayerStyle(key) });
+    }
+    return layerGroups.get(key);
+  };
+
+  const addLine = (p1, p2, layerName, extraDash = '') => {
+    feed(p1[0], p1[1], layerName);
+    feed(p2[0], p2[1], layerName);
+    const grp = getGroup(layerName);
+    const color = grp.style.color;
+    const w = grp.style.width || '1.5';
+    const dash = extraDash || grp.style.dash || '';
+    const dashAttr = dash ? `stroke-dasharray="${dash}" ` : '';
+    grp.items.push(
+      `<line x1="${r3(p1[0])}" y1="${r3(p1[1])}" x2="${r3(p2[0])}" y2="${r3(p2[1])}" stroke="${color}" stroke-width="${w}" ${dashAttr}vector-effect="non-scaling-stroke"/>`,
+    );
+  };
+
+  const addPolyline = (pts, layerName, closed = false, filled = false) => {
+    if (!pts || pts.length < 2) return;
+    pts.forEach((p) => feed(p[0], p[1], layerName));
+    const grp = getGroup(layerName);
+    const color = grp.style.color;
+    const w = grp.style.width || '1.5';
+    const dash = grp.style.dash || '';
+    const dashAttr = dash ? `stroke-dasharray="${dash}" ` : '';
+    const fillAttr = filled ? `fill="${color}" ` : 'fill="none" ';
+    const d = polylinePathD(pts, closed);
+    grp.items.push(
+      `<path d="${esc(d)}" ${fillAttr}stroke="${color}" stroke-width="${w}" ${dashAttr}vector-effect="non-scaling-stroke"/>`,
+    );
+  };
+
+  const addPath = (d, layerName, extraColor = null, extraWidth = null) => {
+    const grp = getGroup(layerName);
+    const color = extraColor || grp.style.color;
+    const w = extraWidth || grp.style.width || '1.5';
+    grp.items.push(
+      `<path d="${esc(d)}" fill="none" stroke="${color}" stroke-width="${w}" vector-effect="non-scaling-stroke"/>`,
+    );
+  };
+
+  const addText = (str, x, y, layerName, height = 1.0, angle = 0, halign = 1, valign = 2) => {
+    feed(x, y, layerName);
+    const grp = getGroup(layerName);
+    labels.push({
+      str: String(str),
+      x: Number(x),
+      y: Number(y),
+      layer: grp.name,
+      color: grp.style.color,
+      height: Number(height) || 1.0,
+      angle: Number(angle) || 0,
+      halign,
+      valign,
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // 1. Compute Base Loops & Pre-resolve Crossovers (with 64m Collision Push)
+  // ---------------------------------------------------------------------------
   const isTrimmed = Boolean(f.enableMainLineTrim || options.isTrimmed || f.isTrimmed);
   let mainStart = 0.0;
   let mainEnd = totalLength;
@@ -546,37 +557,39 @@ export function generateDynamicPreview(form, options = {}) {
   // ---------------------------------------------------------------------------
   // 1. Draw MAIN_LINE & Additional Main Lines
   // ---------------------------------------------------------------------------
-  const mainPts = align.samplePolyline(mainStart, mainEnd, 0.0);
-  addPolyline(mainPts, 'MAIN_LINE');
+  if (drawMain) {
+    const mainPts = align.samplePolyline(mainStart, mainEnd, 0.0);
+    addPolyline(mainPts, 'MAIN_LINE');
 
-  // Direction mark: only draw when additional main lines are configured (matching backend tracks.py line 187)
-  const dirAt = align.getAt(mainCenter);
-  const dirAng = (Math.atan2(dirAt.tangent[1], dirAt.tangent[0]) * 180) / Math.PI;
-  const hasMultipleMains = Array.isArray(f.mainLines) && f.mainLines.length > 0;
-  if (hasMultipleMains) {
-    const dirName = String(f.mainLineDirection || 'UP').toUpperCase();
-    const arrowSgn = dirName === 'UP' ? 1 : -1;
-    const arrowX = dirAt.point[0];
-    const arrowY = dirAt.point[1] + (dirAt.normal[1] * 2.5 || 2.5);
-    addLine(
-      [arrowX - 8 * arrowSgn * dirAt.tangent[0], arrowY - 8 * arrowSgn * dirAt.tangent[1]],
-      [arrowX + 8 * arrowSgn * dirAt.tangent[0], arrowY + 8 * arrowSgn * dirAt.tangent[1]],
-      'DIRECTION',
-    );
-    addText(dirName, arrowX, arrowY + (dirAt.normal[1] * 1.5 || 1.5), 'DIRECTION', 1.0, dirAng, 1, 2);
+    // Direction mark: only draw when additional main lines are configured (matching backend tracks.py line 187)
+    const dirAt = align.getAt(mainCenter);
+    const dirAng = (Math.atan2(dirAt.tangent[1], dirAt.tangent[0]) * 180) / Math.PI;
+    const hasMultipleMains = Array.isArray(f.mainLines) && f.mainLines.length > 0;
+    if (hasMultipleMains) {
+      const dirName = String(f.mainLineDirection || 'UP').toUpperCase();
+      const arrowSgn = dirName === 'UP' ? 1 : -1;
+      const arrowX = dirAt.point[0];
+      const arrowY = dirAt.point[1] + (dirAt.normal[1] * 2.5 || 2.5);
+      addLine(
+        [arrowX - 8 * arrowSgn * dirAt.tangent[0], arrowY - 8 * arrowSgn * dirAt.tangent[1]],
+        [arrowX + 8 * arrowSgn * dirAt.tangent[0], arrowY + 8 * arrowSgn * dirAt.tangent[1]],
+        'DIRECTION',
+      );
+      addText(dirName, arrowX, arrowY + (dirAt.normal[1] * 1.5 || 1.5), 'DIRECTION', 1.0, dirAng, 1, 2);
+    }
+
+    // Additional Main Lines
+    (f.mainLines || []).forEach((ml, idx) => {
+      const name = `MAIN_LINE_${idx + 1}`;
+      const off = trackOffsets[name] ?? 5.3;
+      const pts = align.samplePolyline(mainStart, mainEnd, off);
+      addPolyline(pts, name);
+      const mlDir = String(ml.direction || 'DN').toUpperCase();
+      const mlAt = align.getAt(mainCenter);
+      const mlY = mlAt.point[1] + off + (mlDir === 'UP' ? 3.0 : -3.0);
+      addText(name, mlAt.point[0], mlY, 'TRACK_LABELS', 0.9, dirAng, 1, 2);
+    });
   }
-
-  // Additional Main Lines
-  (f.mainLines || []).forEach((ml, idx) => {
-    const name = `MAIN_LINE_${idx + 1}`;
-    const off = trackOffsets[name] ?? 5.3;
-    const pts = align.samplePolyline(mainStart, mainEnd, off);
-    addPolyline(pts, name);
-    const mlDir = String(ml.direction || 'DN').toUpperCase();
-    const mlAt = align.getAt(mainCenter);
-    const mlY = mlAt.point[1] + off + (mlDir === 'UP' ? 3.0 : -3.0);
-    addText(name, mlAt.point[0], mlY, 'TRACK_LABELS', 0.9, dirAng, 1, 2);
-  });
 
   // ---------------------------------------------------------------------------
   // 2. Draw Loop Lines (Mathematical mirror of backend generator.py)
@@ -1087,6 +1100,12 @@ export function generateDynamicPreview(form, options = {}) {
   });
 
   // ---------------------------------------------------------------------------
+  return { mainCenter, placedCrossovers };
+}
+
+function assemblePreview(align, mainCenter, scene, placedCrossovers) {
+  const { layerGroups, labels, crossoverTags, bounds, featureBounds } = scene;
+  const totalLength = align.totalLength;
   // 8. Final SVG Assembly
   // ---------------------------------------------------------------------------
   if (!Number.isFinite(bounds.x0) || bounds.x0 >= bounds.x1) {

@@ -13,7 +13,8 @@
   "dependencies": {
     "dxf-parser": "^1.1.2",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "read-excel-file": "^6.0.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -32,6 +32,10 @@ import {
 import { downloadBlob, fetchMainCenter, generateDxf, convertKmlDirect, generateKeyPlan } from './lib/api.js';
 import { dxfToSvg, svgToPngBlob } from './lib/dxfPreview.js';
 import { generateDynamicPreview } from './lib/dynamicPreview.js';
+import { stationYardForm, yardOwner } from './lib/stationYard.js';
+
+const defaultPlanOptions = { width: '420', height: '150', left_destination: '',
+  right_destination: '', station_caption: '', north_angle: '' };
 
 const initialForm = () => ({
   kmlFile: null,
@@ -66,10 +70,31 @@ export default function App() {
   const [isTrimmed, setIsTrimmed] = useState(false);
   const [keyPlanResult, setKeyPlanResult] = useState(null);
   const [activeView, setActiveView] = useState('esp');
-  const [keyPlanOptions, setKeyPlanOptions] = useState({ width: '420', height: '150',
-    left_destination: '', right_destination: '', station_caption: '', north_angle: '' });
+  const [keyPlanOptions, setKeyPlanOptions] = useState(defaultPlanOptions);
+  const [stationPlans, setStationPlans] = useState({});
+  const [viewStation, setViewStation] = useState(null);
+  const yards = useMemo(() => form.stationMarkers.map((marker, index) => {
+    const scoped = stationYardForm(form, index);
+    return { id: marker.yardId, form: scoped, signature: JSON.stringify(buildConfig(scoped)) };
+  }), [form]);
+  const currentYard = yards.find((yard) => yard.id === viewStation);
+
+  function savedPlan(yard) {
+    const saved = stationPlans[yard.id];
+    return saved?.file === form.kmlFile && saved?.signature === yard.signature ? saved : null;
+  }
+
+  function savePlan(yard, changes) {
+    setStationPlans((plans) => {
+      const old = plans[yard.id];
+      const valid = old?.file === form.kmlFile && old?.signature === yard.signature;
+      return { ...plans, [yard.id]: { options: old?.options, ...(valid ? old : {}),
+        file: form.kmlFile, signature: yard.signature, ...changes } };
+    });
+  }
   const designRevision = useRef(0);
   const keyPlanRevision = useRef(0);
+  const nextYardId = useRef(1);
 
   // Panel visibility toggles
   const [leftOpen, setLeftOpen] = useState(true);
@@ -152,7 +177,9 @@ export default function App() {
     if (!hasContent) return null;
 
     try {
-      const dyn = generateDynamicPreview(form, { isTrimmed });
+      const dyn = form.stationMarkers.length
+        ? generateDynamicPreview({ ...form, enableMainLineTrim: false, isTrimmed: false })
+        : generateDynamicPreview(form, { isTrimmed });
       const filename = form.outputDxf
         ? form.outputDxf.trim()
         : form.kmlFile
@@ -170,7 +197,8 @@ export default function App() {
     }
   }, [form, configText, isTrimmed]);
 
-  const result = activeView === 'key-plan' && keyPlanResult ? keyPlanResult : backendResult || dynamicResult;
+  const result = activeView === 'live' ? dynamicResult
+    : activeView === 'key-plan' && keyPlanResult ? keyPlanResult : backendResult || dynamicResult;
   const keyPlanReady = Boolean(backendResult?.isTrimmed && backendResult?.generationId);
 
   const updateForm = (updater) => {
@@ -180,7 +208,13 @@ export default function App() {
     setKeyPlanResult(null);
     setActiveView('esp');
     setStatus({ kind: 'idle' });
-    setForm(updater);
+    setIsTrimmed(false);
+    setForm((prev) => {
+      const next = updater(prev);
+      if (!next.stationMarkers.some((marker) => !marker.yardId)) return next;
+      return { ...next, stationMarkers: next.stationMarkers.map((marker) =>
+        marker.yardId ? marker : { ...marker, yardId: nextYardId.current++ }) };
+    });
   };
 
   const updateKeyPlanOptions = (next) => {
@@ -191,10 +225,12 @@ export default function App() {
     setStatus({ kind: 'idle' });
   };
 
-  const onGenerateKeyPlan = async () => {
-    if (!keyPlanReady) return;
-    const width = Number(keyPlanOptions.width), height = Number(keyPlanOptions.height);
-    const northAngle = keyPlanOptions.north_angle === '' ? null : Number(keyPlanOptions.north_angle);
+  const onGenerateKeyPlan = async (yard = null) => {
+    const esp = yard ? savedPlan(yard)?.esp : backendResult;
+    if (!esp?.isTrimmed || !esp.generationId) return;
+    const optionsInput = yard ? stationPlans[yard.id]?.options ?? defaultPlanOptions : keyPlanOptions;
+    const width = Number(optionsInput.width), height = Number(optionsInput.height);
+    const northAngle = optionsInput.north_angle === '' ? null : Number(optionsInput.north_angle);
     if (!Number.isFinite(width) || width < 210 || width > 1680 ||
         !Number.isFinite(height) || height < 100 || height > 1200 ||
         (northAngle !== null && (!Number.isFinite(northAngle) || Math.abs(northAngle) > 360))) {
@@ -204,22 +240,34 @@ export default function App() {
     const revision = ++keyPlanRevision.current;
     setStatus({ kind: 'busy', message: 'Generating key plan…' });
     try {
-      const options = { ...keyPlanOptions, width, height, north_angle: northAngle };
-      const { blob, filename } = await generateKeyPlan({ generationId: backendResult.generationId, options });
+      const options = { ...optionsInput, width, height, north_angle: northAngle };
+      const { blob, filename: apiFilename } = await generateKeyPlan({ generationId: esp.generationId, options });
+      const filename = yard ? esp.filename.replace(/\.dxf$/i, '_key_plan.dxf') : apiFilename;
       const preview = dxfToSvg(await blob.arrayBuffer(), { keyPlan: true });
       if (revision !== keyPlanRevision.current) return;
-      setKeyPlanResult({ ...preview, blob, filename, fitWholePlan: true,
-        json: JSON.stringify({ generation_id: backendResult.generationId, options }, null, 2) });
+      const plan = { ...preview, blob, filename, fitWholePlan: true,
+        json: JSON.stringify({ generation_id: esp.generationId, options }, null, 2) };
+      if (yard) {
+        savePlan(yard, { plan });
+        setViewStation(yard.id);
+        setBackendResult(esp);
+        setIsTrimmed(true);
+      }
+      setKeyPlanResult(plan);
       setActiveView('key-plan');
       setStatus({ kind: 'ok', filename });
     } catch (err) {
       if (revision !== keyPlanRevision.current) return;
-      if (err.status === 410) setBackendResult((prev) => prev ? { ...prev, generationId: null } : prev);
+      if (err.status === 410) {
+        if (yard) savePlan(yard, { esp: { ...esp, generationId: null } });
+        setBackendResult((prev) => prev === esp ? { ...esp, generationId: null } : prev);
+      }
       setStatus({ kind: 'error', messages: [err.message] });
     }
   };
 
   const onPreviewDirectKml = async () => {
+    setViewStation(null);
     const revision = ++designRevision.current;
     keyPlanRevision.current += 1;
     setKeyPlanResult(null);
@@ -254,12 +302,15 @@ export default function App() {
     }
   };
 
-  const onGenerate = async (overrides = {}) => {
+  const onGenerate = async (overrides = {}, yard = null, previewOnly = false) => {
     const revision = ++designRevision.current;
     keyPlanRevision.current += 1;
     setKeyPlanResult(null);
     setActiveView('esp');
-    let working = { ...form, ...overrides };
+    setViewStation(yard?.id ?? null);
+    setBackendResult(null);
+    setIsTrimmed(false);
+    let working = { ...(yard?.form ?? form), ...overrides };
     if (overrides.enableMainLineTrim !== undefined) {
       working.enableMainLineTrim = overrides.enableMainLineTrim;
     }
@@ -280,7 +331,7 @@ export default function App() {
         const c = await fetchMainCenter({ kmlFile: working.kmlFile, selectedTrackId: working.selectedTrackId });
         if (revision !== designRevision.current) return;
         working = fillFobCentres(fillCentredChainages(working, c), c);
-        setForm(working);
+        if (!yard && !previewOnly) setForm(working);
       } catch (err) {
         if (revision !== designRevision.current) return;
         setStatus({ kind: 'error', messages: [err.message] });
@@ -300,7 +351,7 @@ export default function App() {
       const { blob, filename, generationId } = await generateDxf({ config: finalConfig, kmlFile: working.kmlFile });
       const crossoverLabels =
         Array.isArray(working.crossovers) && working.crossovers.length > 0
-          ? working.crossovers.map((c, i) => c.id || `C${i + 1}`)
+          ? working.crossovers.map((c, i) => (yard && c.displayId) || c.id || `C${i + 1}`)
           : Array.isArray(finalConfig.crossovers)
             ? finalConfig.crossovers.map((c, i) => c.id || `C${i + 1}`)
             : null;
@@ -313,19 +364,21 @@ export default function App() {
       if (revision !== designRevision.current) return;
       const trimmedApplied = Boolean(finalConfig.enable_main_line_trim);
       setIsTrimmed(trimmedApplied);
-      setForm((prev) => ({
+      if (!yard && !previewOnly) setForm((prev) => ({
         ...prev,
         ...working,
         enableMainLineTrim: trimmedApplied,
       }));
-      setBackendResult({
+      const esp = {
         blob,
         filename,
         generationId,
         json: JSON.stringify(finalConfig, null, 2),
         isTrimmed: trimmedApplied,
         ...preview,
-      });
+      };
+      setBackendResult(esp);
+      if (yard) savePlan(yard, { esp, plan: null });
       setHasGeneratedDxf(true);
       setStatus({
         kind: 'ok',
@@ -344,6 +397,7 @@ export default function App() {
   };
 
   const onLoadDemo = async () => {
+    setViewStation(null);
     const revision = ++designRevision.current;
     keyPlanRevision.current += 1;
     setKeyPlanResult(null);
@@ -371,9 +425,9 @@ export default function App() {
     }
   };
 
-  const copyJson = async () => {
+  const copyJson = async (text) => {
     try {
-      await navigator.clipboard.writeText(configText);
+      await navigator.clipboard.writeText(text);
       setStatus({ kind: 'ok', filename: 'Config JSON copied to clipboard.' });
     } catch {
       setStatus({ kind: 'error', messages: ['Clipboard unavailable — use Download JSON instead.'] });
@@ -399,8 +453,10 @@ export default function App() {
   const handleDownloadDxf = () => {
     if (result && result.blob) {
       downloadBlob(result.blob, result.filename);
+    } else if (yards.length && !currentYard) {
+      setStatus({ kind: 'error', messages: ['Choose Generate DXF inside the station layout you want to export.'] });
     } else {
-      onGenerate();
+      onGenerate({}, currentYard);
     }
   };
 
@@ -492,7 +548,7 @@ export default function App() {
             <span>JSON</span>
           </button>
 
-          {/* Primary Generate Button */}
+          {yards.length === 0 && <>
           <button
             type="button"
             onClick={() => onGenerate()}
@@ -537,6 +593,7 @@ export default function App() {
               <span>{isTrimmed ? 'Plan Finalized' : 'Finalize Plan'}</span>
             </button>
           )}
+          </>}
         </div>
       </header>
 
@@ -582,7 +639,9 @@ export default function App() {
               <SourceSection
                 form={form}
                 set={updateForm}
-                onPreviewKml={onGenerate}
+                onPreviewKml={() => onGenerate(yards.length ? {
+                  loops: [], platforms: [], stations: [], bridges: [], crossovers: [], gradients: [], fobs: [], sidings: [],
+                } : {}, null, true)}
                 onPreviewDirectKml={onPreviewDirectKml}
                 alignmentState={alignmentState}
                 onAlignmentStateChange={setAlignmentState}
@@ -602,18 +661,50 @@ export default function App() {
               </div>
 
               {(form.stationMarkers || []).length > 0 ? (
-                form.stationMarkers.map((stn, idx) => (
+                form.stationMarkers.map((stn, idx) => {
+                  const yard = yards[idx];
+                  const saved = savedPlan(yard);
+                  const showSaved = () => {
+                    setViewStation(yard.id);
+                    setBackendResult(saved.esp);
+                    setIsTrimmed(Boolean(saved.esp.isTrimmed));
+                    setKeyPlanResult(saved.plan ?? null);
+                    setActiveView('esp');
+                    setStatus({ kind: 'idle' });
+                  };
+                  return (
                   <StationYardSection
-                    key={idx}
+                    key={yard.id}
                     station={stn}
+                    drawingForm={yard.form}
                     stationIndex={idx}
                     form={form}
-                    set={updateForm}
-                    tracks={tracks}
-                    layers={layers}
-                    hasGenerated={hasGeneratedDxf}
-                  />
-                ))
+                    set={(updater) => { setViewStation(yard.id); updateForm(updater); }}
+                    tracks={trackOptions(yard.form)}
+                    layers={layers.filter((_, i) => yardOwner(form.platforms[i]) === idx)}
+                    hasGenerated={Boolean(saved?.esp)}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" disabled={busy} onClick={() => onGenerate({ enableMainLineTrim: false }, yard)}
+                        className="rounded-lg bg-[var(--accent)] px-3 py-2 font-semibold text-white disabled:opacity-50">Generate DXF</button>
+                      <button type="button" disabled={busy || !saved?.esp} onClick={() => onGenerate({ enableMainLineTrim: true }, yard)}
+                        className="rounded-lg bg-emerald-700 px-3 py-2 font-semibold text-white disabled:opacity-50">Finalize Plan</button>
+                      {saved?.esp && <button type="button" disabled={busy} onClick={showSaved}
+                        className="px-2 text-[var(--accent)]">View station ESP</button>}
+                    </div>
+                    <KeyPlanSection options={stationPlans[yard.id]?.options ?? defaultPlanOptions}
+                      onChange={(options) => {
+                        keyPlanRevision.current += 1;
+                        savePlan(yard, { options, plan: null });
+                        if (viewStation === yard.id) { setKeyPlanResult(null); setActiveView('esp'); }
+                        setStatus({ kind: 'idle' });
+                      }}
+                      ready={Boolean(saved?.esp?.isTrimmed && saved.esp.generationId)}
+                      finalized={Boolean(saved?.esp?.isTrimmed)} busy={busy}
+                      onGenerate={() => onGenerateKeyPlan(yard)}
+                      onRefinalize={() => onGenerate({ enableMainLineTrim: true }, yard)} />
+                  </StationYardSection>
+                ); })
               ) : (
                 <StationYardSection
                   key="alignment-yard"
@@ -628,10 +719,10 @@ export default function App() {
                   referenceDistance={Number(form.mainCenter) || 0}
                 />
               )}
-              <KeyPlanSection options={keyPlanOptions} onChange={updateKeyPlanOptions}
+              {!yards.length && <KeyPlanSection options={keyPlanOptions} onChange={updateKeyPlanOptions}
                 ready={keyPlanReady} finalized={Boolean(backendResult?.isTrimmed)} busy={busy}
-                onGenerate={onGenerateKeyPlan}
-                onRefinalize={() => onGenerate({ enableMainLineTrim: true })} />
+                onGenerate={() => onGenerateKeyPlan()}
+                onRefinalize={() => onGenerate({ enableMainLineTrim: true })} />}
             </div>
 
             {/* Drag handle: resize the inputs sidebar */}
@@ -645,7 +736,7 @@ export default function App() {
             </div>
 
             {/* Sticky Sidebar Bottom Generate Action */}
-            <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-sm space-y-2">
+            {!yards.length && <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-sm space-y-2">
               <button
                 type="button"
                 onClick={() => onGenerate({ enableMainLineTrim: false })}
@@ -695,7 +786,7 @@ export default function App() {
                   Finalize Plan shows the boundary, trims the drawing and aligns the ESP with the X-axis.
                 </p>
               )}
-            </div>
+            </div>}
           </aside>
         ) : (
           /* Collapsed strip button */
@@ -721,9 +812,13 @@ export default function App() {
         {/* ============================================================ */}
         <main className="flex-1 min-w-0 h-full overflow-hidden flex flex-col bg-white">
           {backendResult && <div className="flex shrink-0 gap-2 border-b border-[var(--border)] px-3 py-2" role="tablist" aria-label="Drawing views">
+            {yards.length > 0 && dynamicResult && <button type="button" role="tab" aria-selected={activeView === 'live'} onClick={() => setActiveView('live')}
+              className={`rounded px-3 py-1 text-xs font-semibold ${activeView === 'live' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)]'}`}>
+              Live alignment
+            </button>}
             <button type="button" role="tab" aria-selected={activeView === 'esp'} onClick={() => setActiveView('esp')}
               className={`rounded px-3 py-1 text-xs font-semibold ${activeView === 'esp' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)]'}`}>
-              {backendResult.isTrimmed ? 'Final ESP' : 'ESP'}
+              {currentYard && `${currentYard.form.stationMarkers[0].name} · `}{backendResult.isTrimmed ? 'Final ESP' : 'ESP'}
             </button>
             <button type="button" role="tab" disabled={!keyPlanResult} aria-selected={activeView === 'key-plan'} onClick={() => setActiveView('key-plan')}
               className={`rounded px-3 py-1 text-xs font-semibold disabled:opacity-40 ${activeView === 'key-plan' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)]'}`}>
@@ -735,8 +830,8 @@ export default function App() {
             result={result}
             busy={busy}
             busyMessage={busyMessage}
-            isTrimmed={isTrimmed}
-            onToggleTrim={backendResult && activeView === 'esp' ? onToggleTrim : null}
+            isTrimmed={activeView !== 'live' && isTrimmed}
+            onToggleTrim={!yards.length && backendResult && activeView === 'esp' ? onToggleTrim : null}
             onDownloadDxf={handleDownloadDxf}
             onDownloadPng={downloadResultPng}
             onDownloadJson={downloadJson}

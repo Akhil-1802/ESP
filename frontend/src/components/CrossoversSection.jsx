@@ -31,9 +31,8 @@ export function CrossoversSection({ form, set, tracks, hasGenerated }) {
       )}
       {form.crossovers.length === 0 && <Empty>No crossovers.</Empty>}
       {form.crossovers.map((x, i) => {
-          const itemLoopEnds = getExtendedLoopEnds(form, i);
-          const targetTrack = itemLoopEnds[x.from] ? x.from : (itemLoopEnds[x.to] ? x.to : null);
-          const ends = targetTrack ? itemLoopEnds[targetTrack] : null;
+          const targetTrack = loopEnds[x.from] ? x.from : x.to;
+          const ends = loopEnds[targetTrack];
           const setChainage = (v) => setTop({ crossovers: patchAt(form.crossovers, i, { chainage: v }) });
           const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
           const chBadge = x.chainage ? `CH ${x.chainage}` : 'AUTO';
@@ -65,24 +64,22 @@ export function CrossoversSection({ form, set, tracks, hasGenerated }) {
                   label="Start chainage (MAIN m) *"
                   hint={
                     ends
-                      ? `First SRJ on ${x.from || targetTrack} — range [${ends.c1}, ${ends.c2}], or AUTO${
-                          ends.isExtended ? ` (Extended from [${ends.baseC1}, ${ends.baseC2}])` : ''
-                        }`
+                      ? `Defined ends of ${targetTrack} in metres.`
                       : 'First SRJ, or AUTO'
                   }
                 >
                   <Text
                     value={x.chainage}
-                    placeholder={ends ? `${ends.c1} or ${ends.c2} or AUTO` : 'chainage or AUTO'}
+                    placeholder={ends ? `${ends.baseC1} or ${ends.baseC2} or AUTO` : 'chainage or AUTO'}
                     onChange={(e) => setChainage(e.target.value)}
                   />
                   {ends && (
                     <span className="mt-1 flex flex-wrap gap-1.5">
-                      <button type="button" className={chipCls} onClick={() => setChainage(String(ends.c1))}>
-                        Loop start {ends.c1}
+                      <button type="button" className={chipCls} onClick={() => setChainage(String(ends.baseC1))}>
+                        Loop start {ends.baseC1}
                       </button>
-                      <button type="button" className={chipCls} onClick={() => setChainage(String(ends.c2))}>
-                        Loop end {ends.c2}
+                      <button type="button" className={chipCls} onClick={() => setChainage(String(ends.baseC2))}>
+                        Loop end {ends.baseC2}
                       </button>
                       <button type="button" className={chipCls} onClick={() => setChainage('AUTO')}>
                         AUTO

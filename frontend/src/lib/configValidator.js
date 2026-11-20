@@ -1,3 +1,4 @@
+import { anchorIndex } from './stationYard.js';
 import { bridgeTypeLabel, parseAbsoluteChainage, resolveBridgeDistance } from './bridgePlacement.js';
 /**
  * Client-side form validation rules.
@@ -93,6 +94,8 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
     if (isBlank(x.from) || isBlank(x.to)) at('Crossover', i, 'from/to tracks are required.');
     else if (strOr(x.from, '') === strOr(x.to, '')) at('Crossover', i, 'from/to tracks must differ.');
     const raw = strOr(x.chainage, '');
+    if (raw.toUpperCase() === 'AUTO' && x.autoAnchor && anchorIndex(f.crossovers, i) < 0)
+      at('Crossover', i, 'choose an earlier AUTO anchor from this station or use the default.');
     if (isBlank(raw)) at('Crossover', i, 'chainage is required (number or AUTO).');
     else if (raw.toUpperCase() !== 'AUTO' && (!Number.isFinite(Number(raw)) || Number(raw) < 0))
       at('Crossover', i, 'chainage must be >= 0 or AUTO.');
@@ -208,5 +211,3 @@ export function validateForm(form, defaults, platformLayersFn, minTrackSpacing, 
 
   return errors;
 }
-
-

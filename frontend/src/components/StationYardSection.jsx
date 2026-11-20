@@ -2,14 +2,15 @@ import { GradientsSection } from './GradientsSection.jsx';
 import { absoluteChainageAtDistance } from '../lib/chainageRange.js';
 import { ChainageRangeReference } from './ChainageRangeReference.jsx';
 import { BridgeCard } from './BridgeFields.jsx';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { resolveStationGeometry } from '../lib/dynamicPreview.js';
+import { anchorIndex, identifyCrossovers, yardOwner } from '../lib/stationYard.js';
 import { fmt, isBlank } from '../lib/formUtils.js';
 import { useFormSetter } from '../lib/useFormSetter.js';
 import {
   FOB_MAX_SPAN_M,
   estimateFobSpan,
   formatStartChainage,
-  getExtendedLoopEnds,
   getStationTrackDistance,
   getTrackRange,
   parseKmM,
@@ -33,6 +34,8 @@ export function StationYardSection({
   tracks,
   layers,
   hasGenerated,
+  drawingForm = form,
+  children,
   isAlignmentDatum = false,
   referenceDistance = null,
 }) {
@@ -51,7 +54,10 @@ export function StationYardSection({
     : getStationTrackDistance(station, form.startKm, form.startM);
 
   const allTracks = tracks || ['MAIN_LINE'];
-  const safeLayers = layers && layers.length > 0 ? layers : ['PLATFORM_1'];
+  const { loopExtents, placedCrossovers } = useMemo(() =>
+    resolveStationGeometry(drawingForm, Number(form.mainLength) || 1600, stnDist),
+    [drawingForm, form.mainLength, stnDist]);
+  const safeLayers = layers ?? [];
   const trackOpts = [{ value: '', label: 'Select track…' }, ...allTracks];
   const layerOpts = [{ value: '', label: 'Select platform…' }, ...safeLayers];
   const chipCls =
@@ -67,7 +73,8 @@ export function StationYardSection({
   const loopReferenceTracks = (globalIdx) => [
     'MAIN_LINE',
     ...(form.mainLines || []).map((_, i) => `MAIN_LINE_${i + 1}`),
-    ...(form.loops || []).slice(0, globalIdx).map((loop, i) => loop.name?.trim() || `LOOP_${i + 1}`),
+    ...(form.loops || []).slice(0, globalIdx).flatMap((loop, i) =>
+      (loop.stationIndex ?? 0) === stationIndex ? [loop.name?.trim() || `LOOP_${i + 1}`] : []),
   ];
 
   const addLoop = () => {
@@ -149,6 +156,7 @@ export function StationYardSection({
   // -------------------------------------------------------------
   // 3. Crossovers belonging to this station
   // -------------------------------------------------------------
+  const rows = useMemo(() => identifyCrossovers(form.crossovers || []), [form.crossovers]);
   const stationCrossovers = (form.crossovers || []).filter(
     (x) => (x.stationIndex ?? (form.stationMarkers?.length > 1 ? -1 : 0)) === stationIndex,
   );
@@ -158,6 +166,7 @@ export function StationYardSection({
     const defaultTo = stationLoops[0]?.name ? 'MAIN_LINE' : (tracks[1] || 'LOOP_1');
     const newX = {
       ...blankCrossover(),
+      crossoverKey: `xo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       from: defaultFrom,
       to: defaultTo,
       chainage: stationLoops[0]?.c1 || 'AUTO',
@@ -178,7 +187,8 @@ export function StationYardSection({
   };
 
   const removeCrossover = (xObj) => {
-    setTop({ crossovers: (form.crossovers || []).filter((x) => x !== xObj) });
+    const index = form.crossovers.indexOf(xObj);
+    setTop({ crossovers: identifyCrossovers(form.crossovers).filter((_, i) => i !== index) });
   };
 
   // -------------------------------------------------------------
@@ -189,7 +199,7 @@ export function StationYardSection({
   );
 
   const addStationBuilding = () => {
-    const defaultPlatform = safeLayers[0] || 'PLATFORM_1';
+    const defaultPlatform = safeLayers[0] || '';
     const parsedStn = parseKmM(station?.chainage);
     const hasKm = !isBlank(station?.km);
     const hasM = !isBlank(station?.m);
@@ -666,7 +676,7 @@ export function StationYardSection({
                 <div className="flex items-start gap-2">
                   <span className="text-sm select-none" aria-hidden="true">ℹ️</span>
                   <div className="leading-snug">
-                    <span className="font-semibold">Crossover chainages:</span> Crossover chainages will be shown after you generate DXF once (chainages require backend calculation).
+                    Choose a defined loop end or enter a chainage. When a collision shifts the crossover, its preview start appears below the input.
                   </div>
                 </div>
               </div>
@@ -679,9 +689,14 @@ export function StationYardSection({
             ) : (
               stationCrossovers.map((x, idx) => {
                 const globalXIdx = (form.crossovers || []).indexOf(x);
-                const itemLoopEnds = getExtendedLoopEnds(form, globalXIdx);
-                const targetTrack = itemLoopEnds[x.from] ? x.from : (itemLoopEnds[x.to] ? x.to : null);
-                const ends = targetTrack ? itemLoopEnds[targetTrack] : null;
+                const invalidAnchor = x.autoAnchor && anchorIndex(rows, globalXIdx) < 0;
+                const targetTrack = loopExtents[x.from] ? x.from : x.to;
+                const ends = loopExtents[targetTrack];
+                const start = ends && fmt(ends.baseC1);
+                const end = ends && fmt(ends.baseC2);
+                const placement = placedCrossovers.find(item => item.sourceIndex === idx);
+                const showPlacement = placement && !isBlank(x.chainage) &&
+                  (String(x.chainage).trim().toUpperCase() === 'AUTO' || fmt(placement.c1) !== fmt(x.chainage));
                 const setChainage = (v) => updateCrossoverAt(x, { chainage: v });
                 const chipCls = 'rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer';
                 return (
@@ -711,30 +726,31 @@ export function StationYardSection({
                         label="Start chainage (MAIN m) *"
                         hint={
                           ends
-                            ? `First SRJ on ${x.from || targetTrack} — range [${ends.c1}, ${ends.c2}], or AUTO${
-                                ends.isExtended ? ` (Extended from [${ends.baseC1}, ${ends.baseC2}])` : ''
-                              }`
+                            ? `Defined ends of ${targetTrack} in metres.`
                             : 'First SRJ, or AUTO'
                         }
                       >
                         <Text
                           value={x.chainage}
-                          placeholder={ends ? `${ends.c1} or ${ends.c2} or AUTO` : 'chainage or AUTO'}
+                          placeholder={ends ? `${start} or ${end} or AUTO` : 'chainage or AUTO'}
                           onChange={(e) => setChainage(e.target.value)}
                         />
                         {ends && (
                           <span className="mt-1 flex flex-wrap gap-1.5">
-                            <button type="button" className={chipCls} onClick={() => setChainage(String(ends.c1))}>
-                              Loop start {ends.c1}
+                            <button type="button" className={chipCls} onClick={() => setChainage(String(ends.baseC1))}>
+                              Loop start {start}
                             </button>
-                            <button type="button" className={chipCls} onClick={() => setChainage(String(ends.c2))}>
-                              Loop end {ends.c2}
+                            <button type="button" className={chipCls} onClick={() => setChainage(String(ends.baseC2))}>
+                              Loop end {end}
                             </button>
                             <button type="button" className={chipCls} onClick={() => setChainage('AUTO')}>
                               AUTO
                             </button>
                           </span>
                         )}
+                        {showPlacement && <span className="mt-1 block text-xs text-slate-600">
+                          Preview start {fmt(placement.c1)} m
+                        </span>}
                       </Field>
                       <Field label="Direction">
                         <Sel
@@ -743,17 +759,18 @@ export function StationYardSection({
                           options={['FORWARD', 'REVERSE']}
                         />
                       </Field>
-                      {String(x.chainage || '').trim().toUpperCase() === 'AUTO' && globalXIdx > 0 && (
+                      {String(x.chainage || '').trim().toUpperCase() === 'AUTO' && (idx > 0 || invalidAnchor) && (
                         <Field label="AUTO anchor crossover" hint="13 m same direction; 54 m opposite direction">
                           <Sel
-                            value={x.autoAnchor || ''}
+                            value={rows[globalXIdx].autoAnchor}
                             onChange={(e) => updateCrossoverAt(x, { autoAnchor: e.target.value })}
                             options={[
                               { value: '', label: 'Previous crossover (default)' },
-                              ...(form.crossovers || []).slice(0, globalXIdx).map((item, k) => ({
-                                value: `C${k + 1}`,
+                              ...(invalidAnchor ? [{ value: rows[globalXIdx].autoAnchor, label: 'Unavailable anchor — select again' }] : []),
+                              ...rows.slice(0, globalXIdx).flatMap((item, k) => yardOwner(item) === stationIndex ? [{
+                                value: item.crossoverKey,
                                 label: `C${k + 1} · ${item.from || '?'} → ${item.to || '?'}`,
-                              })),
+                              }] : []),
                             ]}
                           />
                         </Field>
@@ -1064,6 +1081,7 @@ export function StationYardSection({
             ))}
           </div>
           <GradientsSection form={form} set={set} stationIndex={stationIndex} />
+          {children}
         </div>
       )}
     </section>

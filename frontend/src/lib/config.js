@@ -5,6 +5,7 @@
 
 import { fmt, isBlank, numOr, strOr } from './formUtils.js';
 import { validateForm as runValidation } from './configValidator.js';
+import { anchorIndex } from './stationYard.js';
 
 export const DEFAULTS = {
   outputDxf: 'ESP_frontend.dxf',
@@ -515,8 +516,9 @@ function buildLoop(loop, index) {
   return entry;
 }
 
-function buildCrossover(x) {
+function buildCrossover(x, index, rows) {
   const raw = strOr(x.chainage, '');
+  const anchor = anchorIndex(rows, index);
   const chainage = raw.toUpperCase() === 'AUTO' ? 'AUTO' : Number(raw);
   const entry = {
     from_track: strOr(x.from, ''),
@@ -524,7 +526,8 @@ function buildCrossover(x) {
     from_chainage_m: chainage,
     turnout: strOr(x.turnout, DEFAULTS.turnout),
     direction: strOr(x.direction, DEFAULTS.crossoverDirection).toUpperCase(),
-    ...(raw.toUpperCase() === 'AUTO' && !isBlank(x.autoAnchor) ? { auto_anchor_id: strOr(x.autoAnchor, '') } : {}),
+    ...(raw.toUpperCase() === 'AUTO' && x.autoAnchor
+      ? { auto_anchor_id: anchor >= 0 ? `C${anchor + 1}` : 'missing-anchor' } : {}),
   };
   if (x.stationIndex != null || x.station_index != null) {
     entry.station_index = x.stationIndex ?? x.station_index;

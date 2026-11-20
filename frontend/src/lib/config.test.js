@@ -1,4 +1,6 @@
 import { describe, it } from 'node:test';
+import { removeYard, stationYardForm } from './stationYard.js';
+import { generateDynamicPreview, resolveStationGeometry } from './dynamicPreview.js';
 import assert from 'node:assert/strict';
 import { DEFAULTS, buildConfig, calculateEndChainage, calculateEndChainageFromKmM, estimateFobSpan, fillCentredChainages, fillFobCentres, fobsNeedingCentre, formatStartChainage, getExtendedLoopEnds, getPlatformBounds, getStationTrackDistance, getTrackRange, loopsNeedingCentre, parseKmM, platformLayers, trackOptions, validateForm } from './config.js';
 
@@ -886,3 +888,55 @@ describe('station markers', () => {
 
 
 
+it('exporting or removing a yard preserves the other yard and its component references', () => {
+  const markers = [{ name: 'Pansar', km: '0' }, { name: 'Satmile', km: '12', m: '650' }];
+  const form = { stationMarkers: markers, mainLines: [{ direction: 'DN' }],
+    loops: [{ stationIndex: 0, name: 'WEST' }, { stationIndex: 1, name: 'EAST' }],
+    platforms: [{ stationIndex: 0, track: 'WEST' }, { stationIndex: 1, track: 'EAST' }],
+    stations: [{ stationIndex: 0, platform: 'PLATFORM_1' }, { stationIndex: 1, platform: 'PLATFORM_2' }],
+    bridges: [{ stationIndex: 1, stationBuildingIndex: 1 }],
+    fobs: [{ stationIndex: 1, platforms: ['PLATFORM_2'], arms: [{ platform: 'PLATFORM_2' }] }],
+    crossovers: [{ stationIndex: 0 }], gradients: [{ stationIndex: 0 }], sidings: [{ stationIndex: 0 }] };
+  for (const yard of [stationYardForm(form, 1), removeYard(form, 0)]) {
+    const config = buildConfig(yard);
+    assert.deepEqual(config.station_markers.map(s => s.name), ['Satmile']);
+    assert.equal(config.station_markers[0].chainage, '12+650');
+    assert.deepEqual(config.loops.map(l => l.name), ['EAST']);
+    assert.equal(config.platforms[0].station_index, 0);
+    assert.equal(config.stations[0].platform_layer, 'PLATFORM_1');
+    assert.equal(yard.bridges[0].stationBuildingIndex, 0);
+    assert.deepEqual(config.fobs[0].platforms, ['PLATFORM_1']);
+    assert.equal(yard.fobs[0].arms[0].platform, 'PLATFORM_1');
+    assert.equal(config.crossovers.length + config.gradients.length + config.sidings.length, 0);
+    assert.equal(config.additional_lines.length, 1);
+  }
+  assert.equal(form.bridges[0].stationBuildingIndex, 1);
+  assert.deepEqual(form.stationMarkers, markers);
+});
+
+it('keeps Erga geometry and the selected AUTO anchor independent of Satmile', () => {
+  const loop = (name, stationIndex, c1, side) => ({ name, stationIndex, c1, c2: c1 + 750, side, spacing: 5.3 });
+  const xo = (stationIndex, from, chainage, autoAnchor = '') =>
+    ({ stationIndex, from, to: 'MAIN_LINE', direction: 'FORWARD', chainage, autoAnchor });
+  const form = { ...base(), mainLength: 24798, stationMarkers: [
+    { name: 'Pansar', km: 0 }, { name: 'Satmile', km: 12, m: 650 }, { name: 'Erga', km: 24, m: 200 }],
+    loops: [loop('WEST', 1, 12275, 'LEFT'), loop('LOOP_4', 2, 23825, 'LEFT'), loop('LOOP_5', 2, 23825, 'RIGHT')],
+    crossovers: [xo(1, 'WEST', 12275), xo(2, 'LOOP_5', 23825), xo(1, 'WEST', 13025), xo(2, 'LOOP_4', 'AUTO', 'C2')] };
+  const yard = stationYardForm(form, 2);
+  assert.equal(buildConfig(yard).crossovers[1].auto_anchor_id, 'C1');
+  const expected = resolveStationGeometry(yard, form.mainLength, 24200);
+  assert.deepEqual(expected.placedCrossovers.map(x => x.c1), [23825, 23838]);
+  assert.equal(expected.loopExtents.LOOP_4.c1, 23838);
+  for (const combined of [form, { ...form, loops: form.loops.map((l, i) => i ? l : { ...l, spacing: 20, c1: 11000 }) }]) {
+    const preview = generateDynamicPreview(combined);
+    assert.deepEqual(preview.placedCrossovers.filter(x => x.fromTrack !== 'WEST').map(x => [x.c1, x.c2]),
+      expected.placedCrossovers.map(x => [x.c1, x.c2]));
+    assert.ok(preview.layers.includes('WEST') && preview.layers.includes('LOOP_4'));
+  }
+  const removed = stationYardForm(removeYard(form, 1), 1);
+  assert.equal(buildConfig(removed).crossovers[1].auto_anchor_id, 'C1');
+  for (const invalid of [
+    { ...yard, crossovers: yard.crossovers.slice(1) },
+    stationYardForm({ ...form, crossovers: [...form.crossovers.slice(0, 3), xo(2, 'LOOP_4', 'AUTO', 'C1')] }, 2),
+  ]) assert.ok(validateForm(invalid).some(error => error.includes('earlier AUTO anchor')));
+});

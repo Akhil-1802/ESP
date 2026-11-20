@@ -3,6 +3,8 @@ import { useRef, useState } from 'react';
 import { getTrackCentre, loadKmlAlignment } from '../lib/kmlAlignment.js';
 import { calculateEndChainageFromKmM, fillCentredChainages, fillFobCentres, formatStartChainage } from '../lib/config.js';
 import { blankStationMarker } from '../lib/formDefaults.js';
+import { removeYard } from '../lib/stationYard.js';
+import { stationsFromRows, mergeImportedStations } from '../lib/stationWorkbook.js';
 import { isBlank } from '../lib/formUtils.js';
 import { Field, Grid, Section, Text, YardAddButton } from './fields.jsx';
 import { useFormSetter } from '../lib/useFormSetter.js';
@@ -24,6 +26,33 @@ export function SourceSection({
   const requestIdRef = useRef(0);
   const file = form.kmlFile;
   const stationMarkers = form.stationMarkers || [];
+  const stationFileInput = useRef(null);
+  const [importingStations, setImportingStations] = useState(false);
+  const [stationImportMessage, setStationImportMessage] = useState('');
+
+  async function importStations(event) {
+    const workbook = event.target.files?.[0];
+    event.target.value = '';
+    if (!workbook) return;
+    setImportingStations(true);
+    setStationImportMessage('');
+    try {
+      const { default: readWorkbook } = await import('read-excel-file');
+      const rows = await readWorkbook(workbook).catch(() => {
+        throw new Error('Could not read the workbook. Choose a valid .xlsx file.');
+      });
+      const imported = stationsFromRows(rows);
+      set((previous) => ({
+        ...previous,
+        stationMarkers: mergeImportedStations(previous.stationMarkers || [], imported),
+      }));
+      setStationImportMessage(`Processed ${imported.length} station rows from ${workbook.name}.`);
+    } catch (error) {
+      setStationImportMessage(error.message);
+    } finally {
+      setImportingStations(false);
+    }
+  }
 
   const addStationMarker = () => {
     const current = form.stationMarkers || [];
@@ -37,8 +66,7 @@ export function SourceSection({
   };
 
   const removeStationMarker = (idx) => {
-    const current = (form.stationMarkers || []).filter((_, i) => i !== idx);
-    setTop({ stationMarkers: current });
+    set((current) => removeYard(current, idx));
   };
 
   const onFile = async (chosen) => {
@@ -291,9 +319,15 @@ export function SourceSection({
             </div>
             <div className="flex items-center gap-2">
               <YardAddButton onClick={addStationMarker}>station</YardAddButton>
+              <input ref={stationFileInput} type="file" accept=".xlsx" hidden onChange={importStations} />
+              <button type="button" disabled={importingStations} onClick={() => stationFileInput.current?.click()}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                {importingStations ? 'Importing…' : 'Import Excel'}
+              </button>
             </div>
           </div>
 
+          {stationImportMessage && <p role="status" className="text-xs text-slate-700">{stationImportMessage}</p>}
           {stationMarkers.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-300 bg-white/50 p-2.5 text-center text-[11px] text-slate-500">
               No station references added. The yard continues to use the processed alignment centre. Add a station when you have a known station chainage.

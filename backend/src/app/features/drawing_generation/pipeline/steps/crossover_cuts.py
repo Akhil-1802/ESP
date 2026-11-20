@@ -8,6 +8,7 @@ from typing import Dict, Tuple
 import ezdxf
 
 from ...domain.constants import DEFAULT_OVERRUN_M
+from ...domain.geometry.operations import cumulative_chainages
 from ...domain.geometry.operations import polyline_length as _plen
 from ...domain.track.generator import _generate_bounded_loop as _gen_loop
 from ...domain.track.overrun import crossover_srjs_on_track as _srjs_on_track
@@ -118,7 +119,8 @@ def apply_loop_overrun_cuts(
 
     main_points = tracks.get("MAIN_LINE")
     try:
-        main_length = float(_plen(main_points)) if (_plen is not None and main_points) else None
+        # Clamp with the same vertex chainages that _generate_bounded_loop samples.
+        main_length = cumulative_chainages(main_points)[-1] if main_points else None
     except Exception:
         main_length = None
 
@@ -242,13 +244,15 @@ def apply_loop_overrun_cuts(
         logger.info(f"   ! Loop overrun redraw skipped ({exc})")
         return {}, {}, {}, {}
 
-    loop_layers = {name.upper().replace(" ", "_") for name in ranges}
+    original_lines = {name.upper().replace(" ", "_"): [] for name in splits}
     for entity in list(doc.modelspace()):
         try:
             layer = entity.dxf.layer
         except Exception:
             continue
-        if layer in loop_layers or layer in ("OVER_RUN", "TRACK_LABELS"):
+        if layer in original_lines:
+            original_lines[layer].append(entity)
+        elif layer in ("OVER_RUN", "TRACK_LABELS"):
             try:
                 doc.modelspace().delete_entity(entity)
             except Exception:
@@ -277,6 +281,8 @@ def apply_loop_overrun_cuts(
         except Exception as exc:
             logger.info(f"   ! Loop {name} running redraw skipped ({exc})")
             continue
+        for original in original_lines[layer_name]:
+            doc.modelspace().delete_entity(original)
         spec = specs_by_name.get(name)
         _s_spacing, net_side = resolve_net_offset_and_side(name, specs_by_name)
         outward_left = net_side == "LEFT"

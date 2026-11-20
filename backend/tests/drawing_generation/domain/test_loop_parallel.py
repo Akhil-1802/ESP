@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ezdxf
+from types import SimpleNamespace
 from app.features.drawing_generation.domain.geometry.operations import (
     nearest_point_on_alignment,
     point_at_chainage,
@@ -12,6 +13,32 @@ from app.features.drawing_generation.domain.track.generator import (
     TrackGenerator,
 )
 from app.features.drawing_generation.domain.track.specs import LineSpec, LoopSpec
+from app.features.drawing_generation.pipeline.steps.crossover_cuts import apply_loop_overrun_cuts
+
+
+def test_redraw_at_alignment_end_preserves_each_running_line(tmp_path):
+    main = [(float(i), float(i)) for i in range(1001)]
+    specs = [LoopSpec("LOOP_4", 5.3, extend_end_m=120),
+             LoopSpec("RETURN", 5.3, side="RIGHT", reference_track="LOOP_4")]
+    original = [(1000, 1000), (1050, 1050)]
+    tracks = {"MAIN_LINE": main, **{s.name: original for s in specs}}
+    doc = ezdxf.new()
+    for s in specs:
+        doc.modelspace().add_lwpolyline(original, dxfattribs={"layer": s.name})
+    crossover = SimpleNamespace(from_track="LOOP_4", to_track="MAIN_LINE",
+                                chainage=1000, placement="AHEAD", end_chainage=1097.578)
+    path = tmp_path / "end_yard.dxf"
+    _, _, full, _ = apply_loop_overrun_cuts(
+        str(path), tracks, [crossover], specs, [],
+        {s.name: (1000, 1380, 880, 1414) for s in specs}, document=doc)
+    assert "LOOP_4" in full
+    doc.saveas(path)
+    model = ezdxf.readfile(path).modelspace()
+    loop, = model.query('LWPOLYLINE[layer=="LOOP_4"]')
+    assert len(loop) > 2
+    # The chained track has zero net offset, so the cutter retains its original.
+    retained, = model.query('LWPOLYLINE[layer=="RETURN"]')
+    assert list(retained.get_points("xy")) == original
 
 
 def _kinked_source(path, layer="MAIN_TRACK"):
